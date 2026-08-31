@@ -16,7 +16,8 @@
 - Mise en place de la maquette :
 -  Index.php  (page principal) accessible a tout le monde :
   ![maquette](images/maquette.png)
-- arbre.php (visualisation en style "arbre") accessible par tout le monde, inspiré des images de grand tournois (coupe du monde, etc)  
+- arbre.php (visualisation en style "arbre") accessible par tout le monde, inspiré des images de grand tournois (coupe du monde, etc) :
+  ![arbres](images/tournoiEnArbre.jpg) 
 
 # 24.08:
 ## Brainstorming :
