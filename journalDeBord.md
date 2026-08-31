@@ -1,4 +1,15 @@
-### Journal de bord
+*### Journal de bord
+
+# 17.08
+## rentrée scolaire : 
+- choix du projet
+- mise en place du poste de travail
+
+# 20.08
+## Lucas : 
+- abscent
+## Tom : 
+- 
 
 # 24.08:
 ## Brainstorming :
