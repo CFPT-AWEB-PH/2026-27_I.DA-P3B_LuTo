@@ -9,7 +9,8 @@
 ## Lucas : 
 - abscent
 ## Tom : 
-- 
+- Mise en place de la maquette :
+-  ![maquette](https://imgtree.co/direct/U_VVXl3o.png)
 
 # 24.08:
 ## Brainstorming :
