@@ -11,7 +11,7 @@ require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
-define('BASE_URL', '/webapp_arbitrage/'); // adapter si l'app est dans un sous-dossier
+define('BASE_URL', '/wsl/2026-27_I.DA-P3B_LuTo/webapp_arbitrage/'); // adapter si l'app est dans un sous-dossier
 
 // IMPORTANT : on garde PHP et MySQL sur le même fuseau (UTC) pour que les calculs
 // de temps écoulé (combat en cours, chrono) soient toujours exacts. L'affichage
