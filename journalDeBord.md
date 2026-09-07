@@ -57,3 +57,20 @@
    - continuer le développement du backend
 ## tom:
 - absent
+
+# 07.09
+## Brainstorming :
+- Nous avons parler avec le prof, il faut rajouter au champs du csv un champs "Equipe".
+- Il faudrait aussi adapter le UX/UI sur la version Raspberry de l'interface web, car celle-ci n'est pas adapter.
+- Il faudrait aussi automatiser les retards lié au matches, étant donne que on connait l'heure de démarage du combat, on peut automatise le décalage des prochains matche, au lieu de rentrer manuellement le temps de retard. 
+## Lucas:
+- Lucas a implémenter docker au projet, cela comprends un fichier dockerfile, un docker-compose.yml ainsi qu'un apache.conf.
+- cela a durée une grande partie de l'après-midi étant donner que cela fessait longtemps que on avait pas utiliser docker dans un projet.
+
+## Tom:
+- Tom a porter le site web sur le Raspberry et a constater que le site web n'est pas vraiment adapter, il a installer docker sur le Raspberry, et a lancer l'installation
+- On a rencontrer plusieurs problèmes :
+   - Premièrement, tom n'arrivait pas a cloner le projet car celui ci était en privé, pour le résoudre il a du ce connecter sur le Raspberry.
+   - Ensuite, il a eu des complications au niveau de la connexion réseau, on devait alterner entre le port avec pc et le Raspberry, pour régler cela, nous avons utiliser un poste inutilise.
+
+
