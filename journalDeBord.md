@@ -24,6 +24,10 @@ timeline
     07 Sept : Ajout du champ "Equipe" au CSV (demande du professeur)
             : Dockerisation complète du projet (Lucas)
             : Déploiement et tests sur le Raspberry (Tom)
+    14 Sept : Intégration de Bootstrap et correction de la navbar (Lucas)
+            : Correction de l'erreur 500 sur l'import CSV (Tom)
+            : Tests multi-utilisateurs et début de la détection d'affichage (Tom)
+            : Mise à jour du journal de bord et du README (équipe)
 ```
 
 ---
@@ -234,6 +238,23 @@ Trois points d'amélioration ont été identifiés :
 - **Problèmes rencontrés :**
   - Impossible de cloner le dépôt (privé) directement depuis le Raspberry → résolu en se connectant au Raspberry avec les identifiants appropriés.
   - Complications réseau : nécessité d'alterner entre le port du PC et celui du Raspberry → résolu en utilisant un poste de travail inutilisé dédié.
+
+---
+
+### 14.09 — Bootstrap, corrections & tests multi-utilisateurs
+
+**Lucas :**
+- Mise en place des éléments **Bootstrap** sur le site.
+- Tentative de correction de la navbar : un bug fait apparaître en format ordinateur un bouton qui ne devrait être visible qu'en format téléphone.
+- Amélioration générale de la navigation du site.
+
+**Tom :**
+- Vérification du fonctionnement du site avec plusieurs utilisateurs connectés simultanément.
+- Correction de l'erreur 500 causée par des soucis lors de l'importation du fichier CSV.
+- Démarrage du système de détection (touche du sabre laser) et d'affichage sur le site, synchronisé avec la même base de données.
+
+**Ensemble :**
+- Amélioration du journal de bord et du README.
 
 ---
 
