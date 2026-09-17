@@ -28,6 +28,8 @@ timeline
             : Correction de l'erreur 500 sur l'import CSV (Tom)
             : Tests multi-utilisateurs et début de la détection d'affichage (Tom)
             : Mise à jour du journal de bord et du README (équipe)
+    17 Sept : Refonte complète UX/UI — Design System v3 (Tom)
+            : Suppression de Bootstrap et corrections de bugs CSS (Lucas)
 ```
 
 ---
@@ -258,6 +260,31 @@ Trois points d'amélioration ont été identifiés :
 
 ---
 
+### 17.09 — Refonte UX/UI complète & corrections de bugs CSS
+
+**Tom :**
+
+**Refonte complète de l'interface (Design System v3)**
+Avec l'aide de l'IA, refonte totale de l'UX/UI du site autour d'un design system CSS maison (`style.css` v3, ~2 100 lignes) : thème sombre, palette de tokens CSS (`--accent`, `--surface`, `--text`, etc.), typographies Orbitron / Rajdhani / Inter, animations fluides, système de couches CSS (`@layer reset, tokens, base, layout, components, utilities`). Cette approche garantit que tous les styles du site sont cohérents et maintenables sans dépendre d'un framework externe. Fichiers modifiés : `assets/css/style.css`, `assets/js/app.js`, `login.php`, `arbre.php`.
+
+**Suppression de Bootstrap sur `arbre.php`**
+Bootstrap était chargé via `$extraHead` avant `style.css` dans le `<head>`. Comme Bootstrap n'utilise pas les couches CSS (`@layer`), il est considéré comme un style "non layered" par le navigateur et écrase automatiquement tous nos styles en `@layer components`, quelle que soit la spécificité. La topbar et les tokens de design étaient donc ignorés sur cette page. Correction : suppression totale de Bootstrap sur `arbre.php` et remplacement de toutes ses classes utilitaires (`d-flex`, `gap-2`, `alert`, etc.) par des classes CSS natives utilisant les tokens du design system.
+
+**Correction du bouton menu mobile visible sur desktop**
+La navbar affichait un petit carré parasite sur desktop. Le bug venait d'un conflit de priorité entre les couches CSS :
+- `.nav-toggle { display: none; }` était défini dans `@layer layout`
+- `button { display: inline-flex; }` était défini dans `@layer components`
+**Lucas :**
+Dans la cascade CSS, `@layer components` est prioritaire sur `@layer layout` — la spécificité du sélecteur ne compte plus quand les couches sont différentes. Le bouton `inline-flex` écrasait donc le `display: none`, rendant le bouton visible partout. Correction : ajout de `display: none;` directement dans le bloc `.nav-toggle` déjà présent dans `@layer components`. À spécificité égale dans la même couche, `.nav-toggle` (0,1,0) bat `button` (0,0,1) — le bouton est maintenant masqué sur desktop et visible uniquement sur mobile (< 700 px).
+
+**Correction de la fenêtre modale positionnée en haut à gauche**
+Les fenêtres modales (`<dialog>` natif HTML, ouvertes via `showModal()`) apparaissaient en haut à gauche de l'écran au lieu d'être centrées. La cause : le reset CSS `@layer reset { * { margin: 0; } }` supprimait le `margin: auto` de la feuille de style navigateur (UA stylesheet) qui est responsable du centrage automatique des `<dialog>`. Correction : ajout de `dialog { margin: auto; }` dans `@layer reset`, juste après `* { margin: 0; }`. Le sélecteur `dialog` (spécificité 0,0,1) l'emporte sur `*` (spécificité 0,0,0) dans la même couche, ce qui restaure le centrage natif.
+
+**Correction de la fermeture modale par la touche Échap**
+Quand l'utilisateur fermait une modale formulaire avec la touche Échap, la modale se fermait visuellement mais l'URL conservait `?action=new`, ce qui pouvait provoquer une réouverture involontaire. Correction dans `app.js` : ajout d'un écouteur sur l'événement `close` du `<dialog>` pour rediriger vers l'URL d'annulation dès que la modale est fermée, quelle qu'en soit la cause (Échap, clic sur le fond, bouton Annuler).
+
+---
+
 ## 5. Prochaines étapes
 
 - [ ] Ajouter le champ `Equipe` à l'import CSV et à la table `joueurs`
@@ -265,3 +292,4 @@ Trois points d'amélioration ont été identifiés :
 - [ ] Automatiser le décalage des matchs en cas de retard (utilisation du paramètre `retard_minutes`)
 - [ ] Finaliser l'interface `arbitre.php` (saisie des points par manche, moyenne des 3 arbitres)
 - [ ] Finaliser l'affichage `arbre.php` à partir des champs `tour` / `position`
+- [ ] Terminer la refonte UX/UI des pages restantes (`index.php`, `classement.php`, `scores.php`, `admin/combats.php`, `admin/parametres.php`, `arbitrage/saisie.php`)
