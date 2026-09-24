@@ -30,6 +30,9 @@ timeline
             : Mise à jour du journal de bord et du README (équipe)
     17 Sept : Refonte complète UX/UI — Design System v3 (Tom)
             : Suppression de Bootstrap et corrections de bugs CSS (Lucas)
+    24 Sept : Rôles et permissions, page Combats, démarrage auto, déploiement (Tom)
+            : Refonte UX/UI v4, historique des touches, points Aka/Ao (Lucas)
+            : Audit de sécurité complet (équipe)
 ```
 
 ---
@@ -282,6 +285,55 @@ Les fenêtres modales (`<dialog>` natif HTML, ouvertes via `showModal()`) appara
 
 **Correction de la fermeture modale par la touche Échap**
 Quand l'utilisateur fermait une modale formulaire avec la touche Échap, la modale se fermait visuellement mais l'URL conservait `?action=new`, ce qui pouvait provoquer une réouverture involontaire. Correction dans `app.js` : ajout d'un écouteur sur l'événement `close` du `<dialog>` pour rediriger vers l'URL d'annulation dès que la modale est fermée, quelle qu'en soit la cause (Échap, clic sur le fond, bouton Annuler).
+
+---
+
+### 24.09 — Rôles & permissions, arbitrage en direct, refonte UX/UI v4 & audit de sécurité
+
+**Tom :**
+
+**Correction du rafraîchissement de la page Sabres BLE (`admin/sabres.php`)**
+La page se rechargeait entièrement toutes les 30 secondes, ce qui effaçait le formulaire d'ajout d'un sabre en cours de saisie et fermait la fenêtre de modification. Correction : la liste des sabres et les appareils détectés se mettent à jour en AJAX toutes les 3 secondes, sans rechargement ; l'ajout, la modification et la suppression passent aussi en AJAX. Ajout de la colonne `last_hit_at`, utilisée par le daemon BLE mais absente des scripts SQL (l'indicateur « Touché ? » ne pouvait donc pas fonctionner).
+
+**Rôles dynamiques et permissions fines**
+Création d'une page `admin/roles.php` : on peut créer autant de rôles que nécessaire et cocher, section par section, 34 permissions (joueurs, utilisateurs, combats, sabres, paramètres, arbitrage…). Nouvelles tables `roles` et `role_permissions`, colonne `users.role` passée d'un `ENUM` figé à un `VARCHAR`. Chaque page et chaque action vérifie la permission correspondante côté serveur. Le rôle `admin` garde toujours tous les droits, pour éviter de se retrouver bloqué dehors.
+
+**Page Combats (`admin/combats.php`) et démarrage automatique**
+- Sélection multiple (démarrer, terminer ou supprimer plusieurs combats), filtres par statut, mise à jour automatique du tableau.
+- Génération du tournoi : boutons « Tout sélectionner / Aucun / Inverser » avec recherche pour les joueurs et les arbitres, et planning (heure du premier combat, intervalle entre deux combats, durée).
+- Les combats démarrent tout seuls à leur heure prévue, si les 3 arbitres sont libres et qu'aucun joueur n'est déjà en combat.
+- Toute l'application se base désormais sur l'heure du serveur (PHP, MariaDB, daemon BLE et horloge affichée).
+- **Problème rencontré :** les chronos étaient décalés de 2 heures, car PHP et MariaDB tournaient en UTC alors que les heures prévues étaient saisies en heure locale. Résolu en passant tout le système au fuseau du serveur (variable `TZ`), avec une migration automatique des anciennes dates.
+
+**Déploiement sur le Raspberry**
+Copie du projet par archive (`tar` + `scp`) et relance de Docker à chaque étape, en conservant le fichier `.env` du Raspberry.
+
+**Lucas :**
+
+**Refonte UX/UI v4**
+Réécriture complète de `style.css` pour supprimer les défauts visuels de la v3 : plus de dégradés, de glassmorphism, d'emojis dans les titres, d'animations d'apparition au défilement ni d'icônes décoratives partout. La police Inter est remplacée par Barlow / Barlow Condensed, intégrées au projet pour fonctionner sans internet sur le réseau du club. Nous avons aussi fixé une échelle d'espacements régulière et renforcé les contrastes du thème sombre.
+
+**Historique des touches**
+Sur la page d'un combat et dans l'espace d'arbitrage : compteur de touches par joueur, nombre de doubles, frise sur la durée du combat et liste complète (temps de match et heure). L'écran de salle affiche une annonce plein écran à chaque touche.
+
+**Nouveau système de points (Aka / Ao)**
+- La saisie par manche est remplacée par un pupitre : Aka (rouge, à gauche) et Ao (bleu, à droite), avec des boutons +1, +2 et +3.
+- Le score officiel d'un joueur est le total le plus bas parmi les 3 arbitres.
+- Une barre « qui gagne » donne les points de victoire selon l'écart : 1 à 5 points d'écart = 1 point, 6 à 15 = 2 points, plus de 15 = 3 points.
+- Le classement est maintenant trié par points de victoire.
+- Tout est affiché en direct aux spectateurs.
+
+**Adaptation à tous les appareils**
+Vérification de toutes les pages de 320 px (petit téléphone) jusqu'à la TV 4K, en portrait comme en paysage, sans aucun débordement.
+
+**Ensemble :**
+
+**Audit de sécurité complet (détail dans `SECURITE.md`)**
+- **Problème le plus grave :** Apache servait tous les fichiers du projet, y compris le `.env` contenant les mots de passe de la base. Correction : configuration Apache qui refuse tout par défaut et ne sert que les pages `.php` publiques et le dossier `assets/`.
+- Changement obligatoire du mot de passe `admin123` par défaut, protection contre la force brute sur la connexion, sessions sécurisées (cookie HttpOnly / SameSite, expiration).
+- En-têtes de sécurité (CSP, anti-clickjacking) et protection contre l'escalade de privilèges entre rôles.
+- Plus aucune action par simple lien GET ; limites de débit sur les API ; tunnel Cloudflare désactivé par défaut.
+- Création du script `tests/securite_test.py` (65 tests, tous réussis).
 
 ---
 
