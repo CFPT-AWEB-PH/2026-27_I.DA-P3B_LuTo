@@ -33,6 +33,9 @@ timeline
     24 Sept : Rôles et permissions, page Combats, démarrage auto, déploiement (Tom)
             : Refonte UX/UI v4, historique des touches, points Aka/Ao (Lucas)
             : Audit de sécurité complet (équipe)
+    28 Sept : Audit UX/UI, Design System v5, navigation et composants réutilisables (Tom)
+            : Refonte des pages publiques, de l'arbitrage et de l'admin, tests (Lucas)
+            : Déploiement de la v5 sur le Raspberry (Tom)
 ```
 
 ---
@@ -337,11 +340,51 @@ Vérification de toutes les pages de 320 px (petit téléphone) jusqu'à la TV 4
 
 ---
 
-## 5. Prochaines étapes
+### 28.09 — Audit UX/UI & refonte complète (Design System v5)
 
-- [ ] Ajouter le champ `Equipe` à l'import CSV et à la table `joueurs`
-- [ ] Adapter l'UX/UI pour l'affichage sur le format Raspberry
-- [ ] Automatiser le décalage des matchs en cas de retard (utilisation du paramètre `retard_minutes`)
-- [ ] Finaliser l'interface `arbitre.php` (saisie des points par manche, moyenne des 3 arbitres)
-- [ ] Finaliser l'affichage `arbre.php` à partir des champs `tour` / `position`
-- [ ] Terminer la refonte UX/UI des pages restantes (`index.php`, `classement.php`, `scores.php`, `admin/combats.php`, `admin/parametres.php`, `arbitrage/saisie.php`)
+**Tom :**
+
+**Audit complet de l'interface**
+Avec l'aide de l'IA (Claude), l'application a été lancée en local avec des données de démonstration pour capturer tous les écrans en version ordinateur et téléphone. Problèmes relevés :
+- La barre de navigation d'un administrateur passait sur deux lignes (9 liens, « Déconnexion » tombait seul en dessous), et le bouton « Créer un compte » dominait la barre alors que les spectateurs n'ont pas besoin de compte.
+- En cas de coupure réseau, le bandeau « Actualisation en direct indisponible » s'insérait dans chaque carte et chaque ligne « À venir », ce qui rendait la page illisible.
+- L'alerte « Arbre incohérent » (destinée à l'administrateur) était visible par le public.
+- Dans l'admin, chaque ligne affichait 2 à 3 boutons de couleur (vert / jaune / rouge), dont « Supprimer » partout : beaucoup de bruit visuel.
+- La page Paramètres affichait 12 champs texte bruts aux libellés techniques (« en millisecondes », « 1 = oui, 0 = non »).
+- La vérification « les deux mots de passe ne correspondent pas » ne fonctionnait jamais (mauvais identifiant de champ dans `app.js`).
+
+**Design System v5**
+Réécriture complète de `style.css`. La couleur porte uniquement du sens (rouge = Aka, bleu = Ao, menthe = en direct, ambre = attention) et les actions principales sont en blanc. Échelle d'espacements de 4 px, 4 rayons et 3 durées d'animation, désactivées si l'option « réduire les animations » est activée. Les styles écrits directement dans les pages ont été supprimés. Les règles sont documentées dans `DESIGN.md`.
+
+**Navigation**
+4 liens pour les spectateurs (Direct, Arbre, Résultats, Classement), raccourcis « Arbitrage » et « Admin » séparés, menu compte (mot de passe, déconnexion). Sur mobile, la barre de navigation basse est désormais générée par le serveur et ne clignote plus au chargement. Les onglets de l'admin ont été renommés et réordonnés (Vue d'ensemble, Combats, Joueurs, Comptes, Sabres, Rôles, Paramètres).
+
+**Composants réutilisables**
+Nouveau fichier `includes/ui.php` (tableau de score Aka / Ao, carte de combat en direct, ligne de résultat, badge de statut, état vide, menu d'actions « ⋯ »), utilisé par toutes les pages au lieu de recopier le HTML.
+
+**Déploiement sur le Raspberry**
+- **Problème rencontré :** `tar: webapp.tar.gz : open impossible`. L'archive n'avait pas été envoyée sur le Raspberry. Résolu en la créant sur le PC (sans les sauvegardes ni le `.env`), puis en l'envoyant avec `scp` avant la décompression.
+- **Problème rencontré :** impossible de se connecter avec le compte admin (mot de passe changé auparavant, ou compte bloqué après 5 essais). Solution : réinitialiser le mot de passe admin et lever le blocage avec une commande `docker compose exec web php`.
+- Les avertissements de la console (`interest-cohort`, `Cross-Origin-Opener-Policy`) sont normaux en HTTP par adresse IP et ne bloquent rien.
+
+**Lucas :**
+
+**Refonte des pages publiques**
+Nouvelle page d'accueil « En direct », page « Scores » transformée en liste de « Résultats » (le vainqueur ressort), classement plus lisible, arbre avec légende, écran de salle avec transitions entre les écrans et barre de progression. Pages de connexion, d'inscription et de changement de mot de passe simplifiées.
+
+**Espace arbitrage**
+Le pupitre affiche « Enregistré » après chaque point, et le compteur personnel s'anime à chaque appui.
+
+**Back-office admin**
+- Une seule action principale par ligne (Démarrer ou Terminer), le reste dans un menu « ⋯ » avec une confirmation qui explique la conséquence.
+- Nouveau panneau de contrôle sur la page Combats : heure du serveur, démarrage automatique en interrupteur, retard.
+- Paramètres regroupés en sections, avec unités et interrupteurs (fréquences saisies en secondes au lieu de millisecondes).
+- Recherche instantanée des joueurs, tableaux affichés en cartes sur mobile.
+
+**Retours à l'utilisateur**
+Messages en notifications (toasts), boutons en chargement pendant l'envoi, états vides qui expliquent quoi faire, un seul indicateur « Connexion perdue » pour toute la page. Le mot de passe provisoire d'un nouveau compte reste affiché jusqu'à ce qu'on ferme la notification.
+
+**Problème rencontré :** les menus « ⋯ » des tableaux s'affichaient beaucoup trop bas. L'animation d'apparition des pages (`transform`) créait un nouveau repère pour les éléments en `position: fixed`. Résolu en passant l'animation en `animation-fill-mode: backwards`, pour qu'elle ne s'applique plus une fois terminée.
+
+**Tests**
+Captures de toutes les pages en format ordinateur, tablette et téléphone ; parcours testés automatiquement avec Playwright (points d'un arbitre, actions de l'admin, recherche, paramètres, création de compte, erreurs de formulaire), sans aucune erreur. L'ancienne version est sauvegardée dans `_backup_avant_refonte_ux/`.
