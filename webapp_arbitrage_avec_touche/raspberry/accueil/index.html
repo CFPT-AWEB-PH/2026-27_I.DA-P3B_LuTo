@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#08090b">
+<title>Installer l'application · Sabre Laser Arbitrage</title>
+<link rel="icon" href="/pwa/favicon-32.png">
+<link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png">
+<style>
+    :root {
+        --bg: #08090b; --surface: #0f1215; --surface-2: #161a1f; --border: #252b33;
+        --text: #eef1f4; --text-2: #aab1bb; --text-3: #737c88;
+        --mint: #3ee0b0; --amber: #f5b544; --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+        margin: 0; background: var(--bg); color: var(--text);
+        font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        padding: max(24px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+    }
+    main { max-width: 560px; margin: 0 auto; display: grid; gap: 20px; }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand img { width: 56px; height: 56px; border-radius: 14px; }
+    h1 { font-size: 1.5rem; line-height: 1.2; margin: 0; letter-spacing: -.01em; }
+    .sub { margin: 2px 0 0; color: var(--text-2); font-size: .95rem; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+    .step { display: grid; grid-template-columns: 32px 1fr; gap: 12px; align-items: start; }
+    .num { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 700;
+           background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
+    .step h2 { font-size: 1.05rem; margin: 4px 0 6px; }
+    .step p { margin: 0 0 12px; color: var(--text-2); font-size: .95rem; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 18px;
+           border-radius: 10px; font-weight: 600; font-size: .95rem; text-decoration: none; border: 1px solid transparent; }
+    .btn-primary { background: var(--text); color: var(--bg); }
+    .btn-secondary { background: var(--surface-2); color: var(--text); border-color: var(--border); }
+    .btn:focus-visible, summary:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+    details { border-top: 1px solid var(--border); padding: 10px 0 0; margin-top: 12px; }
+    details + details { margin-top: 10px; }
+    summary { cursor: pointer; font-weight: 600; color: var(--text); font-size: .95rem; padding: 4px 0; }
+    details ol { margin: 8px 0 4px; padding-left: 1.25em; color: var(--text-2); font-size: .92rem; display: grid; gap: 6px; }
+    code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9em; background: var(--surface-2);
+           padding: 1px 6px; border-radius: 5px; color: var(--text); }
+    .status { display: flex; gap: 10px; align-items: center; font-size: .92rem; color: var(--text-2); }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); flex: none; }
+    .status.ok .dot { background: var(--mint); box-shadow: 0 0 10px var(--mint); }
+    .status.wait .dot { background: var(--amber); }
+    .note { color: var(--text-3); font-size: .85rem; margin: 0; }
+    strong { color: var(--text); }
+</style>
+</head>
+<body>
+<main>
+    <header class="brand">
+        <img src="/pwa/icon-192.png" alt="">
+        <div>
+            <h1>Installer l'application (facultatif)</h1>
+            <p class="sub">L'app marche déjà sans rien installer. Ces étapes servent seulement à l'avoir en plein écran sur l'écran d'accueil d'Android.</p>
+        </div>
+    </header>
+
+    <div class="card status wait" id="status" role="status">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="status-text">Vérification de la connexion sécurisée…</span>
+    </div>
+
+    <section class="card step" aria-labelledby="h1">
+        <span class="num" aria-hidden="true">1</span>
+        <div>
+            <h2 id="h1">Installer le certificat du tournoi (une seule fois)</h2>
+            <p>Ce Wi-Fi n'est pas relié à internet : c'est le Raspberry de la salle qui chiffre la connexion.
+               Votre appareil doit lui faire confiance une fois pour toutes.</p>
+            <a class="btn btn-secondary" href="/sabre-ca.crt" download>Télécharger le certificat</a>
+
+            <details>
+                <summary>Android</summary>
+                <ol>
+                    <li>Téléchargez le certificat avec le bouton ci-dessus.</li>
+                    <li>Ouvrez <strong>Paramètres</strong> et cherchez <strong>« certificat CA »</strong>
+                        (souvent : Sécurité › Plus de paramètres › Chiffrement et identifiants › Installer un certificat).</li>
+                    <li>Choisissez <strong>Certificat CA</strong>, confirmez « Installer quand même », puis sélectionnez <code>sabre-ca.crt</code> dans Téléchargements.</li>
+                </ol>
+            </details>
+            <details>
+                <summary>iPhone / iPad</summary>
+                <ol>
+                    <li>Ouvrez cette page dans <strong>Safari</strong> et touchez « Télécharger le certificat », puis « Autoriser ».</li>
+                    <li><strong>Réglages › Général › VPN et gestion de l'appareil</strong> › « Sabre Arbitrage » › <strong>Installer</strong>.</li>
+                    <li><strong>Réglages › Général › Informations › Réglages des certificats</strong> : activez « Sabre Arbitrage ».</li>
+                </ol>
+            </details>
+            <details>
+                <summary>Windows</summary>
+                <ol>
+                    <li>Ouvrez le fichier téléchargé › <strong>Installer le certificat…</strong> › Utilisateur actuel.</li>
+                    <li>Choisissez « Placer tous les certificats dans le magasin suivant » › <strong>Autorités de certification racines de confiance</strong>.</li>
+                    <li>Redémarrez le navigateur (Chrome / Edge).</li>
+                </ol>
+            </details>
+            <details>
+                <summary>Mac</summary>
+                <ol>
+                    <li>Double-cliquez le fichier : il s'ajoute au <strong>Trousseau</strong> (session).</li>
+                    <li>Double-cliquez « Sabre Arbitrage » › <strong>Se fier</strong> › « Lors de l'utilisation de ce certificat » : <strong>Toujours approuver</strong>.</li>
+                </ol>
+            </details>
+            <p class="note" style="margin-top:12px">Ce certificat ne vaut que pour le serveur du tournoi
+               (<code id="domaine">sabre.lan</code>) : il ne permet pas de lire votre navigation ailleurs.</p>
+        </div>
+    </section>
+
+    <section class="card step" aria-labelledby="h2">
+        <span class="num" aria-hidden="true">2</span>
+        <div>
+            <h2 id="h2">Ouvrir l'application</h2>
+            <p>Une fois le certificat installé, l'app s'ouvre en connexion sécurisée.</p>
+            <a class="btn btn-primary" id="ouvrir" href="https://sabre.lan/">Ouvrir l'application</a>
+        </div>
+    </section>
+
+    <section class="card step" aria-labelledby="h3">
+        <span class="num" aria-hidden="true">3</span>
+        <div>
+            <h2 id="h3">L'installer sur l'écran d'accueil</h2>
+            <p><strong>Android / PC :</strong> bouton « Installer l'application » en bas de l'app, ou menu ⋮ › Installer.<br>
+               <strong>iPhone :</strong> Safari › Partager › « Sur l'écran d'accueil ».</p>
+        </div>
+    </section>
+
+    <p class="note">Le téléphone indique « pas d'accès à internet » ? C'est normal : choisissez <strong>Rester connecté</strong>.
+       Si l'app ne s'ouvre pas, désactivez temporairement les données mobiles.</p>
+</main>
+<script>
+(() => {
+    // Liens adaptés à l'adresse utilisée (nom de domaine ou IP du Raspberry)
+    const hote = location.hostname;
+    const https = 'https://' + hote;
+    document.getElementById('domaine').textContent = hote;
+    const cible = https + '/';
+    document.getElementById('ouvrir').href = cible;
+
+    const statut = document.getElementById('status');
+    const texte = document.getElementById('status-text');
+
+    // Le certificat est-il déjà installé ? On tente de charger une icône en HTTPS :
+    // si le navigateur fait confiance au certificat, on bascule directement sur l'app.
+    const rester = true;   // page d'aide : on reste ici, le bouton « Ouvrir » mène à l'app en HTTPS
+    const delai = new Promise((_, ko) => setTimeout(() => ko(new Error('délai')), 3000));
+    Promise.race([fetch(https + '/assets/pwa/icon-192.png?t=' + Date.now(), { mode: 'no-cors', cache: 'no-store' }), delai])
+        .then(() => {
+            statut.className = 'card status ok';
+            texte.textContent = 'Certificat reconnu : connexion sécurisée disponible.';
+            if (!rester) location.replace(cible);
+        })
+        .catch(() => {
+            statut.className = 'card status';
+            texte.textContent = 'Certificat pas encore installé sur cet appareil : suivez l\'étape 1.';
+        });
+})();
+</script>
+</body>
+</html>

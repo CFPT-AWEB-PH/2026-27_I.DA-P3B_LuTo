@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+*.md
+docker-compose*.yml
+_backup*
+Claude outputs
+sql
+ble_receiver
+ecran_ble_snippet.js
+arbitrage/saisie_ble_snippet.php
+tests
+raspberry

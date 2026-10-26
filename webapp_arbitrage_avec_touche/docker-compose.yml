@@ -1,0 +1,128 @@
+services:
+
+  db:
+    image: mariadb:11
+    container_name: sabre_db
+    restart: unless-stopped
+    environment:
+      # Aucun mot de passe par défaut : ils DOIVENT être définis dans .env
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Definir DB_ROOT_PASSWORD dans .env}
+      MARIADB_DATABASE:      ${DB_NAME:-sabre_arbitrage}
+      MARIADB_USER:          ${DB_USER:?Definir DB_USER dans .env}
+      MARIADB_PASSWORD:      ${DB_PASS:?Definir DB_PASS dans .env}
+      TZ:                    ${TZ:-Europe/Zurich}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./docker/init_ble_append.sql:/docker-entrypoint-initdb.d/02_ble.sql:ro
+    # Aucun port publié : l'app et le récepteur Bluetooth la joignent par le réseau Docker
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    container_name: sabre_web
+    restart: unless-stopped
+    ports:
+      # LAN : http://<IP-locale>:8080. APP_BIND=127.0.0.1 : l'app n'est plus joignable
+      # qu'en local / via le proxy HTTPS du Wi-Fi (install_wifi.sh --wifi-seulement).
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-8080}:80"
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-sabre_arbitrage}
+      DB_USER: ${DB_USER:?Definir DB_USER dans .env}
+      DB_PASS: ${DB_PASS:?Definir DB_PASS dans .env}
+      BASE_URL: ${BASE_URL:-/}
+      # Proxy de confiance (tunnel Cloudflare sur le réseau Docker) pour l'IP réelle des visiteurs
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.16.0.0/12}
+      TZ: ${TZ:-Europe/Zurich}         # heure du serveur utilisée par toute l'application
+      APP_DEBUG: ${APP_DEBUG:-0}       # 1 = erreurs détaillées (jamais en production)
+    depends_on:
+      db:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      # Code monté en LECTURE SEULE : même en cas de faille, PHP ne peut pas le modifier
+      - .:/var/www/html:ro
+
+  # ── Daemon BLE ─────────────────────────────────────────────────────────────
+  # Parle au Bluetooth du Pi (BlueZ) par le bus D-Bus de l'hôte : pas besoin du
+  # réseau de l'hôte. Il reste sur le réseau Docker et joint la base par « db »
+  # (la base n'est ainsi jamais exposée, même sur 127.0.0.1).
+  # ⚠️ Nécessite Linux (Raspberry Pi) + BlueZ (service « bluetooth » actif).
+  # Démarrage : ajouter « ble » à COMPOSE_PROFILES dans .env (ex. COMPOSE_PROFILES=pi,ble)
+  #             puis docker compose up -d --build
+  ble_receiver:
+    build: ./ble_receiver
+    container_name: sabre_ble
+    restart: unless-stopped
+    profiles: [ble]              # Optionnel : ne démarre pas avec un simple "docker compose up"
+    privileged: true            # Accès complet au stack Bluetooth
+    volumes:
+      - /var/run/dbus:/var/run/dbus   # D-Bus pour BlueZ
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-sabre_arbitrage}
+      DB_USER: ${DB_USER:?Definir DB_USER dans .env}
+      DB_PASS: ${DB_PASS:?Definir DB_PASS dans .env}
+      TZ: ${TZ:-Europe/Zurich}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Tunnel public HTTPS (accessible depuis internet, sans ouvrir de port) ──
+  # ⚠️ Rend l'application accessible depuis TOUT internet. Désactivé par défaut :
+  #    à lancer volontairement avec  docker compose --profile tunnel up -d
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: sabre_tunnel
+    restart: unless-stopped
+    profiles: [tunnel]
+    security_opt:
+      - no-new-privileges:true
+    command: tunnel --url http://web:80 --no-autoupdate
+    depends_on:
+      - web
+    # L'URL publique s'affiche dans les logs du conteneur :
+    #   docker compose logs tunnel
+
+  # ── Raspberry Pi : HTTPS du Wi-Fi de la salle (PWA installable) ──────────
+  # Activé par raspberry/install_wifi.sh (COMPOSE_PROFILES=pi dans .env).
+  #  - http://sabre.lan  : page d'accueil (certificat à installer, aide)
+  #  - https://sabre.lan : l'application (certificat de l'autorité locale du Pi)
+  # Le pare-feu du Pi n'autorise ces ports que depuis le Wi-Fi (raspberry/ap-firewall.nft).
+  proxy:
+    image: caddy:2-alpine
+    container_name: sabre_proxy
+    restart: unless-stopped
+    profiles: [pi]
+    # Réseau de l'hôte : le proxy voit l'IP réelle des téléphones (sinon Docker les
+    # remplace tous par la même adresse et les limites anti-abus seraient partagées).
+    # Ports : 80/443, ou 8081/8443 si un autre programme du Pi occupe déjà 80/443
+    # (install_wifi.sh redirige alors le Wi-Fi 80 -> 8081 et 443 -> 8443).
+    network_mode: host
+    volumes:
+      - ./raspberry/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./raspberry/accueil:/srv/accueil:ro
+      - ./assets/pwa:/srv/pwa:ro
+      - /etc/sabre/pki/web:/pki:ro              # certificat + clé du serveur (créés par install_wifi.sh)
+      - /etc/sabre/pki/public:/pki-public:ro    # certificat de l'autorité (à installer sur les appareils)
+      - caddy_data:/data
+    environment:
+      SABRE_DOMAINE: ${SABRE_DOMAINE:-sabre.lan}
+      PROXY_HTTP_PORT: ${PROXY_HTTP_PORT:-80}
+      PROXY_HTTPS_PORT: ${PROXY_HTTPS_PORT:-443}
+      APP_PORT: ${APP_PORT:-8080}          # le proxy joint l'app sur 127.0.0.1:APP_PORT
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - web
+
+volumes:
+  db_data:
+  caddy_data:

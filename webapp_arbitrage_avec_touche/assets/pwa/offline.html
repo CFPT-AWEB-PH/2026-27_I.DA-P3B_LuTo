@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#08090b">
+<title>Hors connexion · Sabre Laser Arbitrage</title>
+<link rel="icon" href="favicon-32.png">
+<link rel="stylesheet" href="../css/style.css?v=11">
+<style>
+    .offline-wrap { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
+    .offline-card { max-width: 420px; text-align: center; display: grid; gap: 16px; justify-items: center; }
+    .offline-card img { width: 72px; height: 72px; border-radius: 16px; }
+    .offline-card h1 { margin: 0; }
+    .offline-card p { margin: 0; color: var(--text-2, #aab1bb); }
+</style>
+</head>
+<body>
+<main class="offline-wrap">
+    <div class="offline-card">
+        <img src="icon-192.png" alt="">
+        <h1>Pas de connexion</h1>
+        <p>Impossible de joindre le serveur du tournoi. Vérifiez que vous êtes bien connecté au Wi-Fi de la salle, puis réessayez.</p>
+        <button class="btn" type="button" id="retry">Réessayer</button>
+    </div>
+</main>
+<script src="offline.js"></script>
+</body>
+</html>

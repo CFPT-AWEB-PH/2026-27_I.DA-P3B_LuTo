@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+# =============================================================================
+# sabre-wifi : comptes du Wi-Fi de la salle (Raspberry Pi, portail de connexion)
+# Installé dans /usr/local/sbin/sabre-wifi par raspberry/install_wifi.sh
+#
+#   sudo sabre-wifi statut                  état du point d'accès et du portail
+#   sudo sabre-wifi sessions                appareils identifiés sur le portail
+#   sudo sabre-wifi deconnecter <ip|id|tous> force un appareil à repasser par le portail
+#   sudo sabre-wifi secours-ajouter <id>    compte de secours local (hors app)
+#   sudo sabre-wifi secours-supprimer <id>
+#   sudo sabre-wifi secours-liste
+#   sudo sabre-wifi definir-ssid "Nom"      change le nom du Wi-Fi (aussi dans l'app)
+#   sudo sabre-wifi sync                    relit les comptes et le nom du Wi-Fi de l'app
+#                                           (Admin › Wi-Fi), lancé automatiquement toutes les 15 s
+#
+# Les comptes « secours » vivent uniquement sur le Pi : ils permettent de
+# passer le portail même si l'app ou la base de données ne tourne pas.
+# =============================================================================
+set -euo pipefail
+umask 077
+
+CONF=/etc/sabre/ap.env
+LOCAL_USERS=/etc/sabre/wifi-secours
+CACHE_DIR=/var/lib/sabre-wifi
+CACHE_DB="$CACHE_DIR/comptes-app"
+SESSIONS="$CACHE_DIR/sessions.json"
+DB_CONTAINER=sabre_db
+RE_ID='^[a-z0-9][a-z0-9._-]{2,31}$'
+RE_LIGNE='^[a-z0-9][a-z0-9._-]{2,31}:[0-9a-f]{32}$'   # identifiant:hachage NT
+# Nom du Wi-Fi : mêmes règles que install_wifi.sh (et que l'app). Jamais de " $ ` \ | & :
+# il est écrit dans des fichiers de configuration lus par bash et par hostapd.
+RE_SSID='^[A-Za-z0-9._-]([A-Za-z0-9 ._-]{0,30}[A-Za-z0-9._-])?$'
+
+[[ -r $CONF ]] && . "$CONF"
+IFACE=${IFACE:-wlan0}; SSID=${SSID:-Sabre-Arbitrage}; DOMAINE=${DOMAINE:-sabre.lan}; IP_AP=${IP_AP:-10.42.0.1}
+WIFI_MDP=${WIFI_MDP:-}
+
+log() { logger -t sabre-wifi -- "$*" 2>/dev/null || true; [[ -t 1 ]] && echo "$*" || true; }
+die() { echo "Erreur : $*" >&2; exit 1; }
+[[ $EUID -eq 0 ]] || die "à lancer avec sudo."
+
+# Hachage NT (MD4 de l'UTF-16LE), le même que l'app : mot de passe lu sur stdin
+nt_hash() { python3 /usr/local/sbin/sabre-portail --md4; }
+
+generer_mdp() {
+    local a='abcdefghjkmnpqrstuvwxyz23456789' s='' i
+    for i in $(seq 12); do s+=${a:$(( $(od -An -N2 -tu2 /dev/urandom) % ${#a} )):1}; (( i % 4 == 0 && i < 12 )) && s+='-'; done
+    echo "$s"
+}
+
+# Requête SQL dans le conteneur MariaDB (identifiants lus DANS le conteneur : rien en clair ici)
+sql() {
+    docker exec -i "$DB_CONTAINER" sh -c 'MYSQL_PWD="$MARIADB_PASSWORD" exec mariadb -u"$MARIADB_USER" -D"$MARIADB_DATABASE" -N -B' 2>/dev/null
+}
+
+SCHEMA_SQL="
+CREATE TABLE IF NOT EXISTS wifi_comptes (
+    id INT AUTO_INCREMENT PRIMARY KEY, identifiant VARCHAR(32) NOT NULL, nt_hash CHAR(32) NOT NULL,
+    description VARCHAR(100) DEFAULT NULL, actif TINYINT(1) NOT NULL DEFAULT 1, created_by INT DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_wifi_identifiant (identifiant)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS wifi_etat (
+    id TINYINT NOT NULL PRIMARY KEY, ssid VARCHAR(64) DEFAULT NULL, domaine VARCHAR(100) DEFAULT NULL,
+    adresse VARCHAR(45) DEFAULT NULL, nb_comptes INT NOT NULL DEFAULT 0, nb_connectes INT NOT NULL DEFAULT 0,
+    derniere_synchro DATETIME DEFAULT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+ALTER TABLE wifi_etat ADD COLUMN IF NOT EXISTS mdp_wifi VARCHAR(64) DEFAULT NULL;"
+
+ssid_valide() { [[ $1 =~ $RE_SSID ]]; }
+
+# Change le nom diffusé : /etc/sabre/ap.env + hostapd, puis redémarre le point d'accès.
+# Les appareils doivent rejoindre le nouveau nom ; leur connexion au portail est gardée.
+appliquer_ssid() {
+    local nouveau=$1
+    ssid_valide "$nouveau" || { log "nom de Wi-Fi refusé : « $nouveau »"; return 1; }
+    [[ $nouveau == "$SSID" ]] && return 0
+    [[ -f /etc/hostapd/hostapd.conf ]] || return 1
+    sed -i "s|^SSID=.*|SSID=\"$nouveau\"|" "$CONF"
+    sed -i "s|^ssid=.*|ssid=$nouveau|" /etc/hostapd/hostapd.conf
+    log "nom du Wi-Fi : « $SSID » → « $nouveau » (redémarrage du point d'accès)"
+    SSID=$nouveau
+    systemctl restart hostapd || log "hostapd ne redémarre pas : journalctl -u hostapd"
+}
+
+nb_sessions() { grep -o '"user"' "$SESSIONS" 2>/dev/null | wc -l; }
+
+cmd_sync() {
+    mkdir -p "$CACHE_DIR"; touch "$LOCAL_USERS" "$CACHE_DB"
+    local lignes
+    if lignes=$( { echo "$SCHEMA_SQL"; echo "SELECT identifiant, nt_hash FROM wifi_comptes WHERE actif = 1 ORDER BY identifiant;"; } | sql ); then
+        # Seules les lignes strictement valides sont gardées ; le portail relit ce fichier
+        printf '%s\n' "$lignes" | tr '\t' ':' | { grep -E "$RE_LIGNE" || true; } > "$CACHE_DB.tmp"
+        if ! cmp -s "$CACHE_DB.tmp" "$CACHE_DB"; then
+            mv -f "$CACHE_DB.tmp" "$CACHE_DB"
+            log "comptes Wi-Fi de l'app mis à jour ($(grep -c . "$CACHE_DB" || true))"
+        else
+            rm -f "$CACHE_DB.tmp"
+        fi
+        # Nom du Wi-Fi choisi dans Admin › Wi-Fi
+        local ssid_app
+        ssid_app=$(echo "SELECT valeur FROM parametres WHERE cle = 'wifi_ssid';" | sql) || ssid_app=""
+        if [[ -n $ssid_app && $ssid_app != "$SSID" ]]; then appliquer_ssid "$ssid_app" || true; fi
+        local nb
+        nb=$(cat "$LOCAL_USERS" "$CACHE_DB" | { grep -E "$RE_LIGNE" || true; } | cut -d: -f1 | sort -u | grep -c . || true)
+        printf "INSERT INTO wifi_etat (id, ssid, domaine, adresse, nb_comptes, nb_connectes, mdp_wifi, derniere_synchro)
+                VALUES (1, '%s', '%s', '%s', %d, %d, %s, UTC_TIMESTAMP())
+                ON DUPLICATE KEY UPDATE ssid = VALUES(ssid), domaine = VALUES(domaine), adresse = VALUES(adresse),
+                nb_comptes = VALUES(nb_comptes), nb_connectes = VALUES(nb_connectes), mdp_wifi = VALUES(mdp_wifi),
+                derniere_synchro = UTC_TIMESTAMP();\n" \
+            "$SSID" "$DOMAINE" "$IP_AP" "${nb:-0}" "$(nb_sessions)" \
+            "$( [[ -n $WIFI_MDP ]] && printf "'%s'" "$WIFI_MDP" || echo NULL )" | sql >/dev/null || true
+    fi
+    # Base injoignable : le portail garde la dernière liste connue (le Wi-Fi continue de fonctionner)
+}
+
+cmd_secours_ajouter() {
+    local id=${1:-} mdp mdp2
+    [[ $id =~ $RE_ID ]] || die "identifiant invalide (3 à 32 caractères : minuscules, chiffres, . _ -)."
+    if [[ ${2:-} == --generer || ! -t 0 ]]; then
+        mdp=$(generer_mdp)
+    else
+        read -rsp "Mot de passe pour « $id » (vide = générer) : " mdp; echo
+        if [[ -n $mdp ]]; then
+            read -rsp "Confirmer : " mdp2; echo
+            [[ $mdp == "$mdp2" ]] || die "les mots de passe ne correspondent pas."
+            (( ${#mdp} >= 8 )) || die "8 caractères minimum."
+        else
+            mdp=$(generer_mdp)
+        fi
+    fi
+    local h; h=$(printf '%s' "$mdp" | nt_hash)
+    [[ $h =~ ^[0-9a-f]{32}$ ]] || die "calcul du hachage impossible."
+    mkdir -p "$(dirname "$LOCAL_USERS")"; touch "$LOCAL_USERS"
+    { grep -v "^$id:" "$LOCAL_USERS" || true; echo "$id:$h"; } > "$LOCAL_USERS.tmp"
+    mv -f "$LOCAL_USERS.tmp" "$LOCAL_USERS"; chmod 600 "$LOCAL_USERS"
+    echo "Compte de secours prêt.  Identifiant : $id   Mot de passe : $mdp"
+}
+
+cmd_secours_supprimer() {
+    local id=${1:-}; [[ -n $id ]] || die "identifiant manquant."
+    touch "$LOCAL_USERS"
+    grep -v "^$id:" "$LOCAL_USERS" > "$LOCAL_USERS.tmp" || true
+    mv -f "$LOCAL_USERS.tmp" "$LOCAL_USERS"; chmod 600 "$LOCAL_USERS"
+    echo "Compte de secours « $id » supprimé (ses appareils sont déconnectés d'ici 15 s)."
+}
+
+cmd_definir_ssid() {
+    local nom=${1:-} i
+    ssid_valide "$nom" || die "nom invalide (1 à 32 caractères : lettres sans accent, chiffres, espace . _ -)."
+    # La base peut encore démarrer (juste après « docker compose up ») : on l'attend un peu
+    for i in $(seq 30); do echo "SELECT 1;" | sql >/dev/null && break; sleep 3; done
+    printf "INSERT INTO parametres (cle, valeur, description) VALUES ('wifi_ssid', '%s', 'Nom du Wi-Fi du Raspberry (Admin › Wi-Fi)')
+            ON DUPLICATE KEY UPDATE valeur = VALUES(valeur);\n" "$nom" | sql >/dev/null \
+        || echo "Base de données injoignable : nom appliqué au Pi seulement (à reporter dans Admin › Wi-Fi)." >&2
+    appliquer_ssid "$nom"
+    echo "Wi-Fi : $SSID"
+}
+
+cmd_sessions() {
+    python3 - "$SESSIONS" <<'PY'
+import json, sys, time
+try: s = json.load(open(sys.argv[1]))
+except Exception: s = {}
+if not s: print("Aucun appareil identifié.")
+for ip, v in sorted(s.items()):
+    print(f"{ip:<15} {v['mac']}  {v['user']:<20} encore {max(0, int((v['expire'] - time.time()) // 60))} min")
+PY
+}
+
+cmd_statut() {
+    echo "Wi-Fi        : $SSID  ($( [[ -n $WIFI_MDP ]] && echo "mot de passe : $WIFI_MDP" || echo "ouvert" ), interface $IFACE, canal ${CANAL:-?})"
+    echo "Portail      : identifiant + mot de passe, puis http://$DOMAINE → https://$DOMAINE"
+    for s in sabre-ap-ip sabre-ap-firewall hostapd dnsmasq sabre-portail sabre-wifi-sync.timer; do
+        printf '  %-24s %s\n' "$s" "$(systemctl is-active "$s" 2>/dev/null || true)"
+    done
+    echo "Comptes      : $(grep -c . "$CACHE_DB" 2>/dev/null || true) de l'app + $(grep -c . "$LOCAL_USERS" 2>/dev/null || true) de secours"
+    echo "Appareils    : $(iw dev "$IFACE" station dump 2>/dev/null | grep -c '^Station' || true) associés au Wi-Fi, $(nb_sessions) identifiés sur le portail"
+}
+
+case "${1:-}" in
+    sync)               cmd_sync ;;
+    statut|status)      cmd_statut ;;
+    sessions)           cmd_sessions ;;
+    deconnecter)        shift; [[ -n ${1:-} ]] || die "usage : sabre-wifi deconnecter <ip|identifiant|tous>"
+                        printf '%s\n' "$@" >> "$CACHE_DIR/a-deconnecter"
+                        sleep 6; echo "Fait : l'appareil verra de nouveau la page de connexion en se reconnectant." ;;
+    secours-ajouter)    shift; cmd_secours_ajouter "$@" ;;
+    secours-supprimer)  shift; cmd_secours_supprimer "$@" ;;
+    definir-ssid)       shift; cmd_definir_ssid "$@" ;;
+    secours-liste)      cut -d: -f1 "$LOCAL_USERS" 2>/dev/null || true ;;
+    *) sed -n '3,19p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

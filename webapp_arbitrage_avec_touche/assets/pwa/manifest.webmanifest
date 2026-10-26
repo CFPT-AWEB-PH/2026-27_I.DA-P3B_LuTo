@@ -1,0 +1,26 @@
+{
+    "id": "../../",
+    "name": "Sabre Laser Arbitrage",
+    "short_name": "Sabre Arbitrage",
+    "description": "Combats de sabre laser en direct, arbitrage à trois, résultats et classement.",
+    "lang": "fr",
+    "dir": "ltr",
+    "start_url": "../../index.php?source=pwa",
+    "scope": "../../",
+    "display": "standalone",
+    "display_override": ["standalone", "minimal-ui"],
+    "orientation": "any",
+    "background_color": "#08090b",
+    "theme_color": "#08090b",
+    "categories": ["sports", "utilities"],
+    "icons": [
+        { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+        { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+        { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    ],
+    "shortcuts": [
+        { "name": "Combats en direct", "short_name": "Direct", "url": "../../index.php", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+        { "name": "Espace arbitrage", "short_name": "Arbitrage", "url": "../../arbitrage/index.php", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+        { "name": "Classement", "short_name": "Classement", "url": "../../classement.php", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
+    ]
+}

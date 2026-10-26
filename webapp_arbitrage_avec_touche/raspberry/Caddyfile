@@ -1,0 +1,118 @@
+# =============================================================================
+# Proxy HTTPS du Wi-Fi de la salle (service « proxy » de docker-compose, profil pi)
+#
+#   http://sabre.lan   page d'accueil : installer le certificat, puis ouvrir l'app
+#   https://sabre.lan  l'application (Apache/PHP du service « web »)
+#
+# Aucun certificat Let's Encrypt : tout est signé par l'autorité locale du
+# Raspberry (créée par install_wifi.sh), le Wi-Fi n'ayant pas accès à internet.
+# =============================================================================
+{
+	admin off
+	ocsp_stapling off          # certificat local : pas de serveur OCSP
+	auto_https off
+	# Connexion par adresse IP (sans nom) : on présente le certificat du domaine
+	default_sni {$SABRE_DOMAINE:sabre.lan}
+}
+
+(entetes) {
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		-Server
+	}
+}
+
+# ── HTTP : l'application directement (aucun certificat à installer) ──────────
+# + /certificat : page FACULTATIVE pour passer en HTTPS (app installable en plein écran sur Android).
+# Ports : 80/443, ou 8081/8443 si un autre programme du Pi les occupe déjà
+# (le pare-feu redirige alors le Wi-Fi 80 -> 8081 et 443 -> 8443).
+:{$PROXY_HTTP_PORT:80} {
+	import entetes
+
+	# Tests de connexion automatiques des téléphones / PC, pour un appareil déjà identifié
+	# sur le portail : on répond « connecté », le téléphone garde alors ce Wi-Fi sans
+	# afficher sans cesse « Se connecter au réseau ». (Avant identification, ces tests
+	# arrivent sur le portail : c'est ce qui ouvre la page de connexion.)
+	@sonde_android path /generate_204 /gen_204
+	handle @sonde_android {
+		respond 204
+	}
+	@sonde_apple {
+		host captive.apple.com www.apple.com www.appleiphonecell.com www.itools.info www.ibook.info www.airport.us www.thinkdifferent.us
+	}
+	@sonde_apple_chemin path /hotspot-detect.html /library/test/success.html
+	handle @sonde_apple_chemin {
+		header Content-Type text/html
+		respond "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>" 200
+	}
+	handle @sonde_apple {
+		header Content-Type text/html
+		respond "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>" 200
+	}
+	handle /connecttest.txt {
+		respond "Microsoft Connect Test" 200
+	}
+	handle /ncsi.txt {
+		respond "Microsoft NCSI" 200
+	}
+	@sonde_firefox host detectportal.firefox.com
+	handle @sonde_firefox {
+		respond "success" 200
+	}
+
+	# Appareil du Wi-Fi qui tape n'importe quelle adresse en http (ou dont le navigateur
+	# ouvre sa page d'accueil) : renvoyé vers le site du tournoi, quel que soit le navigateur.
+	@autre_site {
+		remote_ip {$SABRE_RESEAU:10.42.0.0/24}
+		not host {$SABRE_DOMAINE:sabre.lan} {$SABRE_IP:10.42.0.1}
+		not path /sabre-ca.crt /certificat* /pwa/*
+	}
+	handle @autre_site {
+		redir http://{$SABRE_IP:10.42.0.1}/ 302
+	}
+
+	# Certificat de l'autorité locale, à installer une fois sur chaque appareil
+	handle /sabre-ca.crt {
+		root * /pki-public
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition "attachment; filename=\"sabre-ca.crt\""
+		header Cache-Control no-store
+		file_server
+	}
+
+	# Icônes de l'app (page d'accueil)
+	handle_path /pwa/* {
+		root * /srv/pwa
+		file_server
+	}
+
+	# Page facultative : installer le certificat pour l'app en HTTPS
+	handle /certificat* {
+		root * /srv/accueil
+		header Cache-Control no-cache
+		rewrite * /index.html
+		file_server
+	}
+
+	# Tout le reste : l'application, sans rien installer
+	handle {
+		reverse_proxy 127.0.0.1:{$APP_PORT:8080} {
+			header_up -CF-Connecting-IP
+		}
+	}
+}
+
+# ── HTTPS : l'application ────────────────────────────────────────────────────
+:{$PROXY_HTTPS_PORT:443} {
+	import entetes
+	tls /pki/server.crt /pki/server.key
+	encode gzip
+	# Le proxy tourne sur le réseau de l'hôte : il voit l'IP RÉELLE de chaque téléphone
+	# et la transmet à l'app (X-Forwarded-For), ainsi que le HTTPS (X-Forwarded-Proto).
+	# Chaque appareil a donc ses propres limites anti-abus (connexion, API).
+	reverse_proxy 127.0.0.1:{$APP_PORT:8080} {
+		# en-tête qu'un téléphone pourrait forger pour se faire passer pour une autre IP
+		header_up -CF-Connecting-IP
+	}
+}
