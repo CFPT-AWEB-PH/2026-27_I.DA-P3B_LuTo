@@ -36,6 +36,8 @@ timeline
     28 Sept : Audit UX/UI, Design System v5, navigation et composants réutilisables (Tom)
             : Refonte des pages publiques, de l'arbitrage et de l'admin, tests (Lucas)
             : Déploiement de la v5 sur le Raspberry (Tom)
+    26 Oct  : Gros push sur GitHub et suppression des versions obsolètes (équipe)
+            : Push réalisé avec Claude suite à un souci avec notre interface graphique Git (équipe)
 ```
 
 ---
@@ -388,3 +390,22 @@ Messages en notifications (toasts), boutons en chargement pendant l'envoi, état
 
 **Tests**
 Captures de toutes les pages en format ordinateur, tablette et téléphone ; parcours testés automatiquement avec Playwright (points d'un arbitre, actions de l'admin, recherche, paramètres, création de compte, erreurs de formulaire), sans aucune erreur. L'ancienne version est sauvegardée dans `_backup_avant_refonte_ux/`.
+
+---
+
+### 26.10 — Gros push sur GitHub & nettoyage du dépôt
+
+**Ensemble :**
+
+**Mise à jour complète du dépôt GitHub**
+Envoi de la version actuelle du projet (`webapp_arbitrage_avec_touche`, avec la gestion des touches BLE, la PWA, le Wi-Fi, les thèmes et logos) sur le dépôt GitHub de la classe. Jusqu'ici, le dépôt ne contenait qu'une ancienne version du site.
+
+**Suppression des versions obsolètes**
+Les dossiers `webapp_arbitrage` et `webapp_arbitrage - Copie` ont été supprimés du dépôt : c'étaient d'anciennes versions du projet, qui créaient de la confusion sur la version à utiliser. Elles restent récupérables dans l'historique Git si besoin.
+
+**Fichiers exclus du dépôt**
+Ajout d'un `.gitignore` pour ne pas envoyer :
+- le fichier `.env`, qui contient les mots de passe de la base de données (seul `.env.example` est publié) ;
+- les dossiers de sauvegarde `_backup_avant_*` et `_to_delete`, qui sont aussi d'anciennes versions.
+
+**Problème rencontré :** nous avons eu un souci avec notre interface graphique Git, qui nous empêchait de faire le push nous-mêmes. Solution : le push a été réalisé avec l'aide de l'IA (Claude), directement en ligne de commande. Lors de l'envoi, GitHub a d'abord refusé le push sur `main` avec une erreur « Internal Server Error » (erreur côté serveur GitHub, alors que nos droits sur le dépôt étaient corrects). Après quelques nouvelles tentatives, le push est passé.
