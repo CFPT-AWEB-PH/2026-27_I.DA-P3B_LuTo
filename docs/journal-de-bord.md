@@ -36,6 +36,13 @@ timeline
     28 Sept : Audit UX/UI, Design System v5, navigation et composants réutilisables (Tom)
             : Refonte des pages publiques, de l'arbitrage et de l'admin, tests (Lucas)
             : Déploiement de la v5 sur le Raspberry (Tom)
+    26 Oct  : Gros push sur GitHub et suppression des versions obsolètes (équipe)
+            : Push réalisé avec Claude suite à un souci avec notre interface graphique Git (équipe)
+    29 Oct  : Fond d'écran du Raspberry avec Wi-Fi, identifiant et QR codes (Tom)
+            : Démarrage automatique du site, mise à jour du système, bureau épuré (Tom)
+            : Choix dans Admin → Wi-Fi de l'accès affiché sur l'écran du Raspberry (Lucas)
+            : Guide d'utilisation intégré au site, adapté au rôle, avec captures annotées (Tom)
+            : Impression / PDF du guide et déploiement sur le Raspberry (Tom)
 ```
 
 ---
@@ -391,11 +398,107 @@ Captures de toutes les pages en format ordinateur, tablette et téléphone ; par
 
 ---
 
-## 5. Prochaines étapes
+### 26.10 — Gros push sur GitHub & nettoyage du dépôt
 
-- [ ] Ajouter le champ `Equipe` à l'import CSV et à la table `joueurs`
-- [ ] Adapter l'UX/UI pour l'affichage sur le format Raspberry
-- [ ] Automatiser le décalage des matchs en cas de retard (utilisation du paramètre `retard_minutes`)
-- [ ] Finaliser l'interface `arbitre.php` (saisie des points par manche, moyenne des 3 arbitres)
-- [ ] Finaliser l'affichage `arbre.php` à partir des champs `tour` / `position`
-- [ ] Terminer la refonte UX/UI des pages restantes (`index.php`, `classement.php`, `scores.php`, `admin/combats.php`, `admin/parametres.php`, `arbitrage/saisie.php`)
+**Ensemble :**
+
+**Mise à jour complète du dépôt GitHub**
+Envoi de la version actuelle du projet (`webapp_arbitrage_avec_touche`, avec la gestion des touches BLE, la PWA, le Wi-Fi, les thèmes et logos) sur le dépôt GitHub de la classe. Jusqu'ici, le dépôt ne contenait qu'une ancienne version du site.
+
+**Suppression des versions obsolètes**
+Les dossiers `webapp_arbitrage` et `webapp_arbitrage - Copie` ont été supprimés du dépôt : c'étaient d'anciennes versions du projet, qui créaient de la confusion sur la version à utiliser. Elles restent récupérables dans l'historique Git si besoin.
+
+**Fichiers exclus du dépôt**
+Ajout d'un `.gitignore` pour ne pas envoyer :
+- le fichier `.env`, qui contient les mots de passe de la base de données (seul `.env.example` est publié) ;
+- les dossiers de sauvegarde `_backup_avant_*` et `_to_delete`, qui sont aussi d'anciennes versions.
+
+**Problème rencontré :** nous avons eu un souci avec notre interface graphique Git, qui nous empêchait de faire le push nous-mêmes. Solution : le push a été réalisé avec l'aide de l'IA (Claude), directement en ligne de commande. Lors de l'envoi, GitHub a d'abord refusé le push sur `main` avec une erreur « Internal Server Error » (erreur côté serveur GitHub, alors que nos droits sur le dépôt étaient corrects). Après quelques nouvelles tentatives, le push est passé.
+
+---
+
+### 29.10 — Écran du Raspberry : infos de connexion, QR codes & démarrage automatique
+
+**Objectif de la séance**
+Rendre le Raspberry autonome et lisible pour le public de la salle :
+- l'écran du Raspberry affiche en permanence **comment se connecter** : nom du Wi-Fi, mot de passe, identifiant du portail et **QR codes** ;
+- le site **démarre tout seul** dès qu'on allume le Raspberry ;
+- le bureau est **épuré** : plus d'icônes (terminal, explorateur de fichiers, fichiers du bureau), seulement un **raccourci** vers le site ;
+- les infos affichées sont **les mêmes que dans Admin → Wi-Fi** et se mettent à jour toutes seules.
+
+```mermaid
+flowchart LR
+    A["Admin → Wi-Fi<br/>nom du Wi-Fi + accès coché « sur l'écran »"] --> D[("MariaDB")]
+    D -- "synchro 15 s" --> S["sabre-wifi<br/>/etc/sabre/ap.env"]
+    D -- "lecture 15 s" --> F["sabre-fond-ecran<br/>Python + Pillow + qrcode"]
+    S --> F
+    F -- "si quelque chose a changé" --> I["fond.png 800×480"]
+    I --> E["Écran tactile du Raspberry"]
+```
+
+**Tom :**
+
+**Accès au Raspberry**
+Connexion SSH par **clé** au lieu du mot de passe, pour déployer et vérifier depuis le PC. Comparaison des fichiers entre le PC et le Raspberry (empreintes `md5`) : le code du site sur le Pi était déjà à jour.
+
+**Fond d'écran avec les infos de connexion (`raspberry/sabre-fond-ecran.py`)**
+Script Python (Pillow + `qrcode`) qui dessine un fond d'écran à la taille de l'écran branché (écran tactile 800×480), en trois étapes : **rejoindre le Wi-Fi** (nom + mot de passe, ou « réseau ouvert »), **s'identifier** (identifiant + mot de passe de l'accès choisi dans Admin → Wi-Fi), **ouvrir le site** (`http://sabre.lan`). Deux QR codes : un pour rejoindre le Wi-Fi d'un coup, un pour ouvrir le site. Le script tourne toutes les 15 secondes (minuteur systemd) mais ne redessine l'image que si une information a changé. Si la base est arrêtée, le dernier accès connu est gardé ; si aucun accès n'est choisi, un compte de secours local au Pi est affiché.
+
+**Démarrage automatique et mise à jour (`raspberry/install_ecran.sh`)**
+Mise à jour complète du système (`apt full-upgrade`), nouveau service `sabre-app` qui lance `docker compose up -d` à chaque démarrage, puis reconstruction et relance de l'application.
+
+**Bureau épuré + raccourci (`raspberry/install_raccourci.sh`)**
+Raccourci « Sabre Arbitrage » sur le bureau et dans la barre des tâches, qui ouvre le site dans le navigateur comme un favori. Icônes du bureau masquées (sans supprimer les fichiers), raccourcis navigateur / fichiers / terminal retirés de la barre des tâches. Option `--desinstaller` pour tout remettre comme avant.
+
+**Problèmes rencontrés :**
+- Au départ, le site s'ouvrait automatiquement en plein écran (mode kiosque), mais il **cachait le fond d'écran avec les QR codes**. Remplacé par un simple raccourci.
+- Chromium ne démarrait pas depuis SSH (`Missing X server or $DISPLAY`) : le bureau tourne sous **Wayland** (labwc). Résolu avec `--ozone-platform=wayland`.
+- Le titre du fond d'écran passait **sous la barre des tâches** sur le petit écran : titre descendu et sous-titre masqué sur les petits écrans.
+- `sudo` demande un mot de passe sur le Pi : les installations système sont regroupées dans un seul script lancé une fois avec `sudo` ; le bureau se configure sans `sudo`.
+
+**Tests :** captures de l'écran du Pi (`grim`) : fond d'écran, bureau sans icônes, raccourci qui ouvre le site. Après redémarrage : tous les conteneurs relancés seuls, site en `200`, Wi-Fi et portail actifs, fond d'écran recréé.
+
+**Lucas :**
+
+**Choix de l'accès affiché sur l'écran (`admin/wifi.php`, `includes/wifi.php`)**
+Les mots de passe des comptes Wi-Fi sont stockés **hachés**, le Raspberry ne peut donc pas les afficher. Solution : dans Admin → Wi-Fi, un interrupteur **« Afficher sur l'écran du Raspberry »** permet de choisir un seul accès ; seul celui-ci garde son mot de passe en clair (colonne `ecran_mdp`), puisqu'il est de toute façon visible sur l'écran. Badge « Sur l'écran » dans la liste, action « Retirer de l'écran », et mise à jour automatique : changer le mot de passe de cet accès met l'écran à jour, le désactiver ou le supprimer le retire.
+
+**Tests :** syntaxe PHP vérifiée dans le conteneur. Le mot de passe d'un accès existant a été vérifié en recalculant son hachage : la description contenait une faute de frappe, le vrai mot de passe a été retrouvé et l'accès a été affiché sans le changer.
+
+**Résultat :** en allumant le Raspberry, le site démarre tout seul et l'écran affiche le Wi-Fi, l'identifiant, le mot de passe et les QR codes, à jour avec Admin → Wi-Fi.
+
+⚠️ Le tunnel Cloudflare (`sabre_tunnel`) redémarre aussi avec le Pi : le site reste accessible depuis internet tant qu'il tourne.
+
+---
+
+### 29.10 — Guide d'utilisation intégré au site & documentation PDF
+
+**Tom :**
+
+**Page « Aide et guide » (`aide.php`)**
+Ajout d'un guide complet directement dans l'application : 51 fiches réparties en 13 sections (premiers pas, suivre le tournoi, mon compte, arbitrer, organiser le tournoi, joueurs, combats, comptes et rôles, sabres et télécommandes, Wi-Fi, paramètres et apparence, bilan, problèmes fréquents). Chaque fiche explique pas à pas comment faire, avec des astuces, un bouton « Ouvrir la page » qui mène directement au bon écran et des liens « Voir aussi » vers les fiches liées.
+
+**Un guide adapté au rôle**
+Le guide n'affiche que ce que le compte connecté peut réellement faire. Chaque fiche indique les permissions nécessaires (les mêmes que celles de `includes/permissions.php`), et le serveur filtre avec `can()` avant d'envoyer la page. Résultat : un spectateur voit 13 fiches, un arbitre 21, un administrateur les 51. Un rôle personnalisé créé dans Admin › Rôles est pris en compte automatiquement. Le contenu du guide est dans `includes/guide.php`.
+
+**Recherche et navigation**
+- Barre de recherche « Que voulez-vous faire ? » instantanée (sans tenir compte des accents ni des majuscules), raccourci `/`, `Entrée` ouvre le premier résultat, `Échap` efface. La recherche est gardée dans l'adresse (`aide.php?q=…`) pour pouvoir la partager.
+- Sommaire qui suit la lecture, raccourcis vers les fiches les plus utiles, bouton « Copier le lien » de chaque fiche.
+- Un bouton **?** dans la barre du haut, sur toutes les pages, ouvre directement la fiche qui correspond à la page affichée (par exemple, sur Admin › Joueurs : « Ajouter un joueur »). Le guide est aussi dans le menu du compte et le pied de page.
+- Check-list « Préparer et lancer un tournoi » en 12 étapes à cocher (mémorisée sur l'appareil).
+
+**Captures d'écran annotées**
+30 captures de l'application, avec des repères rouges numérotés qui correspondent aux numéros des étapes du texte. Un clic agrandit la capture. Elles ont été générées automatiquement avec un navigateur piloté par script (Puppeteer), sur une copie séparée de l'application remplie de données de démonstration, pour ne jamais toucher aux vraies données du tournoi.
+
+**Impression et PDF**
+Bouton « Imprimer le guide » : tout le guide accessible au rôle s'imprime (ou s'enregistre en PDF), avec une page de garde (nom du tournoi, compte, rôle, date), un sommaire, une section par page et le numéro de page en bas. Les trois versions du guide (spectateur, arbitre, administrateur complet) sont dans le dossier `docs/guides/` du dépôt.
+
+**Problèmes rencontrés :**
+- Les repères des captures n'apparaissaient pas sur les fenêtres modales (formulaires « Nouveau joueur », « Générer le tournoi »…) : les `<dialog>` passent au-dessus de tout le reste. Solution : dessiner les repères dans un calque `popover`, lui aussi placé au-dessus.
+- À l'impression, la première page sortait blanche. Deux causes : changer de « page nommée » CSS (`@page guide`) en cours de document forçait un saut de page, et l'animation d'apparition des pages laissait la page de garde invisible (`opacity: 0`) sur papier. Solution : appliquer la page nommée à tout le `body` et couper les animations à l'impression.
+- Les marges du PDF sortaient en noir à cause du thème sombre (`color-scheme: dark`). Solution : forcer le mode clair à l'impression.
+
+**Déploiement sur le Raspberry**
+Avant de copier les fichiers, comparaison de chaque fichier du Raspberry avec celui du PC, pour vérifier que rien de ce qui était sur le Raspberry n'était écrasé. Envoi avec `scp` ; le code étant monté directement dans le conteneur, le site est à jour sans redémarrage. La version des fichiers CSS/JS (`ASSETS_VERSION` et `sw.js`) est passée à 16 pour que les téléphones téléchargent le nouveau style.
+
+Ce travail a été réalisé avec l'aide de l'IA (Claude).

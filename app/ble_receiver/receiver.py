@@ -13,6 +13,12 @@ Rôle :
   - Scanne les appareils BLE alentour et met à jour `ble_scan_cache`
     (visible dans Admin → Sabres).
   - Reconnecte automatiquement un sabre déconnecté.
+  - Se connecte aussi aux télécommandes d'arbitre (nom Bluetooth « TEL… »), qui
+    s'enregistrent toutes seules dans `telecommandes` dès qu'un scan les voit.
+    Admin › Sabres › Télécommandes leur associe un arbitre : bouton rouge = +1 Aka,
+    bleu = +1 Ao, les deux = annule, au nom de cet arbitre (table points_live,
+    comme les boutons de la page d'arbitrage). Le récepteur renvoie à chaque
+    télécommande l'état du combat pour son écran (voir etat_pour()).
   - Signale son état dans `ble_recepteur` (Admin → Sabres affiche « Récepteur actif »,
     « arrêté » ou l'erreur rencontrée, ex. adaptateur Bluetooth introuvable).
 
@@ -36,8 +42,19 @@ from bleak import BleakClient, BleakScanner
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 UART_TX_CHAR_UUID   = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
+UART_RX_CHAR_UUID   = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"   # écriture vers une télécommande
+PREFIXE_TELECOMMANDE = "TEL"       # nom Bluetooth des télécommandes d'arbitre (ex. TEL_2)
+ETAT_TEL_S          = 1.0          # envoi de l'état du combat aux télécommandes
+WIN_AFFICHE_S       = 120          # le vainqueur reste affiché 2 min après la fin
 DOUBLE_TOUCH_MS     = 200          # fenêtre double-touche en millisecondes
-RETRY_DELAY_S       = 5            # attente avant reconnexion (secondes)
+RETRY_DELAY_S       = 2            # attente avant reconnexion (secondes)
+CONNECT_TIMEOUT_S   = 20.0         # une connexion qui marche aboutit en 2 à 15 s : au-delà, autant réessayer
+VU_FRAIS_S          = 8            # vu depuis plus longtemps : rechercher l'appareil avant de s'y connecter
+RECHERCHE_S         = 6.0          # durée de cette recherche
+# Délai de supervision du lien (unités de 10 ms) : 4 s au lieu de 420 ms par défaut.
+# Le Wi-Fi du Pi (point d'accès) partage la puce radio avec le Bluetooth : avec
+# 420 ms, quelques paquets perdus suffisent à couper un sabre ou une télécommande.
+SUPERVISION_TIMEOUT = 400
 RELOAD_SABRES_S     = 15           # rechargement liste sabres depuis DB
 SCAN_DURATION_S     = 5.0          # durée d'un scan BLE
 SCAN_PAUSE_S        = 2            # pause entre deux scans si un sabre attend
@@ -186,6 +203,155 @@ def signaler_etat(message, nb_appareils=None):
         log.warning("État du récepteur non enregistré : %s", e)
 
 
+# ── Télécommandes d'arbitre ────────────────────────────────────────────────────
+# Protocole (une ligne par message, terminée par \n, sur le Nordic UART) :
+#   télécommande → Pi : PT:R   PT:B   UNDO
+#   Pi → télécommande : NOARB  IDLE  FIGHT  STOP  TIME:<s>  SCORE:<rouge>:<bleu>
+#                       WIN:R|B|D  OK  ERR:<raison>
+
+def creer_schema_telecommandes():
+    """Même schéma que ensureTelecommandesSchema() côté PHP."""
+    db_exec(
+        """CREATE TABLE IF NOT EXISTS telecommandes (
+               id INT AUTO_INCREMENT PRIMARY KEY,
+               mac_address VARCHAR(17) DEFAULT NULL,
+               nom VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Nom Bluetooth (ex. TEL_2)',
+               user_id INT DEFAULT NULL COMMENT 'Arbitre au nom duquel elle donne les points',
+               actif TINYINT(1) NOT NULL DEFAULT 1,
+               last_seen DATETIME DEFAULT NULL,
+               last_press_at DATETIME(3) DEFAULT NULL,
+               created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+               UNIQUE KEY uniq_mac (mac_address),
+               FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
+    )
+    # Première version (USB) : identifiée par son nom, sans adresse MAC
+    db_exec("ALTER TABLE telecommandes ADD COLUMN IF NOT EXISTS mac_address VARCHAR(17) DEFAULT NULL AFTER id")
+    db_exec("ALTER TABLE telecommandes DROP INDEX IF EXISTS nom")
+    db_exec("ALTER TABLE telecommandes ADD UNIQUE INDEX IF NOT EXISTS uniq_mac (mac_address)")
+
+
+def enregistrer_telecommandes(devices):
+    """Toute télécommande vue par le scan apparaît dans Admin › Sabres › Télécommandes."""
+    for d in devices:
+        nom = (d.name or "").strip()
+        if nom.upper().startswith(PREFIXE_TELECOMMANDE):
+            db_exec(
+                """INSERT INTO telecommandes (mac_address, nom) VALUES (%s, %s)
+                   ON DUPLICATE KEY UPDATE nom = VALUES(nom)""",
+                (d.address.upper(), nom[:40]),
+            )
+
+
+def load_telecommandes():
+    return db_exec(
+        "SELECT id, mac_address, nom FROM telecommandes WHERE actif = 1 AND mac_address IS NOT NULL",
+        fetch="all",
+    )
+
+
+def arbitre_de(mac):
+    """Arbitre associé à la télécommande (None si aucun ou désactivée)."""
+    t = db_exec("SELECT user_id, actif FROM telecommandes WHERE mac_address = %s", (mac,), fetch="one")
+    return t["user_id"] if t and t["actif"] else None
+
+
+def combat_de_l_arbitre(user_id):
+    """Combat en cours où arbitre ce compte, sinon le dernier terminé il y a peu."""
+    colonnes = """c.id, c.statut, c.en_pause_depuis, c.score_joueur1, c.score_joueur2,
+                  GREATEST(0, c.duree_secondes - TIMESTAMPDIFF(SECOND, c.temps_debut,
+                           COALESCE(c.en_pause_depuis, NOW()))) AS restant"""
+    combat = db_exec(
+        f"""SELECT {colonnes} FROM combats c
+            JOIN combat_arbitres ca ON ca.combat_id = c.id AND ca.user_id = %s
+            WHERE c.statut = 'en_cours'
+            ORDER BY c.temps_debut DESC LIMIT 1""",
+        (user_id,), fetch="one",
+    )
+    if combat:
+        return combat
+    return db_exec(
+        f"""SELECT {colonnes} FROM combats c
+            JOIN combat_arbitres ca ON ca.combat_id = c.id AND ca.user_id = %s
+            WHERE c.statut = 'termine' AND c.temps_fin > NOW() - INTERVAL %s SECOND
+            ORDER BY c.temps_fin DESC LIMIT 1""",
+        (user_id, WIN_AFFICHE_S), fetch="one",
+    )
+
+
+def totaux_par_arbitre(combat_id):
+    """{user_id: (total Aka, total Ao)} pour chaque arbitre affecté au combat."""
+    rows = db_exec(
+        """SELECT ca.user_id,
+                  COALESCE(SUM(CASE WHEN p.joueur_num = 1 THEN p.valeur END), 0) AS j1,
+                  COALESCE(SUM(CASE WHEN p.joueur_num = 2 THEN p.valeur END), 0) AS j2
+           FROM combat_arbitres ca
+           LEFT JOIN points_live p ON p.combat_id = ca.combat_id
+                                  AND p.arbitre_user_id = ca.user_id AND p.annule = 0
+           WHERE ca.combat_id = %s
+           GROUP BY ca.user_id""",
+        (combat_id,), fetch="all",
+    )
+    return {r["user_id"]: (int(r["j1"]), int(r["j2"])) for r in rows}
+
+
+def maj_score_combat(combat_id):
+    """Score officiel = total le plus bas parmi les arbitres (includes/points.php)."""
+    totaux = totaux_par_arbitre(combat_id)
+    if totaux:
+        db_exec(
+            "UPDATE combats SET score_joueur1 = %s, score_joueur2 = %s WHERE id = %s",
+            (min(t[0] for t in totaux.values()), min(t[1] for t in totaux.values()), combat_id),
+        )
+
+
+def appui_telecommande(mac, msg):
+    """PT:R / PT:B / UNDO, mêmes contrôles que ajouterPointLive() / annulerDernierPoint().
+    Retourne la réponse à renvoyer (OK ou ERR:<raison>)."""
+    db_exec("UPDATE telecommandes SET last_press_at = NOW(3) WHERE mac_address = %s", (mac,))
+    user_id = arbitre_de(mac)
+    if user_id is None:
+        return "ERR:SANS ARBITRE"
+    combat = combat_de_l_arbitre(user_id)
+    if not combat or combat["statut"] != "en_cours":
+        return "ERR:PAS DE COMBAT"
+    if combat["en_pause_depuis"]:
+        return "ERR:PAUSE"
+    if msg == "UNDO":
+        dernier = db_exec(
+            """SELECT id FROM points_live WHERE combat_id = %s AND arbitre_user_id = %s AND annule = 0
+               ORDER BY id DESC LIMIT 1""",
+            (combat["id"], user_id), fetch="one",
+        )
+        if not dernier:
+            return "ERR:RIEN A ANNULER"
+        db_exec("UPDATE points_live SET annule = 1 WHERE id = %s", (dernier["id"],))
+    else:
+        db_exec(
+            "INSERT INTO points_live (combat_id, arbitre_user_id, joueur_num, valeur) VALUES (%s, %s, %s, 1)",
+            (combat["id"], user_id, 1 if msg == "PT:R" else 2),
+        )
+    maj_score_combat(combat["id"])
+    return "OK"
+
+
+def etat_pour(mac):
+    """Lignes d'état à envoyer à une télécommande."""
+    db_exec("UPDATE telecommandes SET last_seen = NOW() WHERE mac_address = %s", (mac,))
+    user_id = arbitre_de(mac)
+    if user_id is None:
+        return ["NOARB"]
+    combat = combat_de_l_arbitre(user_id)
+    if not combat:
+        return ["IDLE"]
+    mes = totaux_par_arbitre(combat["id"]).get(user_id, (0, 0))
+    if combat["statut"] == "termine":
+        s1, s2 = float(combat["score_joueur1"]), float(combat["score_joueur2"])
+        return ["WIN:" + ("R" if s1 > s2 else "B" if s2 > s1 else "D"), f"SCORE:{mes[0]}:{mes[1]}"]
+    return ["STOP" if combat["en_pause_depuis"] else "FIGHT",
+            f"SCORE:{mes[0]}:{mes[1]}", f"TIME:{int(combat['restant'] or 0)}"]
+
+
 # ── Gestion des double-touches ─────────────────────────────────────────────────
 # pending_hits : { combat_id -> {'ts_ms': int, 'sabre_id': int, 'joueur_id': int} }
 pending_hits: dict = {}
@@ -276,7 +442,8 @@ async def boucle_scan():
             log.info("Scan : %d appareil(s) Bluetooth%s", len(devices),
                      f", sabres visibles : {', '.join(trouves)}" if trouves else "")
             update_scan_cache(devices)
-            signaler_etat(f"Actif : {len(connectes)}/{len(attendus)} sabre(s) connecté(s)", len(devices))
+            enregistrer_telecommandes(devices)
+            signaler_etat(f"Actif : {len(connectes)}/{len(attendus)} sabre(s) / télécommande(s) connecté(s)", len(devices))
         except Exception as e:
             msg = str(e) or e.__class__.__name__
             log.error("Erreur scan BLE : %s", msg)
@@ -324,7 +491,6 @@ async def connect_sabre(sabre: dict):
     """Tâche asyncio : maintient la connexion BLE avec un sabre et traite ses HIT."""
     mac = sabre["mac_address"].upper()
     nom = sabre["nom"] or mac
-    deja_signale = False
 
     def on_notification(sender, data: bytearray):
         msg = data.decode("utf-8", errors="ignore").strip().upper()
@@ -333,6 +499,85 @@ async def connect_sabre(sabre: dict):
             asyncio.ensure_future(process_hit(sabre))
         else:
             log.info("Message de %s (pas une touche) : %r", nom, bytes(data))
+
+    async def pendant_connexion(client):
+        while client.is_connected:
+            update_sabre_last_seen(mac)
+            await asyncio.sleep(2)
+
+    await maintenir_connexion(mac, nom, on_notification, pendant_connexion)
+
+
+async def connect_telecommande(tel: dict):
+    """Tâche asyncio : maintient la connexion BLE avec une télécommande d'arbitre,
+    donne ses points et lui envoie l'état du combat chaque seconde."""
+    mac = tel["mac_address"].upper()
+    nom = tel["nom"] or mac
+    recus: asyncio.Queue = asyncio.Queue()
+    tampon = bytearray()
+
+    def on_notification(sender, data: bytearray):
+        tampon.extend(data)          # un message peut arriver en plusieurs morceaux
+        while b"\n" in tampon:
+            i = tampon.index(b"\n")
+            ligne = tampon[:i].decode("utf-8", errors="ignore").strip().upper()
+            del tampon[:i + 1]
+            if ligne:
+                recus.put_nowait(ligne)
+        del tampon[:-256]
+
+    async def ecrire(client, ligne):
+        await client.write_gatt_char(UART_RX_CHAR_UUID, (ligne + "\n").encode(), response=True)
+
+    async def pendant_connexion(client):
+        envoye = {}                  # dernière ligne envoyée par sorte (ETAT, SCORE, TIME)
+        prochain_etat = 0.0
+        while client.is_connected:
+            try:
+                msg = await asyncio.wait_for(recus.get(), timeout=ETAT_TEL_S)
+            except asyncio.TimeoutError:
+                msg = None
+            if msg in ("PT:R", "PT:B", "UNDO"):
+                reponse = appui_telecommande(mac, msg)
+                log.info("%s : %s → %s", nom, msg, reponse)
+                await ecrire(client, reponse)
+                prochain_etat = 0.0  # score à jour tout de suite
+            elif msg:
+                log.info("Message de %s (inconnu) : %r", nom, msg)
+            if time.time() >= prochain_etat:
+                prochain_etat = time.time() + ETAT_TEL_S
+                for ligne in etat_pour(mac):
+                    sorte = ligne.split(":")[0] if ligne.startswith(("SCORE", "TIME")) else "ETAT"
+                    if envoye.get(sorte) == ligne:
+                        continue
+                    if sorte == "ETAT":
+                        envoye.clear()   # nouvel état : la télécommande remet son écran à zéro
+                    await ecrire(client, ligne)
+                    envoye[sorte] = ligne
+
+    await maintenir_connexion(mac, nom, on_notification, pendant_connexion)
+
+
+async def couper_lien_orphelin(mac, nom):
+    """Un redémarrage du récepteur ne coupe pas les liens ouverts par BlueZ (sur l'hôte) :
+    l'appareil se croit encore connecté et ne se montre plus aux scans. On le libère."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "bluetoothctl", "disconnect", mac,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+        )
+        sortie, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+        if b"Successful disconnected" in sortie:
+            log.info("Ancien lien Bluetooth avec %s coupé : il va se reconnecter", nom)
+    except (OSError, asyncio.TimeoutError) as e:
+        log.warning("Vérification du lien de %s impossible : %r", nom, e)
+
+
+async def maintenir_connexion(mac, nom, on_notification, pendant_connexion):
+    """Connecte l'appareil dès qu'un scan l'a vu, s'abonne à ses messages, appelle
+    pendant_connexion(client) tant qu'il reste connecté, puis recommence."""
+    deja_signale = False
+    await couper_lien_orphelin(mac, nom)
 
     def on_disconnect(_client):
         connectes.discard(mac)
@@ -349,8 +594,17 @@ async def connect_sabre(sabre: dict):
             deja_signale = False
 
             async with radio_lock:      # pas de scan pendant la connexion
+                # Après une longue attente du verrou, BlueZ a pu oublier l'appareil
+                # (« device not found ») : on le recherche juste avant de se connecter.
+                vu_le = vus[mac][1] if mac in vus else 0
+                if time.time() - vu_le > VU_FRAIS_S:
+                    appareil = await BleakScanner.find_device_by_address(mac, timeout=RECHERCHE_S)
+                    if appareil is None:
+                        vus.pop(mac, None)
+                        continue
+                    vus[mac] = (appareil, time.time())
                 log.info("Connexion à %s…", nom)
-                client = BleakClient(appareil, timeout=20.0, disconnected_callback=on_disconnect)
+                client = BleakClient(appareil, timeout=CONNECT_TIMEOUT_S, disconnected_callback=on_disconnect)
                 await client.connect()
                 log.info("Lien Bluetooth établi avec %s, abonnement aux touches…", nom)
                 try:
@@ -362,9 +616,7 @@ async def connect_sabre(sabre: dict):
             log.info("✓ Connecté à %s", nom)
             connectes.add(mac)
             try:
-                while client.is_connected:
-                    update_sabre_last_seen(mac)
-                    await asyncio.sleep(2)
+                await pendant_connexion(client)
             finally:
                 connectes.discard(mac)
                 if client.is_connected:
@@ -392,20 +644,24 @@ async def sabre_manager(running_tasks: dict):
     while True:
         try:
             sabres = load_sabres()
-            ids_actifs = {s["id"] for s in sabres}
+            telecommandes = load_telecommandes()
+            # clé de tâche : ("sabre", id) ou ("tel", id)
+            appareils = {("sabre", s["id"]): s for s in sabres} | {("tel", t["id"]): t for t in telecommandes}
             attendus.clear()
-            attendus.update(s["mac_address"].upper() for s in sabres)
+            attendus.update(a["mac_address"].upper() for a in appareils.values())
 
-            for s in sabres:
-                if s["id"] not in running_tasks:
-                    log.info("Sabre suivi : %s (%s)", s["nom"] or s["mac_address"], s["mac_address"])
-                    running_tasks[s["id"]] = asyncio.create_task(connect_sabre(s))
+            for cle, a in appareils.items():
+                if cle not in running_tasks:
+                    sorte = "Sabre" if cle[0] == "sabre" else "Télécommande"
+                    log.info("%s suivi(e) : %s (%s)", sorte, a["nom"] or a["mac_address"], a["mac_address"])
+                    tache = connect_sabre(a) if cle[0] == "sabre" else connect_telecommande(a)
+                    running_tasks[cle] = asyncio.create_task(tache)
 
-            for sid in list(running_tasks):
-                if sid not in ids_actifs:
-                    log.info("Sabre %d désactivé, arrêt de la tâche", sid)
-                    running_tasks[sid].cancel()
-                    del running_tasks[sid]
+            for cle in list(running_tasks):
+                if cle not in appareils:
+                    log.info("%s %d désactivé(e), arrêt de la tâche", cle[0], cle[1])
+                    running_tasks[cle].cancel()
+                    del running_tasks[cle]
 
         except Exception as e:
             log.error("Erreur rechargement sabres : %s", e)
@@ -414,12 +670,29 @@ async def sabre_manager(running_tasks: dict):
 
 # ── Point d'entrée ─────────────────────────────────────────────────────────────
 
+def regler_parametres_bluetooth():
+    """Allonge le délai de supervision des connexions (réglage du noyau, via debugfs :
+    le conteneur est privilégié). Sans effet bloquant si c'est impossible."""
+    dossier = "/sys/kernel/debug/bluetooth/hci0"
+    try:
+        if not os.path.isdir(dossier):
+            os.makedirs("/sys/kernel/debug", exist_ok=True)
+            os.system("mount -t debugfs none /sys/kernel/debug 2>/dev/null")
+        with open(f"{dossier}/supervision_timeout", "w") as f:
+            f.write(str(SUPERVISION_TIMEOUT))
+        log.info("Délai de supervision Bluetooth : %d ms", SUPERVISION_TIMEOUT * 10)
+    except OSError as e:
+        log.warning("Délai de supervision Bluetooth non modifié (%s) : connexions plus fragiles", e)
+
+
 async def main():
     log.info("=== Daemon BLE Sabre Laser démarrage ===")
+    regler_parametres_bluetooth()
     log.info("DB : %s@%s:%d/%s", DB_USER, DB_HOST, DB_PORT, DB_NAME)
     log.info("Attente de la base de données…")
     await asyncio.get_running_loop().run_in_executor(None, attendre_db)
     log.info("Base de données prête")
+    creer_schema_telecommandes()
     signaler_etat("Démarrage du récepteur…")
 
     running_tasks: dict = {}

@@ -1,0 +1,22 @@
+# Secrets et configuration locale
+.env
+.env.*
+!.env.example
+
+# Sauvegardes et brouillons locaux
+_backup*/
+_to_delete/
+*.bak
+*.tgz
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Systèmes / éditeurs
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

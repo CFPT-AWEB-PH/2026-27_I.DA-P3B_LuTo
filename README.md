@@ -1,479 +1,85 @@
-# Journal de bord — Projet Sabre Laser Arbitrage
+# ⚔️ Sabre Laser Arbitrage
 
-**Projet :** Plateforme web de gestion de tournoi de sabre laser (inscription, arbitrage, classement, affichage public)
-**Équipe :** Tom & Lucas
-**Infrastructure cible :** Raspberry Pi (Docker : Apache/PHP + MariaDB)
+Plateforme web de gestion de tournoi de sabre laser : import des participants, génération de l'arbre,
+arbitrage en direct à 3 arbitres, sabres et télécommandes Bluetooth, classement et écran de salle.
+Elle tourne sur un **Raspberry Pi** qui diffuse son propre Wi-Fi, ou sur n'importe quel PC avec Docker.
+
+**Projet CFPT — 2026-27, classe I.DA-P3B · Équipe : Tom & Lucas**
 
 ---
 
-## 1. Chronologie du projet
+## 🚀 Installation rapide
 
-```mermaid
-timeline
-    title Chronologie du projet
-    17 Août : Rentrée scolaire
-            : Choix du projet
-            : Mise en place du poste de travail (WSL, disques flashés)
-    20 Août : Conception de la maquette (index, arbre, classement, écran, admin, arbitre)
-    24 Août : Brainstorming sur l'architecture (site inscription → CSV → Raspberry)
-            : Début du CSS et du backend / API (Lucas)
-            : Base générée par IA + recherche import CSV (Tom)
-            : Création de la base MariaDB et du schéma (Tom)
-    31 Août : Rédaction du README détaillé (Lucas)
-            : Poursuite du développement backend (Lucas)
-    07 Sept : Ajout du champ "Equipe" au CSV (demande du professeur)
-            : Dockerisation complète du projet (Lucas)
-            : Déploiement et tests sur le Raspberry (Tom)
-    14 Sept : Intégration de Bootstrap et correction de la navbar (Lucas)
-            : Correction de l'erreur 500 sur l'import CSV (Tom)
-            : Tests multi-utilisateurs et début de la détection d'affichage (Tom)
-            : Mise à jour du journal de bord et du README (équipe)
-    17 Sept : Refonte complète UX/UI — Design System v3 (Tom)
-            : Suppression de Bootstrap et corrections de bugs CSS (Lucas)
-    24 Sept : Rôles et permissions, page Combats, démarrage auto, déploiement (Tom)
-            : Refonte UX/UI v4, historique des touches, points Aka/Ao (Lucas)
-            : Audit de sécurité complet (équipe)
-    28 Sept : Audit UX/UI, Design System v5, navigation et composants réutilisables (Tom)
-            : Refonte des pages publiques, de l'arbitrage et de l'admin, tests (Lucas)
-            : Déploiement de la v5 sur le Raspberry (Tom)
-    26 Oct  : Gros push sur GitHub et suppression des versions obsolètes (équipe)
-            : Push réalisé avec Claude suite à un souci avec notre interface graphique Git (équipe)
-    29 Oct  : Fond d'écran du Raspberry avec Wi-Fi, identifiant et QR codes (Tom)
-            : Démarrage automatique du site, mise à jour du système, bureau épuré (Tom)
-            : Choix dans Admin → Wi-Fi de l'accès affiché sur l'écran du Raspberry (Lucas)
+Prérequis : [Docker](https://docs.docker.com/get-docker/) installé et démarré
+(sous Windows, lancer les commandes dans **Git Bash**).
+
+```bash
+git clone https://github.com/CFPT-AWEB-PH/2026-27_I.DA-P3B_LuTo.git
+cd 2026-27_I.DA-P3B_LuTo/app
+./install.sh
+```
+
+Le site s'ouvre sur **http://localhost:8080** · compte `admin` / `admin123`
+(le changement du mot de passe est imposé à la première connexion).
+
+Installation sans Docker, Raspberry Pi (Wi-Fi, écran), sabres Bluetooth, télécommandes :
+voir le **[guide d'installation](docs/installation.md)**.
+
+---
+
+## ✨ Fonctionnalités
+
+| Pour qui | Ce que l'application permet |
+|----------|-----------------------------|
+| **Administrateur** | Import CSV des joueurs, génération de l'arbre et des combats, comptes et rôles, sabres, Wi-Fi, thèmes et logos |
+| **Arbitres** | Pupitre de saisie des points en direct (1 central + 2 coins), chrono, pause, télécommande Bluetooth |
+| **Public** | Combats en cours et à venir, arbre du tournoi, classement, écran de salle, application installable (PWA) |
+
+**Technologies :** PHP 8.2 · MariaDB 11 · Apache · JavaScript sans framework · Docker Compose ·
+Python (récepteur Bluetooth BLE) · CircuitPython (télécommandes) · Raspberry Pi OS.
+
+---
+
+## 📁 Organisation du dépôt
+
+```
+.
+├── app/                     Application (à lancer depuis ce dossier)
+│   ├── install.sh           Installation en une commande
+│   ├── docker-compose.yml   Services : web, db, + optionnels ble / pi / tunnel
+│   ├── admin/ arbitrage/ api/ includes/ config/ assets/   Code PHP / JS / CSS
+│   ├── sql/                 Schéma complet + données de démonstration
+│   ├── ble_receiver/        Récepteur Bluetooth (sabres, télécommandes)
+│   ├── telecommandes/       Code des télécommandes d'arbitre
+│   ├── raspberry/           Scripts d'installation du Raspberry Pi
+│   └── tests/               Tests de fonctionnement et de sécurité
+└── docs/
+    ├── installation.md      Guide technique complet
+    ├── cahier-des-charges.md
+    ├── journal-de-bord.md
+    ├── securite.md          Audit de sécurité
+    ├── design-system.md     Règles de l'interface
+    ├── guides/              Guides d'utilisation PDF (spectateur, arbitre, admin)
+    ├── images/              Maquettes et schémas
+    └── exemples/            Exemple de fichier CSV d'import des joueurs
 ```
 
 ---
 
-## 2. Architecture générale du système
+## 📚 Documentation
 
-```mermaid
-flowchart LR
-    A["Site web d'inscription"] -->|Export| B["Fichier CSV / Excel"]
-    B -->|"Import par l'administrateur"| D["Serveur Raspberry<br/>(Docker : Apache + PHP)"]
-    D <--> E[("Base de données MariaDB<br/>sabre_arbitrage")]
+- [Cahier des charges](docs/cahier-des-charges.md)
+- [Journal de bord](docs/journal-de-bord.md)
+- [Guide d'installation et d'exploitation](docs/installation.md)
+- [Audit de sécurité](docs/securite.md) · [Design system](docs/design-system.md)
+- Guides d'utilisation : [spectateur](docs/guides/Guide_utilisation_spectateur.pdf) ·
+  [arbitre](docs/guides/Guide_utilisation_arbitre.pdf) ·
+  [administrateur](docs/guides/Guide_utilisation_complet_admin.pdf)
+  (aussi disponibles dans l'application, page **Aide**)
 
-    D --> F["index.php<br/>Accueil public"]
-    D --> G["arbre.php<br/>Bracket du tournoi"]
-    D --> H["classement.php<br/>Classement public"]
-    D --> I["ecran.php<br/>Écran d'affichage salle"]
-    D --> J["admin.php<br/>Dashboard administrateur"]
-    D --> K["arbitre.php<br/>Interface d'arbitrage"]
+## ✅ Tests
 
-    style D fill:#1f2937,color:#fff
-    style E fill:#0f766e,color:#fff
+```bash
+cd app
+python3 tests/verif_fonctionnement.py http://localhost:8080 --admin admin   # pages, API, droits
 ```
-
-Le choix s'est porté sur une architecture en deux temps plutôt que sur une solution centralisée dès l'inscription : les participants s'inscrivent via un site web séparé, dont les données sont exportées en CSV, puis importées manuellement par l'administrateur sur le serveur du tournoi hébergé sur le Raspberry. Ce découplage simplifie la phase d'inscription (accessible sans dépendre de la disponibilité du Raspberry) et laisse à l'administrateur le contrôle du moment où le tournoi démarre.
-
----
-
-## 3. Schéma de la base de données (MariaDB)
-
-```mermaid
-erDiagram
-    USERS ||--o{ JOUEURS : "compte optionnel"
-    GRADES ||--o{ JOUEURS : "grade"
-    JOUEURS ||--o{ COMBATS : "joueur1"
-    JOUEURS ||--o{ COMBATS : "joueur2"
-    JOUEURS ||--o{ COMBATS : "vainqueur"
-    COMBATS ||--o{ COMBAT_ARBITRES : "arbitres assignés"
-    USERS ||--o{ COMBAT_ARBITRES : "arbitre"
-    COMBATS ||--o{ POINTS : "notes par manche"
-    USERS ||--o{ POINTS : "arbitre notant"
-    COMBATS ||--o{ MANCHES_RESULTATS : "résultat par manche"
-
-    USERS {
-        int id PK
-        varchar username
-        varchar password_hash
-        enum role "admin, arbitre, joueur, public"
-        varchar nom
-        varchar prenom
-        boolean actif
-    }
-    GRADES {
-        int id PK
-        varchar nom
-        int ordre
-        varchar couleur
-    }
-    JOUEURS {
-        int id PK
-        int user_id FK
-        varchar pseudo
-        varchar nom
-        varchar prenom
-        enum sexe
-        date date_naissance
-        decimal poids
-        int grade_id FK
-        int victoires
-        int defaites
-        int matchs_joues
-        decimal points_cumules
-    }
-    COMBATS {
-        int id PK
-        int joueur1_id FK
-        int joueur2_id FK
-        int duree_secondes
-        enum statut "a_venir, en_cours, termine, annule"
-        datetime date_prevue
-        decimal score_joueur1
-        decimal score_joueur2
-        int vainqueur_id FK
-        int manche_actuelle
-        int tour
-        int position
-    }
-    COMBAT_ARBITRES {
-        int id PK
-        int combat_id FK
-        int user_id FK
-        enum role "central, coin1, coin2"
-    }
-    POINTS {
-        int id PK
-        int combat_id FK
-        int manche
-        int arbitre_user_id FK
-        decimal joueur1_points
-        decimal joueur2_points
-    }
-    MANCHES_RESULTATS {
-        int id PK
-        int combat_id FK
-        int manche
-        decimal moyenne_joueur1
-        decimal moyenne_joueur2
-    }
-    PARAMETRES {
-        varchar cle PK
-        varchar valeur
-        varchar description
-    }
-```
-
-Points clés du schéma :
-- La table `joueurs` est **indépendante** du compte utilisateur (`users`) : un joueur peut exister sans compte, ce qui correspond au flux d'inscription par CSV.
-- Chaque combat est jugé par **3 arbitres** (1 central + 2 coins), via `combat_arbitres`, et chaque arbitre note indépendamment dans `points` avant qu'une moyenne soit calculée dans `manches_resultats`.
-- La table `parametres` permet de configurer l'application (durée des combats, écarts de poids/âge/grade pour l'appariement automatique, intervalle de rafraîchissement, retard cumulé, etc.) **sans toucher au code**, directement depuis le dashboard admin.
-- Les champs `tour` et `position` dans `combats` permettent de reconstituer l'arbre du tournoi (bracket) affiché sur `arbre.php`.
-
----
-
-## 4. Journal détaillé
-
-### 17.08 — Rentrée scolaire
-
-**Choix du projet**
-Nous avons choisi ce projet car nous le trouvons particulièrement intéressant. Il présente aussi l'avantage de pouvoir intégrer le projet de l'atelier Raspberry directement au site web, ce qui a été un facteur déterminant dans notre motivation à le sélectionner.
-
-**Mise en place du poste de travail**
-- Installation des disques durs flashés
-- Installation de WSL (Windows Subsystem for Linux)
-- Configuration générale de l'environnement de développement
-
----
-
-### 20.08 — Conception de la maquette
-
-**Lucas :** absent.
-
-**Tom :** mise en place de la maquette générale du site, définissant les six pages principales de l'application et leurs niveaux d'accès :
-
-- `index.php` (page principale), accessible à tout le monde :
-  ![maquette](images/maquette.png)
-- `arbre.php` (visualisation en style "arbre"), accessible à tout le monde, inspiré des images de grands tournois (coupe du monde, etc.) :
-  ![arbres](images/tournoiEnArbre.jpg)
-- `classement.php`, accessible à tout le monde :
-  ![classement](images/classement.drawio.png)
-- `ecran.php`, écran d'affichage (ex : écran principal de la salle) qui affiche en continu les matchs en cours, ceux à venir et les scores
-- `admin.php` / dashboard, page accessible uniquement à l'admin, permet de gérer le tournoi, lancer des matchs, modifier les participants, changer les paramètres du tournoi :
-  ![dashboard](images/dashboard.drawio.png)
-- `arbitre.php`, accessible uniquement aux admins ainsi qu'aux arbitres, sert à arbitrer les matchs, donner des points aux participants.
-
----
-
-### 24.08 — Brainstorming architecture & débuts du développement
-
-**Réflexion sur l'infrastructure**
-La première idée envisagée consistait en une architecture centralisée sur une seule machine (tout sur le Raspberry). Après discussion, nous avons retenu une architecture en deux étapes :
-
-> **Site web d'inscription → Fichier Excel/CSV → Serveur Raspberry du tournoi**
-
-Cette approche facilite l'inscription des participants : l'administrateur n'a plus qu'à importer le fichier CSV final pour démarrer le tournoi, sans dépendre de la disponibilité du Raspberry pendant toute la phase d'inscription.
-
-Infrastructure :
-![schema](images/shema.png)
-
-*(voir aussi le schéma Mermaid équivalent en section 2)*
-
-**Lucas :**
-- Reprise et modification du CSS initialement généré par Tom, avec passage à un thème monochrome plus professionnel, en cohérence avec la maquette.
-- Développement du backend, notamment de l'API : celle-ci retourne, pour un combat identifié par son `id`, son statut, le score des deux joueurs, le temps restant, le vainqueur, etc.
-
-**Tom :**
-- Génération, via l'intelligence artificielle, d'une base de code exploitable pour le projet. Cette base contenait de nombreux problèmes et a nécessité d'être largement reprise, mais a fourni un point de départ utile, notamment pour le style CSS.
-- **Problème rencontré :** l'importation d'un fichier CSV vers PHP. La documentation officielle de PHP a permis d'avancer, en particulier :
-  - les [fonctions du système de fichiers](https://www.php.net/manual/en/ref.filesystem.php)
-  - la fonction [`fgetcsv`](https://www.php.net/manual/en/function.fgetcsv.php)
-- Démarrage du développement du backend et de la base de données : création de la base **MariaDB** et conception du schéma (voir section 3).
-
----
-
-### 31.08 — Documentation & backend
-
-**Lucas :**
-- Rédaction plus poussée du `README.md` : ajout d'une documentation détaillée sur les technologies utilisées et l'architecture du projet.
-- Poursuite du développement du backend.
-
-**Tom :** absent.
-
----
-
-### 07.09 — Retours du professeur & industrialisation
-
-**Brainstorming avec le professeur**
-Trois points d'amélioration ont été identifiés :
-1. Ajouter un champ **"Equipe"** au CSV d'inscription.
-2. Adapter l'UX/UI de l'interface web à la **version Raspberry** (actuellement non optimisée).
-3. **Automatiser la gestion des retards** : puisque l'heure de démarrage de chaque combat est connue, il devient possible de décaler automatiquement les matchs suivants plutôt que de saisir manuellement le temps de retard (voir le paramètre `retard_minutes` en base).
-
-**Lucas :**
-- Implémentation de **Docker** pour le projet : ajout d'un `Dockerfile`, d'un `docker-compose.yml` et d'un `apache.conf`.
-- Tâche longue (une grande partie de l'après-midi), la dernière utilisation de Docker par l'équipe remontant à un certain temps.
-
-**Tom :**
-- Déploiement du site web sur le Raspberry, avec constat que l'interface n'est pas encore adaptée à ce format.
-- Installation de Docker sur le Raspberry et lancement de l'installation du projet.
-- **Problèmes rencontrés :**
-  - Impossible de cloner le dépôt (privé) directement depuis le Raspberry → résolu en se connectant au Raspberry avec les identifiants appropriés.
-  - Complications réseau : nécessité d'alterner entre le port du PC et celui du Raspberry → résolu en utilisant un poste de travail inutilisé dédié.
-
----
-
-### 14.09 — Bootstrap, corrections & tests multi-utilisateurs
-
-**Lucas :**
-- Mise en place des éléments **Bootstrap** sur le site.
-- Tentative de correction de la navbar : un bug fait apparaître en format ordinateur un bouton qui ne devrait être visible qu'en format téléphone.
-- Amélioration générale de la navigation du site.
-
-**Tom :**
-- Vérification du fonctionnement du site avec plusieurs utilisateurs connectés simultanément.
-- Correction de l'erreur 500 causée par des soucis lors de l'importation du fichier CSV.
-- Démarrage du système de détection (touche du sabre laser) et d'affichage sur le site, synchronisé avec la même base de données.
-
-**Ensemble :**
-- Amélioration du journal de bord et du README.
-
----
-
-### 17.09 — Refonte UX/UI complète & corrections de bugs CSS
-
-**Tom :**
-
-**Refonte complète de l'interface (Design System v3)**
-Avec l'aide de l'IA, refonte totale de l'UX/UI du site autour d'un design system CSS maison (`style.css` v3, ~2 100 lignes) : thème sombre, palette de tokens CSS (`--accent`, `--surface`, `--text`, etc.), typographies Orbitron / Rajdhani / Inter, animations fluides, système de couches CSS (`@layer reset, tokens, base, layout, components, utilities`). Cette approche garantit que tous les styles du site sont cohérents et maintenables sans dépendre d'un framework externe. Fichiers modifiés : `assets/css/style.css`, `assets/js/app.js`, `login.php`, `arbre.php`.
-
-**Suppression de Bootstrap sur `arbre.php`**
-Bootstrap était chargé via `$extraHead` avant `style.css` dans le `<head>`. Comme Bootstrap n'utilise pas les couches CSS (`@layer`), il est considéré comme un style "non layered" par le navigateur et écrase automatiquement tous nos styles en `@layer components`, quelle que soit la spécificité. La topbar et les tokens de design étaient donc ignorés sur cette page. Correction : suppression totale de Bootstrap sur `arbre.php` et remplacement de toutes ses classes utilitaires (`d-flex`, `gap-2`, `alert`, etc.) par des classes CSS natives utilisant les tokens du design system.
-
-**Correction du bouton menu mobile visible sur desktop**
-La navbar affichait un petit carré parasite sur desktop. Le bug venait d'un conflit de priorité entre les couches CSS :
-- `.nav-toggle { display: none; }` était défini dans `@layer layout`
-- `button { display: inline-flex; }` était défini dans `@layer components`
-**Lucas :**
-Dans la cascade CSS, `@layer components` est prioritaire sur `@layer layout` — la spécificité du sélecteur ne compte plus quand les couches sont différentes. Le bouton `inline-flex` écrasait donc le `display: none`, rendant le bouton visible partout. Correction : ajout de `display: none;` directement dans le bloc `.nav-toggle` déjà présent dans `@layer components`. À spécificité égale dans la même couche, `.nav-toggle` (0,1,0) bat `button` (0,0,1) — le bouton est maintenant masqué sur desktop et visible uniquement sur mobile (< 700 px).
-
-**Correction de la fenêtre modale positionnée en haut à gauche**
-Les fenêtres modales (`<dialog>` natif HTML, ouvertes via `showModal()`) apparaissaient en haut à gauche de l'écran au lieu d'être centrées. La cause : le reset CSS `@layer reset { * { margin: 0; } }` supprimait le `margin: auto` de la feuille de style navigateur (UA stylesheet) qui est responsable du centrage automatique des `<dialog>`. Correction : ajout de `dialog { margin: auto; }` dans `@layer reset`, juste après `* { margin: 0; }`. Le sélecteur `dialog` (spécificité 0,0,1) l'emporte sur `*` (spécificité 0,0,0) dans la même couche, ce qui restaure le centrage natif.
-
-**Correction de la fermeture modale par la touche Échap**
-Quand l'utilisateur fermait une modale formulaire avec la touche Échap, la modale se fermait visuellement mais l'URL conservait `?action=new`, ce qui pouvait provoquer une réouverture involontaire. Correction dans `app.js` : ajout d'un écouteur sur l'événement `close` du `<dialog>` pour rediriger vers l'URL d'annulation dès que la modale est fermée, quelle qu'en soit la cause (Échap, clic sur le fond, bouton Annuler).
-
----
-
-### 24.09 — Rôles & permissions, arbitrage en direct, refonte UX/UI v4 & audit de sécurité
-
-**Tom :**
-
-**Correction du rafraîchissement de la page Sabres BLE (`admin/sabres.php`)**
-La page se rechargeait entièrement toutes les 30 secondes, ce qui effaçait le formulaire d'ajout d'un sabre en cours de saisie et fermait la fenêtre de modification. Correction : la liste des sabres et les appareils détectés se mettent à jour en AJAX toutes les 3 secondes, sans rechargement ; l'ajout, la modification et la suppression passent aussi en AJAX. Ajout de la colonne `last_hit_at`, utilisée par le daemon BLE mais absente des scripts SQL (l'indicateur « Touché ? » ne pouvait donc pas fonctionner).
-
-**Rôles dynamiques et permissions fines**
-Création d'une page `admin/roles.php` : on peut créer autant de rôles que nécessaire et cocher, section par section, 34 permissions (joueurs, utilisateurs, combats, sabres, paramètres, arbitrage…). Nouvelles tables `roles` et `role_permissions`, colonne `users.role` passée d'un `ENUM` figé à un `VARCHAR`. Chaque page et chaque action vérifie la permission correspondante côté serveur. Le rôle `admin` garde toujours tous les droits, pour éviter de se retrouver bloqué dehors.
-
-**Page Combats (`admin/combats.php`) et démarrage automatique**
-- Sélection multiple (démarrer, terminer ou supprimer plusieurs combats), filtres par statut, mise à jour automatique du tableau.
-- Génération du tournoi : boutons « Tout sélectionner / Aucun / Inverser » avec recherche pour les joueurs et les arbitres, et planning (heure du premier combat, intervalle entre deux combats, durée).
-- Les combats démarrent tout seuls à leur heure prévue, si les 3 arbitres sont libres et qu'aucun joueur n'est déjà en combat.
-- Toute l'application se base désormais sur l'heure du serveur (PHP, MariaDB, daemon BLE et horloge affichée).
-- **Problème rencontré :** les chronos étaient décalés de 2 heures, car PHP et MariaDB tournaient en UTC alors que les heures prévues étaient saisies en heure locale. Résolu en passant tout le système au fuseau du serveur (variable `TZ`), avec une migration automatique des anciennes dates.
-
-**Déploiement sur le Raspberry**
-Copie du projet par archive (`tar` + `scp`) et relance de Docker à chaque étape, en conservant le fichier `.env` du Raspberry.
-
-**Lucas :**
-
-**Refonte UX/UI v4**
-Réécriture complète de `style.css` pour supprimer les défauts visuels de la v3 : plus de dégradés, de glassmorphism, d'emojis dans les titres, d'animations d'apparition au défilement ni d'icônes décoratives partout. La police Inter est remplacée par Barlow / Barlow Condensed, intégrées au projet pour fonctionner sans internet sur le réseau du club. Nous avons aussi fixé une échelle d'espacements régulière et renforcé les contrastes du thème sombre.
-
-**Historique des touches**
-Sur la page d'un combat et dans l'espace d'arbitrage : compteur de touches par joueur, nombre de doubles, frise sur la durée du combat et liste complète (temps de match et heure). L'écran de salle affiche une annonce plein écran à chaque touche.
-
-**Nouveau système de points (Aka / Ao)**
-- La saisie par manche est remplacée par un pupitre : Aka (rouge, à gauche) et Ao (bleu, à droite), avec des boutons +1, +2 et +3.
-- Le score officiel d'un joueur est le total le plus bas parmi les 3 arbitres.
-- Une barre « qui gagne » donne les points de victoire selon l'écart : 1 à 5 points d'écart = 1 point, 6 à 15 = 2 points, plus de 15 = 3 points.
-- Le classement est maintenant trié par points de victoire.
-- Tout est affiché en direct aux spectateurs.
-
-**Adaptation à tous les appareils**
-Vérification de toutes les pages de 320 px (petit téléphone) jusqu'à la TV 4K, en portrait comme en paysage, sans aucun débordement.
-
-**Ensemble :**
-
-**Audit de sécurité complet (détail dans `SECURITE.md`)**
-- **Problème le plus grave :** Apache servait tous les fichiers du projet, y compris le `.env` contenant les mots de passe de la base. Correction : configuration Apache qui refuse tout par défaut et ne sert que les pages `.php` publiques et le dossier `assets/`.
-- Changement obligatoire du mot de passe `admin123` par défaut, protection contre la force brute sur la connexion, sessions sécurisées (cookie HttpOnly / SameSite, expiration).
-- En-têtes de sécurité (CSP, anti-clickjacking) et protection contre l'escalade de privilèges entre rôles.
-- Plus aucune action par simple lien GET ; limites de débit sur les API ; tunnel Cloudflare désactivé par défaut.
-- Création du script `tests/securite_test.py` (65 tests, tous réussis).
-
----
-
-### 28.09 — Audit UX/UI & refonte complète (Design System v5)
-
-**Tom :**
-
-**Audit complet de l'interface**
-Avec l'aide de l'IA (Claude), l'application a été lancée en local avec des données de démonstration pour capturer tous les écrans en version ordinateur et téléphone. Problèmes relevés :
-- La barre de navigation d'un administrateur passait sur deux lignes (9 liens, « Déconnexion » tombait seul en dessous), et le bouton « Créer un compte » dominait la barre alors que les spectateurs n'ont pas besoin de compte.
-- En cas de coupure réseau, le bandeau « Actualisation en direct indisponible » s'insérait dans chaque carte et chaque ligne « À venir », ce qui rendait la page illisible.
-- L'alerte « Arbre incohérent » (destinée à l'administrateur) était visible par le public.
-- Dans l'admin, chaque ligne affichait 2 à 3 boutons de couleur (vert / jaune / rouge), dont « Supprimer » partout : beaucoup de bruit visuel.
-- La page Paramètres affichait 12 champs texte bruts aux libellés techniques (« en millisecondes », « 1 = oui, 0 = non »).
-- La vérification « les deux mots de passe ne correspondent pas » ne fonctionnait jamais (mauvais identifiant de champ dans `app.js`).
-
-**Design System v5**
-Réécriture complète de `style.css`. La couleur porte uniquement du sens (rouge = Aka, bleu = Ao, menthe = en direct, ambre = attention) et les actions principales sont en blanc. Échelle d'espacements de 4 px, 4 rayons et 3 durées d'animation, désactivées si l'option « réduire les animations » est activée. Les styles écrits directement dans les pages ont été supprimés. Les règles sont documentées dans `DESIGN.md`.
-
-**Navigation**
-4 liens pour les spectateurs (Direct, Arbre, Résultats, Classement), raccourcis « Arbitrage » et « Admin » séparés, menu compte (mot de passe, déconnexion). Sur mobile, la barre de navigation basse est désormais générée par le serveur et ne clignote plus au chargement. Les onglets de l'admin ont été renommés et réordonnés (Vue d'ensemble, Combats, Joueurs, Comptes, Sabres, Rôles, Paramètres).
-
-**Composants réutilisables**
-Nouveau fichier `includes/ui.php` (tableau de score Aka / Ao, carte de combat en direct, ligne de résultat, badge de statut, état vide, menu d'actions « ⋯ »), utilisé par toutes les pages au lieu de recopier le HTML.
-
-**Déploiement sur le Raspberry**
-- **Problème rencontré :** `tar: webapp.tar.gz : open impossible`. L'archive n'avait pas été envoyée sur le Raspberry. Résolu en la créant sur le PC (sans les sauvegardes ni le `.env`), puis en l'envoyant avec `scp` avant la décompression.
-- **Problème rencontré :** impossible de se connecter avec le compte admin (mot de passe changé auparavant, ou compte bloqué après 5 essais). Solution : réinitialiser le mot de passe admin et lever le blocage avec une commande `docker compose exec web php`.
-- Les avertissements de la console (`interest-cohort`, `Cross-Origin-Opener-Policy`) sont normaux en HTTP par adresse IP et ne bloquent rien.
-
-**Lucas :**
-
-**Refonte des pages publiques**
-Nouvelle page d'accueil « En direct », page « Scores » transformée en liste de « Résultats » (le vainqueur ressort), classement plus lisible, arbre avec légende, écran de salle avec transitions entre les écrans et barre de progression. Pages de connexion, d'inscription et de changement de mot de passe simplifiées.
-
-**Espace arbitrage**
-Le pupitre affiche « Enregistré » après chaque point, et le compteur personnel s'anime à chaque appui.
-
-**Back-office admin**
-- Une seule action principale par ligne (Démarrer ou Terminer), le reste dans un menu « ⋯ » avec une confirmation qui explique la conséquence.
-- Nouveau panneau de contrôle sur la page Combats : heure du serveur, démarrage automatique en interrupteur, retard.
-- Paramètres regroupés en sections, avec unités et interrupteurs (fréquences saisies en secondes au lieu de millisecondes).
-- Recherche instantanée des joueurs, tableaux affichés en cartes sur mobile.
-
-**Retours à l'utilisateur**
-Messages en notifications (toasts), boutons en chargement pendant l'envoi, états vides qui expliquent quoi faire, un seul indicateur « Connexion perdue » pour toute la page. Le mot de passe provisoire d'un nouveau compte reste affiché jusqu'à ce qu'on ferme la notification.
-
-**Problème rencontré :** les menus « ⋯ » des tableaux s'affichaient beaucoup trop bas. L'animation d'apparition des pages (`transform`) créait un nouveau repère pour les éléments en `position: fixed`. Résolu en passant l'animation en `animation-fill-mode: backwards`, pour qu'elle ne s'applique plus une fois terminée.
-
-**Tests**
-Captures de toutes les pages en format ordinateur, tablette et téléphone ; parcours testés automatiquement avec Playwright (points d'un arbitre, actions de l'admin, recherche, paramètres, création de compte, erreurs de formulaire), sans aucune erreur. L'ancienne version est sauvegardée dans `_backup_avant_refonte_ux/`.
-
----
-
-### 26.10 — Gros push sur GitHub & nettoyage du dépôt
-
-**Ensemble :**
-
-**Mise à jour complète du dépôt GitHub**
-Envoi de la version actuelle du projet (`webapp_arbitrage_avec_touche`, avec la gestion des touches BLE, la PWA, le Wi-Fi, les thèmes et logos) sur le dépôt GitHub de la classe. Jusqu'ici, le dépôt ne contenait qu'une ancienne version du site.
-
-**Suppression des versions obsolètes**
-Les dossiers `webapp_arbitrage` et `webapp_arbitrage - Copie` ont été supprimés du dépôt : c'étaient d'anciennes versions du projet, qui créaient de la confusion sur la version à utiliser. Elles restent récupérables dans l'historique Git si besoin.
-
-**Fichiers exclus du dépôt**
-Ajout d'un `.gitignore` pour ne pas envoyer :
-- le fichier `.env`, qui contient les mots de passe de la base de données (seul `.env.example` est publié) ;
-- les dossiers de sauvegarde `_backup_avant_*` et `_to_delete`, qui sont aussi d'anciennes versions.
-
-**Problème rencontré :** nous avons eu un souci avec notre interface graphique Git, qui nous empêchait de faire le push nous-mêmes. Solution : le push a été réalisé avec l'aide de l'IA (Claude), directement en ligne de commande. Lors de l'envoi, GitHub a d'abord refusé le push sur `main` avec une erreur « Internal Server Error » (erreur côté serveur GitHub, alors que nos droits sur le dépôt étaient corrects). Après quelques nouvelles tentatives, le push est passé.
-
----
-
-### 29.10 — Écran du Raspberry : infos de connexion, QR codes & démarrage automatique
-
-**Objectif de la séance**
-Rendre le Raspberry autonome et lisible pour le public de la salle :
-- l'écran du Raspberry affiche en permanence **comment se connecter** : nom du Wi-Fi, mot de passe, identifiant du portail et **QR codes** ;
-- le site **démarre tout seul** dès qu'on allume le Raspberry ;
-- le bureau est **épuré** : plus d'icônes (terminal, explorateur de fichiers, fichiers du bureau), seulement un **raccourci** vers le site ;
-- les infos affichées sont **les mêmes que dans Admin → Wi-Fi** et se mettent à jour toutes seules.
-
-```mermaid
-flowchart LR
-    A["Admin → Wi-Fi<br/>nom du Wi-Fi + accès coché « sur l'écran »"] --> D[("MariaDB")]
-    D -- "synchro 15 s" --> S["sabre-wifi<br/>/etc/sabre/ap.env"]
-    D -- "lecture 15 s" --> F["sabre-fond-ecran<br/>Python + Pillow + qrcode"]
-    S --> F
-    F -- "si quelque chose a changé" --> I["fond.png 800×480"]
-    I --> E["Écran tactile du Raspberry"]
-```
-
-**Tom :**
-
-**Accès au Raspberry**
-Connexion SSH par **clé** au lieu du mot de passe, pour déployer et vérifier depuis le PC. Comparaison des fichiers entre le PC et le Raspberry (empreintes `md5`) : le code du site sur le Pi était déjà à jour.
-
-**Fond d'écran avec les infos de connexion (`raspberry/sabre-fond-ecran.py`)**
-Script Python (Pillow + `qrcode`) qui dessine un fond d'écran à la taille de l'écran branché (écran tactile 800×480), en trois étapes : **rejoindre le Wi-Fi** (nom + mot de passe, ou « réseau ouvert »), **s'identifier** (identifiant + mot de passe de l'accès choisi dans Admin → Wi-Fi), **ouvrir le site** (`http://sabre.lan`). Deux QR codes : un pour rejoindre le Wi-Fi d'un coup, un pour ouvrir le site. Le script tourne toutes les 15 secondes (minuteur systemd) mais ne redessine l'image que si une information a changé. Si la base est arrêtée, le dernier accès connu est gardé ; si aucun accès n'est choisi, un compte de secours local au Pi est affiché.
-
-**Démarrage automatique et mise à jour (`raspberry/install_ecran.sh`)**
-Mise à jour complète du système (`apt full-upgrade`), nouveau service `sabre-app` qui lance `docker compose up -d` à chaque démarrage, puis reconstruction et relance de l'application.
-
-**Bureau épuré + raccourci (`raspberry/install_raccourci.sh`)**
-Raccourci « Sabre Arbitrage » sur le bureau et dans la barre des tâches, qui ouvre le site dans le navigateur comme un favori. Icônes du bureau masquées (sans supprimer les fichiers), raccourcis navigateur / fichiers / terminal retirés de la barre des tâches. Option `--desinstaller` pour tout remettre comme avant.
-
-**Problèmes rencontrés :**
-- Au départ, le site s'ouvrait automatiquement en plein écran (mode kiosque), mais il **cachait le fond d'écran avec les QR codes**. Remplacé par un simple raccourci.
-- Chromium ne démarrait pas depuis SSH (`Missing X server or $DISPLAY`) : le bureau tourne sous **Wayland** (labwc). Résolu avec `--ozone-platform=wayland`.
-- Le titre du fond d'écran passait **sous la barre des tâches** sur le petit écran : titre descendu et sous-titre masqué sur les petits écrans.
-- `sudo` demande un mot de passe sur le Pi : les installations système sont regroupées dans un seul script lancé une fois avec `sudo` ; le bureau se configure sans `sudo`.
-
-**Tests :** captures de l'écran du Pi (`grim`) : fond d'écran, bureau sans icônes, raccourci qui ouvre le site. Après redémarrage : tous les conteneurs relancés seuls, site en `200`, Wi-Fi et portail actifs, fond d'écran recréé.
-
-**Lucas :**
-
-**Choix de l'accès affiché sur l'écran (`admin/wifi.php`, `includes/wifi.php`)**
-Les mots de passe des comptes Wi-Fi sont stockés **hachés**, le Raspberry ne peut donc pas les afficher. Solution : dans Admin → Wi-Fi, un interrupteur **« Afficher sur l'écran du Raspberry »** permet de choisir un seul accès ; seul celui-ci garde son mot de passe en clair (colonne `ecran_mdp`), puisqu'il est de toute façon visible sur l'écran. Badge « Sur l'écran » dans la liste, action « Retirer de l'écran », et mise à jour automatique : changer le mot de passe de cet accès met l'écran à jour, le désactiver ou le supprimer le retire.
-
-**Tests :** syntaxe PHP vérifiée dans le conteneur. Le mot de passe d'un accès existant a été vérifié en recalculant son hachage : la description contenait une faute de frappe, le vrai mot de passe a été retrouvé et l'accès a été affiché sans le changer.
-
-**Résultat :** en allumant le Raspberry, le site démarre tout seul et l'écran affiche le Wi-Fi, l'identifiant, le mot de passe et les QR codes, à jour avec Admin → Wi-Fi.
-
-⚠️ Le tunnel Cloudflare (`sabre_tunnel`) redémarre aussi avec le Pi : le site reste accessible depuis internet tant qu'il tourne.
-
----
-
-## 5. Prochaines étapes
-
-- [ ] Ajouter le champ `Equipe` à l'import CSV et à la table `joueurs`
-- [ ] Adapter l'UX/UI pour l'affichage sur le format Raspberry
-- [ ] Automatiser le décalage des matchs en cas de retard (utilisation du paramètre `retard_minutes`)
-- [ ] Finaliser l'interface `arbitre.php` (saisie des points par manche, moyenne des 3 arbitres)
-- [ ] Finaliser l'affichage `arbre.php` à partir des champs `tour` / `position`
-- [ ] Terminer la refonte UX/UI des pages restantes (`index.php`, `classement.php`, `scores.php`, `admin/combats.php`, `admin/parametres.php`, `arbitrage/saisie.php`)

@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  installation:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installation (install.sh)
+        run: ./install.sh
+
+      - name: Tests de fonctionnement (lecture seule)
+        run: python3 tests/verif_fonctionnement.py http://localhost:8080
+
+      - name: Journaux en cas d'échec
+        if: failure()
+        run: docker compose logs --tail=100

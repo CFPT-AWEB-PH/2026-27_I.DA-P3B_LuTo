@@ -13,8 +13,7 @@ services:
       TZ:                    ${TZ:-Europe/Zurich}
     volumes:
       - db_data:/var/lib/mysql
-      - ./docker/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
-      - ./docker/init_ble_append.sql:/docker-entrypoint-initdb.d/02_ble.sql:ro
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
     # Aucun port publié : l'app et le récepteur Bluetooth la joignent par le réseau Docker
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]

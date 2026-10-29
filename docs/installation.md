@@ -1,31 +1,34 @@
-# Sabre Laser Arbitrage — App web PHP / MariaDB
+# Installation et exploitation
 
-Application complète de gestion de combats de sabre laser avec système d'arbitrage
-(1 arbitre central + 2 arbitres de coin), calcul automatique de la moyenne des points,
-chrono de combat, côté public (combats en cours / à venir / classement) et back-office admin en CRUD complet.
+Guide technique complet. Pour une installation rapide, voir le [README](../README.md).
+Toutes les commandes se lancent depuis le dossier **`app/`** du dépôt.
 
 ---
 
 ## 🐳 Installation avec Docker (recommandé)
 
-**Prérequis :** Docker Desktop installé et démarré.
+**Prérequis :** [Docker](https://docs.docker.com/get-docker/) installé et démarré
+(Docker Desktop sur Windows / macOS). Sous Windows, lancer les commandes dans **Git Bash**.
 
-### Première installation
+### En une commande
 
 ```bash
-# 1. Cloner / télécharger le projet
-cd sabre\ lazer\ arbitrage/webapp_arbitrage
-
-# 2. Copier le fichier d'environnement
-cp .env.example .env
-
-# 3. Lancer l'application (build + démarrage en une commande)
-docker compose up --build
+git clone https://github.com/CFPT-AWEB-PH/2026-27_I.DA-P3B_LuTo.git
+cd 2026-27_I.DA-P3B_LuTo/app
+./install.sh
 ```
 
-Le site est disponible sur **http://localhost:8080**
+`install.sh` crée `.env` avec des mots de passe aléatoires (s'il n'existe pas), construit et démarre
+les conteneurs, puis affiche l'adresse du site : **http://localhost:8080**.
+La base de données est créée automatiquement au premier démarrage (`sql/init.sql`) ; les évolutions
+ultérieures du schéma sont appliquées par l'application elle-même, aucune migration à lancer.
 
-La base de données est initialisée automatiquement au premier démarrage (schéma + migrations).
+### À la main (équivalent)
+
+```bash
+cp .env.example .env        # puis remplacer les valeurs « change-moi »
+docker compose up -d --build
+```
 
 ### Compte admin par défaut
 
@@ -34,67 +37,64 @@ La base de données est initialisée automatiquement au premier démarrage (sch�
 | `admin`     | `admin123`   |
 
 > **À la première connexion, l'application impose de changer ce mot de passe** (page « Mon compte »).
-> Avant tout démarrage, remplissez `.env` à partir de `.env.example` avec des mots de passe solides :
-> l'application refuse de démarrer sans `DB_USER` / `DB_PASS`.
 
-### Arrêter l'application
+### Données de démonstration (facultatif, base de TEST uniquement)
 
 ```bash
-docker compose down
+docker compose exec -T db sh -c 'mariadb -u"$MARIADB_USER" -p"$MARIADB_PASSWORD" "$MARIADB_DATABASE"' < sql/demo.sql
 ```
 
-### Réinitialiser complètement la base de données
+Crée un tournoi en cours, des combats et des comptes (`demo_admin`, `arb_lea`… mot de passe `demo-ux-2026`).
+
+### Commandes courantes
 
 ```bash
-# Supprime les conteneurs ET le volume de données (repart de zéro)
-docker compose down -v
-docker compose up --build
+docker compose logs -f web      # journaux de l'application
+docker compose down             # arrêter
+docker compose down -v          # arrêter ET effacer la base (repart de zéro)
+git pull && docker compose up -d --build   # mettre à jour
 ```
 
-### Configurer les variables d'environnement
+### Variables d'environnement (`.env`)
 
-Toutes les options sont dans le fichier `.env` :
+| Variable | Rôle | Défaut |
+|----------|------|--------|
+| `APP_PORT` | Port du site (`http://localhost:APP_PORT`) | `8080` |
+| `APP_BIND` | Interface d'écoute (`127.0.0.1` = local / proxy Wi-Fi seulement) | `0.0.0.0` |
+| `DB_ROOT_PASSWORD`, `DB_PASS` | Mots de passe MariaDB (**obligatoires**) | — |
+| `DB_NAME`, `DB_USER` | Base et utilisateur MariaDB | `sabre_arbitrage`, `arbitrage_app` |
+| `BASE_URL` | Laisser `/` sauf si l'app est dans un sous-dossier | `/` |
+| `TZ` | Fuseau horaire de toute l'application | `Europe/Zurich` |
+| `APP_DEBUG` | `1` = erreurs PHP détaillées (**jamais en production**) | `0` |
+| `COMPOSE_PROFILES` | Services optionnels : `pi` (Wi-Fi HTTPS), `ble` (sabres), `tunnel` | — |
 
-```env
-APP_PORT=8080          # Port d'accès local (http://localhost:APP_PORT)
+### Vérifier l'installation
 
-DB_ROOT_PASSWORD=…     # Mot de passe root MariaDB
-DB_NAME=sabre_arbitrage
-DB_USER=arbitrage_user
-DB_PASS=arbitrage_pass
-
-BASE_URL=/             # Laisser / sauf si l'app est dans un sous-dossier
+```bash
+python3 tests/verif_fonctionnement.py http://localhost:8080 --admin admin
 ```
+
+Vérifie les pages, fichiers, API et droits d'accès (lecture seule, sans dépendance).
 
 ---
 
 ## ⚙️ Installation manuelle (sans Docker)
 
-**Prérequis :** PHP 8+, extension `pdo_mysql`, MariaDB/MySQL, serveur Apache ou Nginx.
+**Prérequis :** PHP 8.2+ (extensions `pdo_mysql` et `gd`), MariaDB 10.6+ / MySQL 8, Apache.
 
-1. **Base de données** — importer le schéma et les migrations :
+1. **Base de données** :
    ```bash
-   mysql -u root -p < sql/schema.sql
-   mysql -u root -p sabre_arbitrage < sql/migration_profils_parametres.sql
-   mysql -u root -p sabre_arbitrage < sql/migration_arbre.sql
-   mysql -u root -p sabre_arbitrage < sql/migration_polling_config.sql
-   mysql -u root -p sabre_arbitrage < sql/migration_matchmaking_retard.sql
+   mysql -u root -p -e "CREATE DATABASE sabre_arbitrage CHARACTER SET utf8mb4"
+   mysql -u root -p sabre_arbitrage < sql/init.sql
    ```
-
-2. **Configuration** — éditer `config/database.php` avec vos identifiants MariaDB :
-   ```php
-   $DB_HOST = 'localhost';
-   $DB_NAME = 'sabre_arbitrage';
-   $DB_USER = 'votre_user';
-   $DB_PASS = 'votre_pass';
-   ```
-
-3. **Serveur web** — pointer le DocumentRoot sur la racine du projet.  
-   Test rapide avec le serveur intégré PHP :
+2. **Configuration** : l'application lit ses identifiants dans les variables d'environnement
+   `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS` (par exemple avec `SetEnv` dans le vhost Apache).
+3. **Serveur web** : reprendre `docker/apache.conf` (il bloque l'accès à `.env`, `sql/`, `includes/`…).
+   Pour un simple test local :
    ```bash
-   php -S localhost:8000
+   DB_USER=… DB_PASS=… php -S localhost:8000
    ```
-   puis ouvrir http://localhost:8000
+   ⚠️ Le serveur intégré de PHP n'applique pas ces protections : réservé au développement.
 
 ---
 
@@ -161,7 +161,7 @@ adresse `http://` tapée sur ce Wi-Fi ramène d'ailleurs au site.
 ### Installation (sur le Pi, avec internet par câble Ethernet le temps de l'installation)
 
 ```bash
-cp .env.example .env        # puis remplir les mots de passe
+./install.sh                # si ce n'est pas déjà fait
 sudo bash raspberry/install_wifi.sh --ssid "Sabre-Arbitrage" --pays CH
 ```
 
@@ -218,6 +218,27 @@ Le service `bluetooth` du Pi doit être actif (`sudo systemctl status bluetooth`
 
 ---
 
+## 🎮 Télécommandes d'arbitre (Bluetooth, comme les sabres)
+
+Chaque télécommande (CircuitPython) donne des points comme les boutons de la page d'arbitrage :
+**rouge = +1 Aka**, **bleu = +1 Ao**, **les deux ensemble = annule le dernier point**.
+Les points comptent pour l'arbitre associé, dans le combat en cours où il arbitre.
+C'est le même récepteur que les sabres (`ble_receiver`, profil `ble`) qui s'y connecte.
+
+1. Copier `telecommandes/circuitpython/code.py` sur la télécommande (lecteur CIRCUITPY) et changer
+   `DEVICE_NAME` : il doit commencer par `TEL` et être différent pour chaque télécommande.
+2. Allumer la télécommande à portée du Pi : elle apparaît toute seule dans **Admin › Sabres › Télécommandes**.
+3. Y choisir l'arbitre de chaque télécommande.
+
+```bash
+docker logs -f sabre_ble          # « Télécommande suivi(e) : TEL_2 », « TEL_2 : PT:R → OK »
+```
+
+L'écran de la télécommande affiche les points donnés par son arbitre, le chrono, STOP en pause,
+le vainqueur à la fin, « SANS ARBITRE » si elle n'est associée à personne et « PI ? » si le Pi ne répond plus.
+
+---
+
 ## Fonctionnement du système d'arbitrage
 
 - Chaque **combat** oppose 2 joueurs et se déroule en **manches**.
@@ -240,19 +261,26 @@ Le service `bluetooth` du Pi doit être actif (`sudo systemctl status bluetooth`
 ## Structure du projet
 
 ```
-config/       Connexion DB + bootstrap (session, helpers)
-includes/     auth.php, functions.php (logique métier), header/footer
-admin/        Back-office CRUD
-arbitrage/    Espace de saisie des points
-api/          Endpoint JSON pour le live (scores/chrono en AJAX)
-assets/       CSS + JS
-sql/          Schéma et migrations
-docker/       Fichiers Docker (Apache config, entrypoint, init SQL)
+app/
+├── *.php            Pages publiques (accueil, arbre, classement, écran de salle, aide…)
+├── admin/           Back-office (joueurs, combats, comptes, rôles, sabres, Wi-Fi, apparence)
+├── arbitrage/       Espace des arbitres (pupitre de saisie des points)
+├── api/             Endpoints JSON du direct (scores, chrono, touches)
+├── includes/        Logique métier, authentification, permissions, sécurité, gabarits
+├── config/          Connexion à la base et démarrage
+├── assets/          CSS, JS, polices, icônes PWA, captures du guide
+├── sql/             init.sql (schéma complet) + demo.sql (données de test)
+├── docker/          Configuration Apache / PHP et script d'entrée du conteneur
+├── ble_receiver/    Service Python : sabres et télécommandes Bluetooth
+├── telecommandes/   Code CircuitPython des télécommandes d'arbitre
+├── raspberry/       Scripts d'installation du Pi (Wi-Fi, écran, raccourci)
+├── tests/           Tests de fonctionnement et de sécurité
+├── docker-compose.yml, Dockerfile, install.sh, .env.example
 ```
 
 ## Sécurité
 
-Voir **SECURITE.md** pour l'audit complet. En résumé :
+Voir [securite.md](securite.md) pour l'audit complet. En résumé :
 
 - Mots de passe hashés (bcrypt via `password_hash`), politique de 8 caractères minimum,
   changement obligatoire du mot de passe par défaut, sessions révoquées au changement.

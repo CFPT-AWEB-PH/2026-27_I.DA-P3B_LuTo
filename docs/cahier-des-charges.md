@@ -4,7 +4,7 @@
 **Équipe :** Tom & Lucas
 **Établissement :** CFPT-AWEB-PH
 **Dernière mise à jour :** 29.10.2026
-**Documents liés :** [Journal de bord](https://github.com/CFPT-AWEB-PH/2026-27_I.DA-P3B_LuTo/blob/main/journalDeBord.md) · [README technique](https://github.com/CFPT-AWEB-PH/2026-27_I.DA-P3B_LuTo/blob/main/webapp_arbitrage_avec_touche/README.md) · [Audit de sécurité](https://github.com/CFPT-AWEB-PH/2026-27_I.DA-P3B_LuTo/blob/main/webapp_arbitrage_avec_touche/SECURITE.md) · [Design system](https://github.com/CFPT-AWEB-PH/2026-27_I.DA-P3B_LuTo/blob/main/webapp_arbitrage_avec_touche/DESIGN.md)
+**Documents liés :** [Journal de bord](journal-de-bord.md) · [Installation](installation.md) · [Audit de sécurité](securite.md) · [Design system](design-system.md)
 
 ---
 
@@ -117,10 +117,10 @@ Le projet intègre l'atelier Raspberry Pi suivi en parallèle : l'application to
 - **Performance** : actualisation en direct (scores, chrono, touches) fluide avec plusieurs écrans et clients connectés ; limites de débit sur les API (600 requêtes/min par IP, 240 appuis/min par arbitre).
 - **Fiabilité** : erreurs jamais affichées au visiteur (référence d'erreur + journal serveur), réponses HTTP explicites (400/403/404) ; heure du serveur commune à PHP, MariaDB, récepteur BLE et affichage.
 - **Compatibilité** : toutes les pages testées de 320 px (petit téléphone) à la TV 4K, portrait et paysage ; tous les navigateurs courants (Chrome, Safari, Firefox, Samsung Internet, Edge).
-- **Utilisabilité** : design system documenté (`DESIGN.md`) ; une seule action principale par écran ; retours systématiques (toasts, boutons en chargement, confirmations, états vides) ; animations coupées si « réduire les animations » est activé.
+- **Utilisabilité** : design system documenté ([`design-system.md`](design-system.md)) ; une seule action principale par écran ; retours systématiques (toasts, boutons en chargement, confirmations, états vides) ; animations coupées si « réduire les animations » est activé.
 - **Fonctionnement hors internet** : polices et ressources intégrées au projet.
 - **Portabilité** : déploiement identique entre poste de développement et Raspberry Pi grâce à Docker.
-- **Sécurité** (détail dans `SECURITE.md`) :
+- **Sécurité** (détail dans [`securite.md`](securite.md)) :
   - mots de passe hachés (bcrypt), 8 caractères minimum, mots de passe courants refusés ;
   - protection contre la force brute (5 échecs par identifiant, 20 par IP sur 15 min) ;
   - sessions sécurisées (HttpOnly, SameSite, expiration, révocation au changement de rôle ou de mot de passe) ;
@@ -174,7 +174,7 @@ Base `sabre_arbitrage` (MariaDB) — tables principales :
 | Apparence | `themes_perso`, `logos` |
 | Wi-Fi | `wifi_comptes`, `wifi_etat` |
 
-Le diagramme entité-relation est disponible dans le [journal de bord](https://github.com/CFPT-AWEB-PH/2026-27_I.DA-P3B_LuTo/blob/main/journalDeBord.md), le schéma SQL dans `sql/schema.sql` et les migrations dans `sql/`.
+Le diagramme entité-relation est disponible dans le [journal de bord](journal-de-bord.md) et le schéma SQL complet dans `app/sql/init.sql` (les évolutions du schéma sont appliquées automatiquement par l'application).
 
 ## 9. Planning
 
@@ -198,12 +198,12 @@ timeline
 
 ## 10. Livrables
 
-- Code source de l'application (dépôt Git, dossier `webapp_arbitrage_avec_touche/`).
-- Schéma de base de données (`sql/schema.sql`) et scripts de migration.
+- Code source de l'application (dépôt Git, dossier `app/`).
+- Schéma de base de données (`app/sql/init.sql`) et données de démonstration (`app/sql/demo.sql`).
 - Configuration Docker (`Dockerfile`, `docker-compose.yml`, dossier `docker/`).
 - Scripts d'installation du Raspberry (`raspberry/` : Wi-Fi, portail, écran, raccourci).
 - Récepteur Bluetooth (`ble_receiver/`).
-- Documentation : README technique, `SECURITE.md`, `DESIGN.md`, journal de bord, cahier des charges.
+- Documentation (dossier `docs/`) : installation, audit de sécurité, design system, journal de bord, cahier des charges, guides d'utilisation PDF.
 - Tests : `tests/securite_test.py` (65 tests de sécurité), `tests/verif_fonctionnement.py`.
 - Application déployée et fonctionnelle sur le Raspberry Pi.
 

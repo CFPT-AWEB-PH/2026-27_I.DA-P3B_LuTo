@@ -1,8 +1,10 @@
--- Schéma de base de données : Sabre Laser Arbitrage
--- MariaDB / MySQL
+-- Schéma complet de la base : Sabre Laser Arbitrage (MariaDB / MySQL)
+-- Exécuté automatiquement par Docker au premier démarrage (volume vide).
+-- Les évolutions ultérieures du schéma sont appliquées par l'application
+-- elle-même (fonctions ensure…Schema() dans includes/), sans script à lancer.
 
-CREATE DATABASE IF NOT EXISTS sabre_arbitrage CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE sabre_arbitrage;
+-- S'exécute dans la base courante : celle de DB_NAME (Docker) ou celle passée à
+-- la commande mysql (installation manuelle, voir docs/installation.md).
 
 -- ---------------------------------------------------------------
 -- Utilisateurs (admin, arbitre, joueur, public)
@@ -159,11 +161,10 @@ INSERT INTO users (username, password_hash, role, nom, prenom)
 VALUES ('admin', '$2y$12$QfRquIZ2eM.FYnEDB4RkkOSTkq2nIMkTnsNY95rwCedHaG3VpsZ4W', 'admin', 'Admin', 'Système')
 ON DUPLICATE KEY UPDATE username = username;
 
--- Migration : profils joueurs enrichis (sexe, date de naissance, poids, grade)
--- + grades et paramètres généraux configurables.
--- À exécuter une seule fois sur une base déjà existante.
-
-USE sabre_arbitrage;
+-- ---------------------------------------------------------------
+-- Profils joueurs (sexe, date de naissance, poids, grade),
+-- grades et paramètres généraux
+-- ---------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS grades (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -200,7 +201,7 @@ ALTER TABLE joueurs
 
 -- La contrainte de clé étrangère est ajoutée séparément : MariaDB refuse
 -- "ADD CONSTRAINT IF NOT EXISTS", donc on l'ajoute seulement si elle n'existe
--- pas déjà (sinon relancer la migration provoquerait une erreur de doublon).
+-- pas déjà (le script reste ainsi rejouable sans erreur de doublon).
 SET @fk_exists = (
   SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
   WHERE CONSTRAINT_SCHEMA = DATABASE()
@@ -215,32 +216,19 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
--- Migration : ajout de l'arbre de tournoi (bracket)
--- À exécuter une seule fois sur une base déjà existante (créée avant cette fonctionnalité).
--- Si vous repartez d'une base neuve avec schema.sql, cette migration est déjà incluse
--- et n'a pas besoin d'être rejouée.
-
-USE sabre_arbitrage;
+-- Arbre de tournoi (bracket)
 
 ALTER TABLE combats
   ADD COLUMN IF NOT EXISTS tour INT DEFAULT NULL COMMENT 'Numéro de tour du tournoi (1 = premier tour). NULL = combat hors arbre.' AFTER manche_actuelle,
   ADD COLUMN IF NOT EXISTS position INT DEFAULT NULL COMMENT 'Position du combat dans son tour, sert à tracer l''arbre (0-indexé).' AFTER tour;
 
--- Migration : rend configurable la fréquence de rafraîchissement en direct
--- (scores/chrono côté public et arbitrage). À exécuter une seule fois sur
--- une base existante ayant déjà reçu migration_profils_parametres.sql.
--- Idempotent : peut être relancée sans risque.
-
-USE sabre_arbitrage;
+-- Fréquence de rafraîchissement en direct (scores/chrono)
 
 INSERT INTO parametres (cle, valeur, description) VALUES
   ('intervalle_actualisation_ms', '4000', 'Fréquence (en millisecondes) de rafraîchissement automatique des scores et du chrono en direct')
 ON DUPLICATE KEY UPDATE cle = cle;
 
--- Migration : règles d'appariement automatique configurables + retard cumulé.
--- À exécuter une seule fois sur une base existante. Idempotent.
-
-USE sabre_arbitrage;
+-- Règles d'appariement automatique + retard cumulé
 
 INSERT INTO parametres (cle, valeur, description) VALUES
   ('ecart_poids_max_kg', '0', 'Écart de poids maximum autorisé (kg) entre deux joueurs appariés automatiquement — 0 = pas de limite'),
@@ -251,18 +239,12 @@ INSERT INTO parametres (cle, valeur, description) VALUES
   ('intervalle_rotation_affichage_ms', '8000', 'Fréquence (en millisecondes) de rotation des écrans sur la page d''affichage public (écran de salle)')
 ON DUPLICATE KEY UPDATE cle = cle;
 
--- Migration : ajout du champ equipe dans la table joueurs
--- Idempotent (IF NOT EXISTS) : peut être relancé sans risque sur une base existante.
-
-USE sabre_arbitrage;
+-- Équipe / club du joueur
 
 ALTER TABLE joueurs
   ADD COLUMN IF NOT EXISTS equipe VARCHAR(100) DEFAULT NULL COMMENT 'Équipe ou club du joueur' AFTER grade_id;
 
--- ===== migration_wifi.sql =====
--- Wi-Fi du Raspberry Pi (WPA2-Entreprise) : comptes identifiant + mot de passe.
--- Créé automatiquement par l'application (Admin › Wi-Fi) ; ce script n'est utile
--- que pour une installation manuelle.
+-- Wi-Fi du Raspberry Pi (WPA2-Entreprise) : comptes identifiant + mot de passe
 CREATE TABLE IF NOT EXISTS wifi_comptes (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     identifiant VARCHAR(32)  NOT NULL,
@@ -285,9 +267,7 @@ CREATE TABLE IF NOT EXISTS wifi_etat (
     derniere_synchro DATETIME     DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ===== migration_apparence.sql =====
--- Logos personnalisés (Admin › Apparence). Créée automatiquement par l'application ;
--- utile seulement pour une installation manuelle. Paramètres associés : theme, logo_actif.
+-- Logos personnalisés (Admin › Apparence). Paramètres associés : theme, logo_actif.
 CREATE TABLE IF NOT EXISTS logos (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     nom         VARCHAR(60)  NOT NULL,
@@ -302,3 +282,41 @@ CREATE TABLE IF NOT EXISTS logos (
     created_by  INT          DEFAULT NULL,
     created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Sabres Bluetooth (BLE)
+-- ══════════════════════════════════════════════════════════════════════════════
+
+-- Sabres BLE enregistrés
+CREATE TABLE IF NOT EXISTS sabres (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  mac_address VARCHAR(17)  NOT NULL UNIQUE COMMENT 'Adresse MAC BLE ex. C4:86:96:A2:90:92',
+  nom         VARCHAR(60)  NOT NULL DEFAULT '' COMMENT 'Nom du sabre ex. Sabre-01',
+  joueur_id   INT          DEFAULT NULL COMMENT 'Joueur associé (mapping fixe admin)',
+  actif       TINYINT(1)   NOT NULL DEFAULT 1,
+  last_seen   DATETIME     DEFAULT NULL COMMENT 'Dernière connexion BLE détectée',
+  last_hit_at DATETIME(3)  DEFAULT NULL COMMENT 'Dernière touche reçue (indicateur admin)',
+  created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (joueur_id) REFERENCES joueurs(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- Cache du dernier scan BLE (appareils découverts)
+CREATE TABLE IF NOT EXISTS ble_scan_cache (
+  mac_address  VARCHAR(17)  NOT NULL PRIMARY KEY,
+  nom_ble      VARCHAR(100) DEFAULT NULL,
+  last_scanned DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- Touches enregistrées
+CREATE TABLE IF NOT EXISTS touchers (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  combat_id    INT    NOT NULL,
+  sabre_id     INT    NOT NULL,
+  joueur_id    INT    DEFAULT NULL,
+  timestamp_ms BIGINT NOT NULL COMMENT 'Unix ms côté Pi au moment du HIT',
+  type         ENUM('touche','double','annule') NOT NULL DEFAULT 'touche',
+  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (combat_id)  REFERENCES combats(id) ON DELETE CASCADE,
+  FOREIGN KEY (sabre_id)   REFERENCES sabres(id),
+  FOREIGN KEY (joueur_id)  REFERENCES joueurs(id) ON DELETE SET NULL
+) ENGINE=InnoDB;

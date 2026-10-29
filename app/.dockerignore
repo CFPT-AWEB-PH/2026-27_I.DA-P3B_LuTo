@@ -2,14 +2,12 @@
 .env.*
 !.env.example
 .git
-.gitignore
 *.md
 docker-compose*.yml
+install.sh
 _backup*
-Claude outputs
 sql
 ble_receiver
-ecran_ble_snippet.js
-arbitrage/saisie_ble_snippet.php
+telecommandes
 tests
 raspberry

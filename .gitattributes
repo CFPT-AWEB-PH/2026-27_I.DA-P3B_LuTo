@@ -1,3 +1,8 @@
-*.pdf binary
-*.webp binary
-*.png binary
+# Fins de ligne LF partout (indispensable pour les scripts du Raspberry Pi)
+* text=auto eol=lf
+
+*.png   binary
+*.jpg   binary
+*.webp  binary
+*.woff2 binary
+*.pdf   binary

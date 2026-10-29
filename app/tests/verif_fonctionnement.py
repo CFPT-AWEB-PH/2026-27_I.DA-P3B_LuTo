@@ -31,6 +31,10 @@ import urllib.parse
 import urllib.request
 
 # --------------------------------------------------------------------------- affichage
+# Console Windows (cp1252) : sans ça, les caractères ─ ✓ ✗ font planter l'affichage
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 COULEUR = sys.stdout.isatty()
 def c(code, txt): return f'\033[{code}m{txt}\033[0m' if COULEUR else txt
 
