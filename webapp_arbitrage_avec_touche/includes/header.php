@@ -37,6 +37,10 @@ $ongletEspace = null;
 if ($peutAdmin) $ongletEspace = ['admin/index.php', 'dashboard', 'Admin', 'admin'];
 elseif ($peutArbitrer) $ongletEspace = ['arbitrage/index.php', 'target', 'Arbitrage', 'arbitrage'];
 
+// Bouton « Aide » : ouvre la fiche du guide qui correspond à la page affichée
+$ficheAide = guideFichePourPage($pdo, $currentScript, $currentDir);
+$lienAide = BASE_URL . 'aide.php' . ($ficheAide ? '#' . $ficheAide : '');
+
 $flashes = getFlashes();
 $iconesFlash = ['success' => 'check', 'error' => 'alert-triangle', 'warning' => 'alert-triangle', 'info' => 'info'];
 ?>
@@ -97,6 +101,7 @@ $iconesFlash = ['success' => 'check', 'error' => 'alert-triangle', 'warning' => 
                 <?php endif; ?>
             <?php endif; ?>
 
+            <a class="btn btn-icon topbar-aide" href="<?= e($lienAide) ?>"<?= navCurrent('aide.php') ?> title="<?= $ficheAide ? 'Aide sur cette page' : 'Aide et guide' ?>" aria-label="<?= $ficheAide ? 'Aide sur cette page' : 'Aide et guide' ?>"><?= icon('help') ?></a>
             <a class="btn btn-icon topbar-tv" href="<?= BASE_URL ?>ecran.php" title="Écran de salle (affichage TV)" aria-label="Écran de salle"><?= icon('monitor') ?></a>
 
             <?php if ($user): ?>
@@ -114,6 +119,7 @@ $iconesFlash = ['success' => 'check', 'error' => 'alert-triangle', 'warning' => 
                         <?php if ($peutAdmin): ?><a role="menuitem" href="<?= BASE_URL ?>admin/index.php"><?= icon('dashboard') ?>Administration</a><?php endif; ?>
                         <a role="menuitem" href="<?= BASE_URL ?>compte.php"<?= navCurrent('compte.php') ?>><?= icon('lock') ?>Changer de mot de passe</a>
                         <a role="menuitem" href="<?= BASE_URL ?>ecran.php"><?= icon('monitor') ?>Écran de salle</a>
+                        <a role="menuitem" href="<?= BASE_URL ?>aide.php"<?= navCurrent('aide.php') ?>><?= icon('help') ?>Aide et guide</a>
                         <div class="menu-sep" role="separator"></div>
                         <form method="post" action="<?= BASE_URL ?>logout.php" class="logout-form">
                             <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">

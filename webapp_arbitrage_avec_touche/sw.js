@@ -7,12 +7,12 @@
  *    de page de compte servi depuis un cache (il serait faux ou périmé).
  *    Si le réseau est coupé pendant une navigation : page « hors connexion ».
  *  - Fichiers statiques (assets/) : cache d'abord, puis réseau. Les URLs sont
- *    versionnées (?v=14, constante ASSETS_VERSION de includes/functions.php) : la changer suffit à forcer
+ *    versionnées (?v=16, constante ASSETS_VERSION de includes/functions.php) : la changer suffit à forcer
  *    le téléchargement des nouveaux fichiers.
  *
  * Changer VERSION ci-dessous vide les anciens caches au prochain chargement.
  */
-const VERSION = 'sabre-v14-1';
+const VERSION = 'sabre-v16-1';
 const CACHE_STATIQUE = `${VERSION}-statique`;
 const SCOPE = self.registration.scope;              // ex. https://sabre.lan/
 const OFFLINE_URL = new URL('assets/pwa/offline.html', SCOPE).href;
@@ -22,9 +22,9 @@ const PRECACHE = [
     'assets/pwa/offline.js',
     'assets/pwa/icon-192.png',
     'assets/pwa/favicon-32.png',
-    'assets/css/style.css?v=14',
-    'assets/js/app.js?v=14',
-    'assets/js/pwa.js?v=14',
+    'assets/css/style.css?v=16',
+    'assets/js/app.js?v=16',
+    'assets/js/pwa.js?v=16',
     'assets/fonts/barlow-latin-400-normal.woff2',
     'assets/fonts/barlow-latin-500-normal.woff2',
     'assets/fonts/barlow-latin-600-normal.woff2',

@@ -68,6 +68,7 @@
 <symbol id="icon-list" viewBox="0 0 24 24"><path d="M9 6.5h11" /><path d="M9 12h11" /><path d="M9 17.5h11" /><circle cx="4.8" cy="6.5" r=".9" fill="currentColor" /><circle cx="4.8" cy="12" r=".9" fill="currentColor" /><circle cx="4.8" cy="17.5" r=".9" fill="currentColor" /></symbol>
 <symbol id="icon-calendar" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2" /><path d="M3.5 10h17" /><path d="M8 3v4" /><path d="M16 3v4" /></symbol>
 <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5" /><path d="M12 7.8v.2" /></symbol>
+<symbol id="icon-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></symbol>
 <symbol id="icon-maximize" viewBox="0 0 24 24"><path d="M4 9V4h5" /><path d="M20 9V4h-5" /><path d="M4 15v5h5" /><path d="M20 15v5h-5" /></symbol>
 <symbol id="icon-fit-width" viewBox="0 0 24 24"><path d="M3 5v14" /><path d="M21 5v14" /><path d="M7 12h10" /><path d="M9.5 9.5 7 12l2.5 2.5" /><path d="M14.5 9.5 17 12l-2.5 2.5" /></symbol></defs>
 </svg>

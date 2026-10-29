@@ -2,3 +2,5 @@
 raspberry/** text eol=lf
 *.png binary
 *.woff2 binary
+*.webp binary
+*.pdf binary

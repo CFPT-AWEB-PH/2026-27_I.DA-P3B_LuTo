@@ -38,6 +38,8 @@ timeline
             : Déploiement de la v5 sur le Raspberry (Tom)
     26 Oct  : Gros push sur GitHub et suppression des versions obsolètes (équipe)
             : Push réalisé avec Claude suite à un souci avec notre interface graphique Git (équipe)
+    29 Oct  : Guide d'utilisation intégré au site, adapté au rôle, avec captures annotées (Tom)
+            : Impression / PDF du guide et déploiement sur le Raspberry (Tom)
 ```
 
 ---
@@ -409,3 +411,37 @@ Ajout d'un `.gitignore` pour ne pas envoyer :
 - les dossiers de sauvegarde `_backup_avant_*` et `_to_delete`, qui sont aussi d'anciennes versions.
 
 **Problème rencontré :** nous avons eu un souci avec notre interface graphique Git, qui nous empêchait de faire le push nous-mêmes. Solution : le push a été réalisé avec l'aide de l'IA (Claude), directement en ligne de commande. Lors de l'envoi, GitHub a d'abord refusé le push sur `main` avec une erreur « Internal Server Error » (erreur côté serveur GitHub, alors que nos droits sur le dépôt étaient corrects). Après quelques nouvelles tentatives, le push est passé.
+
+---
+
+### 29.10 — Guide d'utilisation intégré au site & documentation PDF
+
+**Tom :**
+
+**Page « Aide et guide » (`aide.php`)**
+Ajout d'un guide complet directement dans l'application : 51 fiches réparties en 13 sections (premiers pas, suivre le tournoi, mon compte, arbitrer, organiser le tournoi, joueurs, combats, comptes et rôles, sabres et télécommandes, Wi-Fi, paramètres et apparence, bilan, problèmes fréquents). Chaque fiche explique pas à pas comment faire, avec des astuces, un bouton « Ouvrir la page » qui mène directement au bon écran et des liens « Voir aussi » vers les fiches liées.
+
+**Un guide adapté au rôle**
+Le guide n'affiche que ce que le compte connecté peut réellement faire. Chaque fiche indique les permissions nécessaires (les mêmes que celles de `includes/permissions.php`), et le serveur filtre avec `can()` avant d'envoyer la page. Résultat : un spectateur voit 13 fiches, un arbitre 21, un administrateur les 51. Un rôle personnalisé créé dans Admin › Rôles est pris en compte automatiquement. Le contenu du guide est dans `includes/guide.php`.
+
+**Recherche et navigation**
+- Barre de recherche « Que voulez-vous faire ? » instantanée (sans tenir compte des accents ni des majuscules), raccourci `/`, `Entrée` ouvre le premier résultat, `Échap` efface. La recherche est gardée dans l'adresse (`aide.php?q=…`) pour pouvoir la partager.
+- Sommaire qui suit la lecture, raccourcis vers les fiches les plus utiles, bouton « Copier le lien » de chaque fiche.
+- Un bouton **?** dans la barre du haut, sur toutes les pages, ouvre directement la fiche qui correspond à la page affichée (par exemple, sur Admin › Joueurs : « Ajouter un joueur »). Le guide est aussi dans le menu du compte et le pied de page.
+- Check-list « Préparer et lancer un tournoi » en 12 étapes à cocher (mémorisée sur l'appareil).
+
+**Captures d'écran annotées**
+30 captures de l'application, avec des repères rouges numérotés qui correspondent aux numéros des étapes du texte. Un clic agrandit la capture. Elles ont été générées automatiquement avec un navigateur piloté par script (Puppeteer), sur une copie séparée de l'application remplie de données de démonstration, pour ne jamais toucher aux vraies données du tournoi.
+
+**Impression et PDF**
+Bouton « Imprimer le guide » : tout le guide accessible au rôle s'imprime (ou s'enregistre en PDF), avec une page de garde (nom du tournoi, compte, rôle, date), un sommaire, une section par page et le numéro de page en bas. Les trois versions du guide (spectateur, arbitre, administrateur complet) sont dans le dossier `documentation/` du dépôt.
+
+**Problèmes rencontrés :**
+- Les repères des captures n'apparaissaient pas sur les fenêtres modales (formulaires « Nouveau joueur », « Générer le tournoi »…) : les `<dialog>` passent au-dessus de tout le reste. Solution : dessiner les repères dans un calque `popover`, lui aussi placé au-dessus.
+- À l'impression, la première page sortait blanche. Deux causes : changer de « page nommée » CSS (`@page guide`) en cours de document forçait un saut de page, et l'animation d'apparition des pages laissait la page de garde invisible (`opacity: 0`) sur papier. Solution : appliquer la page nommée à tout le `body` et couper les animations à l'impression.
+- Les marges du PDF sortaient en noir à cause du thème sombre (`color-scheme: dark`). Solution : forcer le mode clair à l'impression.
+
+**Déploiement sur le Raspberry**
+Avant de copier les fichiers, comparaison de chaque fichier du Raspberry avec celui du PC, pour vérifier que rien de ce qui était sur le Raspberry n'était écrasé. Envoi avec `scp` ; le code étant monté directement dans le conteneur, le site est à jour sans redémarrage. La version des fichiers CSS/JS (`ASSETS_VERSION` et `sw.js`) est passée à 16 pour que les téléphones téléchargent le nouveau style.
+
+Ce travail a été réalisé avec l'aide de l'IA (Claude).

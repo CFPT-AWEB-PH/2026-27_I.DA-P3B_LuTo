@@ -24,7 +24,7 @@ function icon(string $name, string $class = ''): string
  * VERSION et PRECACHE de sw.js, force les navigateurs et l'app installée à
  * télécharger les nouveaux fichiers.
  */
-const ASSETS_VERSION = '14';
+const ASSETS_VERSION = '16';
 
 /** URL versionnée d'un fichier de assets/ : asset('js/live.js'). */
 function asset(string $chemin): string
@@ -923,5 +923,35 @@ function ensureSabresSchema(PDO $pdo): void
         }
     } catch (PDOException $e) {
         error_log('[Sabre] ensureSabresSchema : ' . $e->getMessage());
+    }
+}
+
+/** Télécommandes d'arbitre Bluetooth (ble_receiver/receiver.py crée la même table). */
+function ensureTelecommandesSchema(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    try {
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS telecommandes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                mac_address VARCHAR(17) DEFAULT NULL,
+                nom VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Nom Bluetooth (ex. TEL_2)',
+                user_id INT DEFAULT NULL COMMENT 'Arbitre au nom duquel elle donne les points',
+                actif TINYINT(1) NOT NULL DEFAULT 1,
+                last_seen DATETIME DEFAULT NULL,
+                last_press_at DATETIME(3) DEFAULT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_mac (mac_address),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+        // Première version (USB) : identifiée par son nom, sans adresse MAC
+        $pdo->exec("ALTER TABLE telecommandes ADD COLUMN IF NOT EXISTS mac_address VARCHAR(17) DEFAULT NULL AFTER id");
+        $pdo->exec("ALTER TABLE telecommandes DROP INDEX IF EXISTS nom");
+        $pdo->exec("ALTER TABLE telecommandes ADD UNIQUE INDEX IF NOT EXISTS uniq_mac (mac_address)");
+    } catch (PDOException $e) {
+        error_log('[Sabre] ensureTelecommandesSchema : ' . $e->getMessage());
     }
 }

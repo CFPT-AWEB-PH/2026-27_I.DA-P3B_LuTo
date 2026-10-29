@@ -12,6 +12,7 @@
 require_once __DIR__ . '/../config/config.php';
 requirePermission('sabres.voir');
 ensureSabresSchema($pdo);
+ensureTelecommandesSchema($pdo);
 
 $isAjax = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
 $action = $_POST['action'] ?? $_GET['action'] ?? 'list';
@@ -70,6 +71,7 @@ function chargerScan(PDO $pdo, array $sabres): array
                 TIMESTAMPDIFF(SECOND, last_scanned, NOW()) AS secs
          FROM ble_scan_cache
          WHERE last_scanned > DATE_SUB(NOW(), INTERVAL 5 MINUTE) $phNot
+           AND mac_address NOT IN (SELECT mac_address FROM telecommandes WHERE mac_address IS NOT NULL)
          ORDER BY last_scanned DESC LIMIT 30"
     );
     $st->execute($macs);
@@ -99,12 +101,40 @@ function etatRecepteur(PDO $pdo): array
     return ['etat' => $etat, 'message' => $r['message'], 'age_s' => $age];
 }
 
+/** Télécommandes Bluetooth (ble_receiver/receiver.py) : connectée = signe de vie < 10 s. */
+function chargerTelecommandes(PDO $pdo): array
+{
+    try {
+        $rows = $pdo->query(
+            "SELECT t.id, t.mac_address, t.nom, t.user_id, t.actif, u.username,
+                    TIMESTAMPDIFF(SECOND, t.last_seen, NOW()) AS secs,
+                    TIMESTAMPDIFF(MICROSECOND, t.last_press_at, NOW(3)) DIV 1000 AS appui_ms
+             FROM telecommandes t
+             LEFT JOIN users u ON u.id = t.user_id
+             ORDER BY t.nom"
+        )->fetchAll();
+    } catch (PDOException $e) {
+        return [];
+    }
+    return array_map(fn($t) => [
+        'id'       => (int)$t['id'],
+        'mac'      => $t['mac_address'],
+        'nom'      => $t['nom'],
+        'user_id'  => $t['user_id'] !== null ? (int)$t['user_id'] : null,
+        'username' => $t['username'],
+        'actif'    => (int)$t['actif'],
+        'secs'     => $t['secs'] !== null ? (int)$t['secs'] : null,
+        'branchee' => $t['secs'] !== null && (int)$t['secs'] < 10,
+        'appui_ms' => $t['appui_ms'] !== null ? (int)$t['appui_ms'] : null,
+    ], $rows);
+}
+
 /* ── GET JSON : état complet pour le rafraîchissement en direct ─────────── */
 if (($_GET['ajax'] ?? '') === 'list') {
     $sabres = chargerSabres($pdo);
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store');
-    echo json_encode(['sabres' => $sabres, 'scan' => chargerScan($pdo, $sabres), 'recepteur' => etatRecepteur($pdo)]);
+    echo json_encode(['sabres' => $sabres, 'scan' => chargerScan($pdo, $sabres), 'recepteur' => etatRecepteur($pdo), 'telecommandes' => chargerTelecommandes($pdo)]);
     exit;
 }
 
@@ -165,6 +195,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         repondre(true, 'Sabre supprimé.');
     }
 
+    if ($action === 'tel_edit') {
+        if (!can('sabres.modifier')) repondre(false, 'Votre rôle n\'a pas la permission de modifier les télécommandes.');
+        $id = idPositif($_POST['id'] ?? '');
+        $userId = idPositif($_POST['user_id'] ?? '') ?: null;
+        try {
+            $pdo->prepare('UPDATE telecommandes SET user_id = ? WHERE id = ?')->execute([$userId, $id]);
+        } catch (PDOException $e) {
+            repondre(false, 'Arbitre invalide.');
+        }
+        repondre(true, $userId ? 'Télécommande associée à l\'arbitre.' : 'Télécommande dissociée.', ['id' => $id]);
+    }
+
+    if ($action === 'tel_delete') {
+        if (!can('sabres.supprimer')) repondre(false, 'Votre rôle n\'a pas la permission de supprimer les télécommandes.');
+        $pdo->prepare('DELETE FROM telecommandes WHERE id = ?')->execute([idPositif($_POST['id'] ?? '')]);
+        repondre(true, 'Télécommande oubliée (elle réapparaîtra si elle est encore allumée à portée).');
+    }
+
     repondre(false, 'Action inconnue.');
 }
 
@@ -173,6 +221,15 @@ $sabres   = chargerSabres($pdo);
 $scan     = chargerScan($pdo, $sabres);
 $recepteur = etatRecepteur($pdo);
 $joueurs  = $pdo->query('SELECT id, pseudo FROM joueurs ORDER BY pseudo')->fetchAll();
+$telecommandes = chargerTelecommandes($pdo);
+// Arbitres possibles = comptes actifs dont le rôle a la permission « arbitrage.acces »
+$rolesArbitres = rolesAvecPermission($pdo, 'arbitrage.acces');
+$arbitres = [];
+if ($rolesArbitres) {
+    $st = $pdo->prepare('SELECT id, username FROM users WHERE actif = 1 AND role IN (' . implode(',', array_fill(0, count($rolesArbitres), '?')) . ') ORDER BY username');
+    $st->execute($rolesArbitres);
+    $arbitres = array_map(fn($u) => ['id' => (int)$u['id'], 'username' => $u['username']], $st->fetchAll());
+}
 $perms    = [
     'ajouter'   => can('sabres.ajouter'),
     'modifier'  => can('sabres.modifier'),
@@ -229,6 +286,21 @@ require __DIR__ . '/../includes/header.php';
         </table>
     </div>
     <div id="scan-empty" hidden><?= etatVide('Aucun appareil détecté', 'Aucun sabre allumé à portée, ou le récepteur Bluetooth ne tourne pas (voir son état en haut de la page).', '', 'broadcast', 'compact') ?></div>
+</section>
+
+<?php /* ── Télécommandes d'arbitre USB ── */ ?>
+<section class="section" aria-labelledby="h-tel">
+    <div class="section-title">
+        <h2 id="h-tel">Télécommandes<span class="count" id="nb-tel"><?= count($telecommandes) ?></span></h2>
+    </div>
+    <p class="hint section-intro">Connectées en Bluetooth au Raspberry, comme les sabres : une télécommande allumée (nom Bluetooth « TEL… ») apparaît ici toute seule. Bouton rouge : +1 Aka, bouton bleu : +1 Ao, les deux ensemble : annule le dernier point. Les points comptent pour l'arbitre associé, dans le combat en cours où il arbitre.</p>
+    <div class="table-wrap" id="tel-table-wrap">
+        <table>
+            <thead><tr><th scope="col">Télécommande</th><th scope="col">Connexion</th><th scope="col">Appui</th><th scope="col">Arbitre</th><?php if ($perms['supprimer']): ?><th scope="col"><span class="visually-hidden">Action</span></th><?php endif; ?></tr></thead>
+            <tbody id="tel-body"></tbody>
+        </table>
+    </div>
+    <div id="tel-empty" hidden><?= etatVide('Aucune télécommande', 'Allumez une télécommande à portée : elle apparaît ici dès que le récepteur Bluetooth la voit (voir son état en haut de la page).', '', 'broadcast', 'compact') ?></div>
 </section>
 
 <?php /* ── Formulaire d'ajout manuel ── */ ?>
@@ -320,7 +392,8 @@ require __DIR__ . '/../includes/header.php';
     const ICON = n => `<svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-${n}"></use></svg>`;
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-    let state = { sabres: <?= json_encode($sabres) ?>, scan: <?= json_encode($scan) ?>, recepteur: <?= json_encode($recepteur) ?> };
+    const ARBITRES = <?= json_encode($arbitres) ?>;
+    let state = { sabres: <?= json_encode($sabres) ?>, scan: <?= json_encode($scan) ?>, recepteur: <?= json_encode($recepteur) ?>, telecommandes: <?= json_encode($telecommandes) ?> };
     let highlightId = null;
     let loading = false;
 
@@ -434,7 +507,60 @@ require __DIR__ . '/../includes/header.php';
         if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
     }
 
-    function render() { renderRecepteur(); renderSabres(); renderScan(); }
+    /* ── Télécommandes USB ─────────────────────────────── */
+    function telArbitre(t) {
+        if (!PERMS.modifier) return t.username ? esc(t.username) : '<span class="muted">Non associée</span>';
+        const opts = ARBITRES.map(a => `<option value="${a.id}"${a.id === t.user_id ? ' selected' : ''}>${esc(a.username)}</option>`).join('');
+        return `<select data-tel-arbitre="${t.id}" aria-label="Arbitre de ${esc(t.nom)}"><option value="">Aucun</option>${opts}</select>`;
+    }
+    function renderTelecommandes() {
+        const body = document.getElementById('tel-body');
+        const liste = state.telecommandes || [];
+        const seen = new Set();
+        liste.forEach(t => {
+            const id = String(t.id);
+            seen.add(id);
+            let tr = body.querySelector(`tr[data-id="${id}"]`);
+            if (!tr) { tr = document.createElement('tr'); tr.dataset.id = id; body.appendChild(tr); }
+            const appui = t.appui_ms !== null && t.appui_ms < 3000;
+            const key = [t.nom, t.branchee, t.user_id, appui].join('|');
+            // pas de rendu pendant qu'on choisit l'arbitre (la liste se refermerait)
+            if (tr.dataset.k === key || tr.contains(document.activeElement)) return;
+            tr.dataset.k = key;
+            tr.innerHTML = `
+                <td class="cell-primary"><div class="player-cell"><strong>${esc(t.nom || 'Sans nom')}</strong><span class="hint mono">${esc(t.mac || '')}</span></div></td>
+                <td>${t.branchee ? '<span class="st-badge st-online badge-dot">Connectée</span>' : `<span class="st-badge st-offline" title="${t.secs === null ? 'Jamais connectée' : 'Vue il y a ' + fmtAgo(t.secs)}">Hors ligne</span>`}</td>
+                <td><span class="touch-dot${appui ? ' active-touche' : ''}"><span class="dot"></span><span class="touch-label">${appui ? 'Appui' : '–'}</span></span></td>
+                <td>${telArbitre(t)}</td>
+                ${PERMS.supprimer ? `<td class="cell-actions"><button type="button" class="btn btn-icon btn-sm" data-tel-del="${t.id}" aria-label="Oublier ${esc(t.nom)}" title="Oublier">${ICON('trash')}</button></td>` : ''}`;
+        });
+        body.querySelectorAll('tr[data-id]').forEach(tr => { if (!seen.has(tr.dataset.id)) tr.remove(); });
+        document.getElementById('nb-tel').textContent = liste.length;
+        document.getElementById('tel-table-wrap').hidden = liste.length === 0;
+        document.getElementById('tel-empty').hidden = liste.length > 0;
+    }
+    document.addEventListener('change', async e => {
+        const sel = e.target.closest('[data-tel-arbitre]');
+        if (!sel) return;
+        const res = await post({ action: 'tel_edit', id: sel.dataset.telArbitre, user_id: sel.value });
+        message(res.ok, res.message);
+        sel.blur();
+        refresh();
+    });
+    document.addEventListener('click', async e => {
+        const del = e.target.closest('[data-tel-del]');
+        if (!del) return;
+        const t = (state.telecommandes || []).find(x => x.id === +del.dataset.telDel);
+        const ok = window.Modal
+            ? await window.Modal.show({ message: `Oublier la télécommande « ${t?.nom} » ?`, confirmLabel: 'Oublier', type: 'danger' })
+            : confirm('Oublier cette télécommande ?');
+        if (!ok) return;
+        const res = await post({ action: 'tel_delete', id: del.dataset.telDel });
+        message(res.ok, res.message);
+        refresh();
+    });
+
+    function render() { renderRecepteur(); renderSabres(); renderScan(); renderTelecommandes(); }
 
     /* ── Rafraîchissement liste + scan ─────────────────── */
     async function refresh(manual) {

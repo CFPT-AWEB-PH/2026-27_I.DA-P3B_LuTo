@@ -21,6 +21,7 @@ require_once __DIR__ . '/../includes/ui.php';
 require_once __DIR__ . '/../includes/arbre.php';
 require_once __DIR__ . '/../includes/apparence.php';
 require_once __DIR__ . '/../includes/champs_joueur.php';
+require_once __DIR__ . '/../includes/guide.php';
 
 // Sous-dossier éventuel de l'application (lettres, chiffres, - _ / uniquement)
 $__base = trim((string)(getenv('BASE_URL') ?: ''), '/');
