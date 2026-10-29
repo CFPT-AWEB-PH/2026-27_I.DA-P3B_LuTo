@@ -76,6 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $pdo->prepare('INSERT INTO wifi_comptes (identifiant, nt_hash, description, created_by) VALUES (?, ?, ?, ?)')
             ->execute([$identifiant, wifiNtHash($mdp), $description ?: null, (int)currentUser()['id']]);
+        if (isset($_POST['ecran'])) wifiAfficherSurEcran($pdo, (int)$pdo->lastInsertId(), $mdp);
         error_log('[Sabre][wifi] compte ' . $identifiant . ' créé par ' . $moi);
         if ($genere) flashMotDePasseWifi($identifiant, $mdp, 'Accès Wi-Fi créé.');
         else flash('success', 'Accès Wi-Fi « ' . $identifiant . ' » créé. Il sera actif sur le Raspberry d\'ici quelques secondes.');
@@ -100,7 +101,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE wifi_comptes SET nt_hash = ? WHERE id = ?')->execute([wifiNtHash($mdp), $cible['id']]);
             error_log('[Sabre][wifi] mot de passe de ' . $cible['identifiant'] . ' changé par ' . $moi);
         }
-        flash('success', 'Accès Wi-Fi mis à jour.');
+        // Écran du Raspberry : il faut le mot de passe en clair. Sans nouveau mot de passe,
+        // on garde celui déjà affiché, sinon on en génère un (l'ancien n'est pas relisible).
+        $genere = false;
+        if (isset($_POST['ecran']) && $actif) {
+            if ($mdp === '' && $cible['ecran_mdp'] === null) { $mdp = wifiGenererMotDePasse(); $genere = true; }
+            if ($mdp !== '') wifiAfficherSurEcran($pdo, (int)$cible['id'], $mdp);
+        } else {
+            wifiRetirerDeEcran($pdo, (int)$cible['id']);
+        }
+        if ($genere) flashMotDePasseWifi($cible['identifiant'], $mdp, 'Accès affiché sur l\'écran du Raspberry, avec un nouveau mot de passe.');
+        else flash('success', 'Accès Wi-Fi mis à jour.');
         redirect('admin/wifi.php');
     }
 
@@ -108,6 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($fa === 'regen') {
         $mdp = wifiGenererMotDePasse();
         $pdo->prepare('UPDATE wifi_comptes SET nt_hash = ? WHERE id = ?')->execute([wifiNtHash($mdp), $cible['id']]);
+        if ($cible['ecran_mdp'] !== null) wifiAfficherSurEcran($pdo, (int)$cible['id'], $mdp);
         error_log('[Sabre][wifi] mot de passe de ' . $cible['identifiant'] . ' régénéré par ' . $moi);
         flashMotDePasseWifi($cible['identifiant'], $mdp, 'Nouveau mot de passe Wi-Fi.');
         redirect('admin/wifi.php');
@@ -116,6 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ---- ACTIVER / DÉSACTIVER ----
     if ($fa === 'toggle') {
         $pdo->prepare('UPDATE wifi_comptes SET actif = 1 - actif WHERE id = ?')->execute([$cible['id']]);
+        if ($cible['actif']) wifiRetirerDeEcran($pdo, (int)$cible['id']);
         flash('success', $cible['actif'] ? 'Accès Wi-Fi désactivé.' : 'Accès Wi-Fi réactivé.');
         redirect('admin/wifi.php');
     }
@@ -125,6 +138,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->prepare('DELETE FROM wifi_comptes WHERE id = ?')->execute([$cible['id']]);
         error_log('[Sabre][wifi] compte ' . $cible['identifiant'] . ' supprimé par ' . $moi);
         flash('success', 'Accès Wi-Fi supprimé.');
+        redirect('admin/wifi.php');
+    }
+
+    // ---- RETIRER DE L'ÉCRAN DU RASPBERRY ----
+    if ($fa === 'ecran_retirer') {
+        wifiRetirerDeEcran($pdo, (int)$cible['id']);
+        flash('success', 'Plus aucun accès affiché sur l\'écran du Raspberry.');
         redirect('admin/wifi.php');
     }
     redirect('admin/wifi.php');
@@ -145,6 +165,7 @@ $comptes = $pdo->query(
      ORDER BY w.actif DESC, w.identifiant ASC'
 )->fetchAll();
 $nbActifs = count(array_filter($comptes, fn($c) => (int)$c['actif'] === 1));
+$compteEcran = current(array_filter($comptes, fn($c) => $c['ecran_mdp'] !== null && (int)$c['actif'] === 1)) ?: null;
 
 $etat = wifiEtat($pdo);
 $enLigne = $etat && $etat['age_s'] !== null && (int)$etat['age_s'] <= 120;
@@ -186,6 +207,7 @@ require __DIR__ . '/_tabs.php';
             <div><dt>Comptes actifs</dt><dd class="tabular"><?= $nbActifs ?></dd></div>
             <div><dt>Appareils identifiés</dt><dd class="tabular"><?= $enLigne ? (int)$etat['nb_connectes'] : '–' ?></dd></div>
             <div><dt>Adresse de l'app</dt><dd><code><?= e($domaine) ?></code></dd></div>
+            <div><dt>Sur l'écran du Raspberry</dt><dd><?= $compteEcran ? '<code>' . e($compteEcran['identifiant']) . '</code>' : '<span class="muted">aucun accès (compte de secours)</span>' ?></dd></div>
         </dl>
     <?php else: ?>
         <p class="hint">Les comptes créés ici seront appliqués dès que le point d'accès sera installé sur le Raspberry
@@ -275,6 +297,12 @@ require __DIR__ . '/_tabs.php';
                 <input type="text" id="description" name="description" maxlength="100" placeholder="ex. Tablette arbitre table A"
                        value="<?= e($editCompte['description'] ?? '') ?>">
             </div>
+            <div class="field">
+                <label class="switch">
+                    <span class="switch-text"><strong>Afficher sur l'écran du Raspberry</strong><span class="hint">L'identifiant et le mot de passe apparaissent sur le fond d'écran (avec le nom du Wi-Fi et les QR codes), à la place de l'accès affiché jusqu'ici.<?= $action === 'edit' && ($editCompte['ecran_mdp'] ?? null) === null ? ' Sans nouveau mot de passe ci-dessus, un mot de passe est généré.' : '' ?></span></span>
+                    <input type="checkbox" name="ecran" role="switch" <?= ($editCompte['ecran_mdp'] ?? null) !== null ? 'checked' : '' ?>>
+                </label>
+            </div>
             <?php if ($action === 'edit'): ?>
                 <div class="field">
                     <label class="switch">
@@ -304,13 +332,16 @@ require __DIR__ . '/_tabs.php';
             if ($peutGerer) {
                 $menu .= '<a role="menuitem" href="wifi.php?action=edit&id=' . (int)$c['id'] . '">' . icon('edit') . 'Modifier</a>';
                 $menu .= boutonPost('wifi.php', 'regen', ['id' => (int)$c['id']], 'Générer un nouveau mot de passe', 'refresh', ['data-confirm' => 'Nouveau mot de passe pour ' . $c['identifiant'] . ' ?', 'data-confirm-text' => 'Les appareils déjà configurés avec l\'ancien mot de passe devront le ressaisir.', 'data-confirm-label' => 'Générer', 'data-confirm-type' => 'warning']);
+                if ($c['ecran_mdp'] !== null) {
+                    $menu .= boutonPost('wifi.php', 'ecran_retirer', ['id' => (int)$c['id']], 'Retirer de l\'écran du Raspberry', 'x');
+                }
                 $menu .= boutonPost('wifi.php', 'toggle', ['id' => (int)$c['id']], $c['actif'] ? 'Désactiver' : 'Réactiver', $c['actif'] ? 'lock' : 'unlock');
                 $menu .= '<div class="menu-sep" role="separator"></div>' . boutonPost('wifi.php', 'delete', ['id' => (int)$c['id']], 'Supprimer', 'trash', ['class' => 'is-danger', 'data-confirm' => 'Supprimer l\'accès Wi-Fi ' . $c['identifiant'] . ' ?', 'data-confirm-text' => 'Ce compte ne pourra plus rejoindre le Wi-Fi.', 'data-confirm-label' => 'Supprimer']);
             }
         ?>
             <tr class="<?= $c['actif'] ? '' : 'row-inactive' ?>">
                 <td class="cell-primary"><div class="player-cell"><strong class="mono"><?= e($c['identifiant']) ?></strong><span class="hint"><?= $c['description'] ? e($c['description']) : 'Sans description' ?></span></div></td>
-                <td data-label=""><?= $c['actif'] ? '<span class="badge badge-success badge-dot">Actif</span>' : '<span class="badge badge-neutral">Désactivé</span>' ?></td>
+                <td data-label=""><?= $c['actif'] ? '<span class="badge badge-success badge-dot">Actif</span>' : '<span class="badge badge-neutral">Désactivé</span>' ?><?= $c['ecran_mdp'] !== null && $c['actif'] ? ' <span class="badge badge-neutral">Sur l\'écran</span>' : '' ?></td>
                 <td data-label="Créé :" class="tabular"><?= formatDateFr($c['created_at']) ?><?= $c['createur'] ? ' <span class="muted">par ' . e($c['createur']) . '</span>' : '' ?></td>
                 <td class="cell-actions"><?= menuActions($menu, 'Actions pour ' . $c['identifiant']) ?></td>
             </tr>

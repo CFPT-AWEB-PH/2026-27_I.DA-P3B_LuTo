@@ -58,6 +58,23 @@ function ensureWifiSchema(PDO $pdo): void
     );
     // Mot de passe commun du Wi-Fi (vide = Wi-Fi ouvert, seul le portail identifie)
     $pdo->exec("ALTER TABLE wifi_etat ADD COLUMN IF NOT EXISTS mdp_wifi VARCHAR(64) DEFAULT NULL");
+    // Compte affiché sur le fond d'écran du Raspberry (raspberry/sabre-fond-ecran.py) : seul
+    // ce compte garde son mot de passe en clair, puisqu'il est de toute façon affiché.
+    $pdo->exec("ALTER TABLE wifi_comptes ADD COLUMN IF NOT EXISTS ecran_mdp VARCHAR(64) DEFAULT NULL");
+}
+
+/** Affiche ce compte (et ce mot de passe) sur l'écran du Raspberry, à la place du précédent. */
+function wifiAfficherSurEcran(PDO $pdo, int $id, string $mdp): void
+{
+    $pdo->prepare('UPDATE wifi_comptes SET ecran_mdp = NULL WHERE id <> ?')->execute([$id]);
+    $pdo->prepare('UPDATE wifi_comptes SET ecran_mdp = ?, nt_hash = ? WHERE id = ?')
+        ->execute([$mdp, wifiNtHash($mdp), $id]);
+}
+
+function wifiRetirerDeEcran(PDO $pdo, ?int $id = null): void
+{
+    if ($id === null) $pdo->exec('UPDATE wifi_comptes SET ecran_mdp = NULL');
+    else $pdo->prepare('UPDATE wifi_comptes SET ecran_mdp = NULL WHERE id = ?')->execute([$id]);
 }
 
 /** Hachage NT (MD4 de l'UTF-16LE), vérifié par le portail du Raspberry. */
