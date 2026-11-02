@@ -47,3 +47,24 @@
 - Le site est en **HTTP** sur http://10.5.35.39 en attendant le choix HTTPS.
 
 **Prochaine étape** : phase 3 (authentification Google, liste d'autorisation, rôles et permissions). Nécessite le choix HTTPS et un identifiant OAuth Google.
+
+## Phase 3 : authentification, rôles et permissions (2026-11-02)
+
+**Décision** : la connexion Google est reportée à la fin, avec HTTPS (à votre demande). En attendant, la connexion se fait par lien à usage unique généré en SSH (`bin/login-link.php`). Tout le reste (comptes, sessions, rôles) est le système définitif ; Google viendra s'y brancher via `LoginService::login()`.
+
+**Fait**
+- Migration `0002_auth` : 15 permissions granulaires ; rôles Administrateur (protégé), Gestionnaire de stock, Enseignant, Élève (par défaut) ; utilisateurs, liste d'autorisation, sessions, jetons de connexion, limitation de débit.
+- Sessions en base (le cookie contient un jeton aléatoire, la base son empreinte SHA-256) ; cookie HttpOnly, SameSite=Lax, Secure dès que le site passe en HTTPS ; expiration de 30 jours et de 7 jours sans activité ; révocation immédiate à la désactivation.
+- CSRF : jeton de session dans l'en-tête `X-CSRF-Token` et vérification de l'en-tête `Origin`.
+- Permissions vérifiées dans chaque contrôleur côté serveur ; rôle protégé non supprimable et toujours complet ; impossible de supprimer le dernier administrateur actif (verrou + contrôle dans la transaction), de se désactiver soi-même, ou de retirer sa propre adresse de la liste.
+- Validation stricte des entrées (types, longueurs, caractères de contrôle) ; journal d'audit des connexions, refus et modifications de droits.
+- Interface : connexion, accueil, utilisateurs (recherche et filtres, changement de rôle, désactivation), rôles et permissions, liste d'autorisation ; menu adapté au mobile.
+- Administrateur initial : `tom.cnnng@eduge.ch` (créé par `bin/create-admin.php`, une seconde exécution est refusée).
+
+**Tests** (`scripts/run-tests.sh`, scénario E) : **57 vérifications, 0 échec**. Ils couvrent l'accès anonyme, les liens inventés ou réutilisés, les adresses non autorisées, l'absence de jeton CSRF et une origine étrangère, ainsi que toutes les actions d'administration tentées par un Élève directement en HTTP (toutes refusées, rôle inchangé en base). Ils couvrent aussi le cycle de vie d'un rôle, l'application immédiate des permissions, la protection du dernier administrateur, la désactivation (session révoquée, connexion refusée), la déconnexion et le journal d'audit.
+
+Vérifié dans le navigateur : page de connexion, messages d'erreur, redirection des pages protégées vers `/login`.
+
+**Non vérifié** : l'affichage des pages d'administration une fois connecté. Je ne me suis pas connecté moi-même dans le navigateur ; à tester par l'utilisateur avec un lien de connexion.
+
+**Reporté à la fin** : HTTPS et connexion Google (OpenID Connect).
