@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace App\Http;
 
+use App\Auth\AuthContext;
+
 final class Request
 {
     private const MAX_JSON_BYTES = 1_048_576;
+
+    /** Session de l'utilisateur connecté, résolue par le contrôleur frontal. */
+    public ?AuthContext $auth = null;
 
     /** @var array<string, mixed>|null */
     private ?array $json = null;
@@ -14,13 +19,16 @@ final class Request
     /**
      * @param array<string, mixed> $query
      * @param array<string, string> $headers clés en minuscules
+     * @param array<string, string> $cookies
      */
     public function __construct(
         public readonly string $method,
         public readonly string $path,
         public readonly array $query,
         public readonly array $headers,
+        public readonly array $cookies,
         public readonly string $ip,
+        public readonly bool $https,
     ) {
     }
 
@@ -44,13 +52,39 @@ final class Request
             $path,
             $_GET,
             $headers,
+            array_map('strval', $_COOKIE),
             (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
+            ($_SERVER['HTTPS'] ?? '') === 'on',
         );
     }
 
     public function header(string $name): ?string
     {
         return $this->headers[strtolower($name)] ?? null;
+    }
+
+    public function isSafeMethod(): bool
+    {
+        return in_array($this->method, ['GET', 'HEAD', 'OPTIONS'], true);
+    }
+
+    /** Utilisateur connecté, sinon 401. */
+    public function user(): AuthContext
+    {
+        return $this->auth ?? throw new HttpException(401, 'Connexion requise.');
+    }
+
+    /** Utilisateur connecté possédant la permission, sinon 401 ou 403. */
+    public function requirePermission(string $permission): AuthContext
+    {
+        $auth = $this->user();
+        $auth->require($permission);
+        return $auth;
+    }
+
+    public function input(): Input
+    {
+        return new Input($this->json());
     }
 
     /** @return array<string, mixed> */
@@ -71,7 +105,7 @@ final class Request
         } catch (\JsonException) {
             throw new HttpException(400, 'JSON invalide.');
         }
-        if (!is_array($data)) {
+        if (!is_array($data) || array_is_list($data) && $data !== []) {
             throw new HttpException(400, 'Un objet JSON est attendu.');
         }
         return $this->json = $data;

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Auth\Csrf;
+use App\Auth\SessionManager;
 use App\Config;
 use App\Http\HttpException;
 use App\Http\Request;
@@ -13,6 +15,8 @@ $requestId = bin2hex(random_bytes(8));
 
 try {
     $request = Request::fromGlobals();
+    $request->auth = SessionManager::resolve($request);
+    Csrf::check($request);
     $router = require __DIR__ . '/../routes.php';
     $response = $router->dispatch($request);
 } catch (HttpException $e) {

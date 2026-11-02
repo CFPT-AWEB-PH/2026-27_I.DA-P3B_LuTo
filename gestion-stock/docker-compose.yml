@@ -50,6 +50,10 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      APP_URL: ${APP_URL:-}
+      AUTH_LOGIN_LINKS: ${AUTH_LOGIN_LINKS:-1}
+      SESSION_LIFETIME_DAYS: ${SESSION_LIFETIME_DAYS:-30}
+      SESSION_IDLE_DAYS: ${SESSION_IDLE_DAYS:-7}
     volumes:
       - uploads:/app/storage/uploads
     depends_on:

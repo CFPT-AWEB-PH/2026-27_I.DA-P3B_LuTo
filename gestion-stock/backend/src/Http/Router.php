@@ -9,10 +9,18 @@ final class Router
     /** @var list<array{string, string, callable(Request, array<string, string>): Response}> */
     private array $routes = [];
 
-    /** @param callable(Request, array<string, string>): Response $handler */
+    /**
+     * $pattern accepte des paramètres « {nom} » ou contraints « {nom:\d+} ».
+     *
+     * @param callable(Request, array<string, string>): Response $handler
+     */
     public function add(string $method, string $pattern, callable $handler): void
     {
-        $regex = '#^' . preg_replace('#\{(\w+)\}#', '(?P<$1>[^/]+)', $pattern) . '$#';
+        $regex = '#^' . preg_replace_callback(
+            '#\{(\w+)(?::([^}]+))?\}#',
+            static fn (array $m): string => '(?P<' . $m[1] . '>' . ($m[2] ?? '[^/]+') . ')',
+            $pattern,
+        ) . '$#';
         $this->routes[] = [strtoupper($method), $regex, $handler];
     }
 

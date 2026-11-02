@@ -19,6 +19,20 @@ final class Response
         return new self($status, $body);
     }
 
+    public static function noContent(): self
+    {
+        return new self(204);
+    }
+
+    /** Redirection vers un chemin local uniquement (pas de redirection ouverte). */
+    public static function redirect(string $path): self
+    {
+        if (!str_starts_with($path, '/') || str_starts_with($path, '//')) {
+            $path = '/';
+        }
+        return new self(302, null, ['Location' => $path]);
+    }
+
     /** @param array<string, mixed> $details */
     public static function error(int $status, string $message, array $details = []): self
     {
@@ -41,7 +55,7 @@ final class Response
         foreach ($this->headers as $name => $value) {
             header("{$name}: {$value}");
         }
-        if ($this->status !== 204) {
+        if ($this->body !== null) {
             echo json_encode($this->body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         }
     }

@@ -28,6 +28,8 @@
 	handle {
 		root * /srv/frontend
 		try_files {path} /index.html
+		# Revalidation systématique (ETag) tant que le service worker ne gère pas les versions
+		header Cache-Control "no-cache"
 		file_server
 	}
 
