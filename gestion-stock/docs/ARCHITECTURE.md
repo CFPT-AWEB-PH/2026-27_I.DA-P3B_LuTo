@@ -1,6 +1,8 @@
 # Architecture technique
 
-Statut : **Phase 1, proposition**. Certains points restent à confirmer sur le Raspberry Pi (marqués ⚠).
+Statut : **Phase 1, validée sur le matériel réel** (sauf le choix HTTPS, §6).
+
+Cible vérifiée le 2026-11-02 : Raspberry Pi 4 Model B (rév. 1.5), 4 cœurs, 1,8 Go de RAM et 1,8 Go de swap zram, Debian 13 « trixie » en 64 bits (aarch64, noyau 6.18), carte SD de 28 Go (21 Go libres), Ethernet 10.5.35.39/26 (DHCP), heure synchronisée par NTP (Europe/Zurich), accès Internet vers Google : OK. Aucun service web, base de données ni conteneur présent : pas de données à préserver.
 
 ## 1. Vue d'ensemble
 
@@ -93,8 +95,10 @@ Lecture : coque de l'application et Three.js mis en cache ; les données de l'AP
 
 | Risque | Impact | Mesure |
 |---|---|---|
-| OS 32 bits (armv7) sur le Pi ⚠ | L'image officielle MariaDB ne fournit pas d'armv7 | Vérifier `uname -m` ; en armv7, utiliser `linuxserver/mariadb` ou réinstaller un OS 64 bits |
-| Mémoire faible (Pi 3 avec 1 Go) ⚠ | Lenteur de MariaDB | Réglage `innodb_buffer_pool_size` adapté à la RAM, PHP-FPM en mode `ondemand` |
+| Architecture CPU | Vérifiée : aarch64 / arm64, donc images officielles PHP, MariaDB et Caddy disponibles | Aucune |
+| 2 Go de RAM, dont environ 350 Mo pris par le bureau graphique | Marge limitée | `innodb_buffer_pool_size=256M`, PHP-FPM `ondemand` ; désactiver le bureau graphique (`multi-user.target`) si vous êtes d'accord |
+| IP obtenue par DHCP (10.5.35.39/26) | L'adresse peut changer, ce qui casserait le DNS et l'OAuth | Réservation DHCP auprès de l'administrateur réseau ou IP fixe |
+| `sudo` demande un mot de passe | Je ne peux pas installer Docker moi-même | Installation de Docker lancée par vous, puis `cuto` ajouté au groupe `docker` |
 | Carte SD (usure, corruption) | Perte de données | Sauvegardes quotidiennes, copie hors du Pi conseillée, SSD USB recommandé |
 | HTTPS et domaine non disponibles | Ni PWA ni Google | Voir §6 |
 | GPU limité sur les vieux téléphones et tablettes | 3D saccadée | Géométries simples, rendu à la demande uniquement, pixel ratio plafonné |
