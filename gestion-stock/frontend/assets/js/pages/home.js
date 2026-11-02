@@ -28,8 +28,8 @@ export function render(view, session) {
       h('p', {}, 'Vous pouvez : ' + permissions.map((p) => LABELS[p] ?? p).join(', ') + '.'),
     ),
     h('section', { class: 'card card-muted' },
-      h('h2', {}, 'Application en cours de construction'),
-      h('p', {}, "Les comptes, rôles et permissions sont opérationnels. Les salles en 3D, les rangements, le catalogue, la recherche et les mouvements de stock arrivent dans les prochaines versions."),
+      h('h2', {}, 'Prochaines étapes'),
+      h('p', {}, "Salles en 3D, rangements, catalogue, recherche, emprunts et historique sont opérationnels. Le tableau de bord, le menu contextuel (clic droit) et l'installation en application (PWA) arrivent à l'étape suivante."),
     ),
   );
 }

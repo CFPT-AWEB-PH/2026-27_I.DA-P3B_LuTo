@@ -7,6 +7,7 @@ import {
   findFreeSpot, formatLength, fromDisplay, rotateAroundCenter, SHAPE_LABELS, toDisplay, unitInterior, UNITS,
 } from '../spatial.js';
 import { openOpeningsDialog, openRoomDialog } from './room-form.js';
+import { addDialog, formatQuantity, itemDialog, pickItem, takeDialog } from '../stock-dialogs.js';
 
 let scene = null;
 
@@ -29,6 +30,9 @@ export async function render(view, session, params) {
   const pressed = (button, on) => button.setAttribute('aria-pressed', String(on));
   const dimsButton = h('button', { class: 'btn btn-small', type: 'button', 'aria-pressed': 'false' }, 'Cotes');
   const moveButton = can('furniture.edit') && h('button', { class: 'btn btn-small', type: 'button', 'aria-pressed': 'false', title: 'Faire glisser le meuble sélectionné au sol (Maj : pas de 10 cm)' }, 'Déplacer');
+  const colorSelect = can('stock.view') && h('select', { class: 'select-small', 'aria-label': 'Couleurs des rangements' },
+    h('option', { value: 'original' }, "Couleurs : d'origine"), h('option', { value: 'fill' }, 'Couleurs : remplissage'));
+  const legend = h('div', { class: 'fill-legend', hidden: true });
   const wallSelect = h('select', { class: 'select-small', 'aria-label': 'Affichage des murs' },
     [['auto', 'Murs : auto'], ['transparent', 'Murs : transparents'], ['hidden', 'Murs : masqués'], ['solid', 'Murs : pleins']].map(([v, t]) => h('option', { value: v }, t)));
 
@@ -41,7 +45,7 @@ export async function render(view, session, params) {
         h('button', { class: 'btn btn-small', type: 'button', onclick: () => scene?.viewPreset('iso') }, 'Vue 3D'),
         h('button', { class: 'btn btn-small', type: 'button', onclick: () => scene?.viewPreset('top') }, 'Dessus'),
         h('button', { class: 'btn btn-small', type: 'button', onclick: () => scene?.viewPreset('door') }, 'Depuis la porte')),
-      h('div', { class: 'toolbar-group' }, dimsButton, wallSelect, moveButton,
+      h('div', { class: 'toolbar-group' }, dimsButton, wallSelect, colorSelect, moveButton,
         h('button', { class: 'btn btn-small', type: 'button', onclick: () => { scene?.showAll(); renderTree(); renderDetails(); } }, 'Tout afficher')),
       h('div', { class: 'toolbar-group toolbar-end' },
         can('furniture.edit') && h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: () => editUnit(null, null) }, 'Ajouter un meuble'),
@@ -53,7 +57,7 @@ export async function render(view, session, params) {
           if (result) apply(result);
         } }, 'Paramètres')),
     ),
-    tree, h('div', { class: 'editor-canvas' }, stage, hint), details,
+    tree, h('div', { class: 'editor-canvas' }, stage, hint, legend), details,
   ));
 
   // ===== Données =====
@@ -68,6 +72,7 @@ export async function render(view, session, params) {
     document.title = `${payload.room.name} · Gestion de stock`;
     if (state.selectedId !== null && !unitById(state.selectedId)) state.selectedId = null;
     scene?.setData(payload.room, payload.openings, payload.units);
+    applyColors();
     scene?.select(state.selectedId);
     renderTree();
     renderDetails();
@@ -118,6 +123,37 @@ export async function render(view, session, params) {
     scene?.setShowDimensions(on);
   });
   wallSelect.addEventListener('change', () => scene?.setWallMode(wallSelect.value));
+  colorSelect?.addEventListener('change', applyColors);
+
+  // ===== Remplissage =====
+
+  /** vide / partiel / plein, pour les rangements pouvant contenir des objets. */
+  function fillStatus(u) {
+    if (!u.can_hold_items) return null;
+    const stock = state.payload.stock ?? {};
+    const own = stock[u.id]?.quantity ?? 0;
+    if (u.capacity && own >= u.capacity) return 'full';
+    const deep = (id) => childrenOf(id).some((c) => (stock[c.id]?.quantity ?? 0) > 0 || deep(c.id));
+    return own > 0 || deep(u.id) ? 'partial' : 'empty';
+  }
+
+  function applyColors() {
+    const on = colorSelect?.value === 'fill' && state.payload?.stock;
+    legend.hidden = !on;
+    if (!on) { scene?.setColorOverrides(null); return; }
+    const colors = session.settings['fill.colors'] ?? { empty: '#9ca3af', partial: '#f59e0b', full: '#dc2626' };
+    const map = new Map();
+    for (const u of state.payload.units) {
+      const status = fillStatus(u);
+      if (status) map.set(u.id, colors[status]);
+    }
+    scene?.setColorOverrides(map);
+    clear(legend, [['empty', 'Vide'], ['partial', 'Partiellement rempli'], ['full', 'Plein (capacité atteinte)']].map(([k, t]) => {
+      const dot = h('span', { class: 'legend-dot' });
+      dot.style.background = colors[k];
+      return h('span', { class: 'legend-item' }, dot, t);
+    }));
+  }
   moveButton?.addEventListener('click', () => {
     const on = moveButton.getAttribute('aria-pressed') !== 'true';
     pressed(moveButton, on);
@@ -235,7 +271,7 @@ export async function render(view, session, params) {
       kids.length
         ? h('ul', { class: 'plain-list' }, kids.map((k) => h('li', {}, h('button', { class: 'link-btn', type: 'button', onclick: () => select(k.id, { focus: true }) }, k.name), h('span', { class: 'muted small' }, ` · ${k.type_name}`))))
         : h('p', { class: 'muted small' }, u.can_contain_units ? 'Aucun sous-rangement.' : 'Ce type ne contient pas de rangements.'),
-      u.can_hold_items && h('p', { class: 'field-hint' }, 'Les objets rangés ici apparaîtront avec la gestion du stock (prochaine étape).'),
+      u.can_hold_items && can('stock.view') && contentsSection(u),
     );
   }
 
@@ -257,6 +293,39 @@ export async function render(view, session, params) {
         h('button', { class: 'btn btn-small', type: 'button', onclick: () => patchUnit(u, rotateAroundCenter(u, u.rotation_deg + 90)) }, '⟳ 90°')),
       h('p', { class: 'field-hint' }, `Clavier dans la vue 3D : flèches (Maj : ×10), Pg préc./suiv. pour la hauteur. Unité : ${unit}.`),
     );
+  }
+
+  /** Objets rangés dans ce rangement (et ses sous-rangements), avec prise et ajout directs. */
+  function contentsSection(u) {
+    const body = h('div', {}, h('p', { class: 'muted small' }, 'Chargement…'));
+    const location = { unit_id: u.id, path: u.path };
+    const load = async () => {
+      try {
+        const { contents } = await api(`/storage-units/${u.id}/contents?deep=1`);
+        clear(body, contents.length
+          ? h('ul', { class: 'plain-list contents-list' }, contents.map((c) => h('li', { class: 'list-row' },
+            h('span', {},
+              h('a', { href: `/items/${c.item_id}` }, c.name), ' · ', h('strong', {}, formatQuantity(c.quantity, c.unit)),
+              c.unit_id !== u.id && h('div', { class: 'muted small' }, c.path.split(' › ').slice(-1)[0])),
+            can('stock.take') && h('button', { class: 'btn btn-small', type: 'button', onclick: async () => {
+              const item = { id: c.item_id, name: c.name, unit: c.unit, is_consumable: c.is_consumable };
+              if (await takeDialog(item, { unit_id: c.unit_id, path: c.path, quantity: c.quantity })) { await reload(); }
+            } }, 'Prendre'))))
+          : h('p', { class: 'muted small' }, 'Aucun objet rangé ici.'));
+      } catch (error) { showError(error); }
+    };
+    load();
+    return h('div', {},
+      h('h3', { class: 'panel-subtitle' }, 'Objets', u.capacity && ` (capacité ${formatQuantity(u.capacity)})`),
+      body,
+      h('div', { class: 'detail-actions' },
+        can('stock.add') && h('button', { class: 'btn btn-small', type: 'button', onclick: async () => {
+          const item = await pickItem('Ajouter du stock ici : choisir l\'objet');
+          if (item && await addDialog(item, location)) await reload();
+        } }, 'Ajouter du stock ici'),
+        can('items.edit') && can('stock.add') && h('button', { class: 'btn btn-small', type: 'button', onclick: async () => {
+          if (await itemDialog(null, { canAddStock: true, location: { id: u.id, path: u.path } })) await reload();
+        } }, 'Nouvel objet ici')));
   }
 
   // ===== Actions =====
@@ -329,6 +398,7 @@ export async function render(view, session, params) {
       const px = len('pos_x_mm', u?.pos_x_mm ?? 0); const py = len('pos_y_mm', u?.pos_y_mm ?? 0); const pz = len('pos_z_mm', u?.pos_z_mm ?? 0);
       const rotation = h('input', { name: 'rotation_deg', type: 'number', min: 0, max: 359, step: 1, value: u?.rotation_deg ?? 0 });
       const panel = h('input', { name: 'panel_mm', type: 'number', min: 0, max: 200, step: 1, value: u?.panel_mm ?? 0 });
+      const capacity = h('input', { name: 'capacity', type: 'number', min: 0, step: 'any', value: u?.capacity ?? '', placeholder: 'Facultatif' });
       const color = h('input', { name: 'color', type: 'color', value: u?.color ?? '#b08d5c' });
 
       const applyTypeDefaults = () => {
@@ -364,7 +434,7 @@ export async function render(view, session, params) {
             field('X', px), field(isFurniture ? 'Y (élévation)' : 'Y (hauteur)', py), field(isFurniture ? 'Z' : 'Z (depuis le fond)', pz),
             isFurniture && field('Rotation (°)', rotation)),
           spotHint),
-        h('div', { class: 'form-grid' }, field('Épaisseur des parois (mm)', panel), field('Couleur', color)),
+        h('div', { class: 'form-grid form-grid-3' }, field('Épaisseur des parois (mm)', panel), field('Couleur', color), field('Capacité (objets)', capacity, "Pour l'état « plein ».")),
         h('div', { class: 'dialog-actions' },
           h('button', { class: 'btn', type: 'button', onclick: () => close(false) }, 'Annuler'),
           h('button', { class: 'btn btn-primary', type: 'submit' }, u ? 'Enregistrer' : 'Ajouter')));
@@ -376,7 +446,7 @@ export async function render(view, session, params) {
           type_id: Number(typeSelect.value), name: name.value, label: label.value, reference: reference.value, description: description.value,
           width_mm: fromDisplay(width.value, unit), depth_mm: fromDisplay(depth.value, unit), height_mm: fromDisplay(height.value, unit),
           pos_x_mm: fromDisplay(px.value, unit), pos_y_mm: fromDisplay(py.value, unit), pos_z_mm: fromDisplay(pz.value, unit),
-          panel_mm: Number(panel.value), color: color.value,
+          panel_mm: Number(panel.value), color: color.value, capacity: capacity.value === '' ? null : Number(capacity.value),
         };
         if (isFurniture) body.rotation_deg = Number(rotation.value);
         if (!u) {

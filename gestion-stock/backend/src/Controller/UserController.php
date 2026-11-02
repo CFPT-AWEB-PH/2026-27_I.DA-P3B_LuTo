@@ -49,6 +49,17 @@ final class UserController
         return Response::json(['users' => array_map(self::format(...), $stmt->fetchAll())]);
     }
 
+    /** Liste réduite (id, nom) pour les filtres de l'historique. */
+    public static function options(Request $request): Response
+    {
+        $auth = $request->user();
+        if (!$auth->can('history.view') && !$auth->can('users.manage')) {
+            $auth->require('history.view');
+        }
+        $rows = Database::connection()->query('SELECT id, email, display_name FROM users ORDER BY display_name, email')->fetchAll();
+        return Response::json(['users' => array_map(static fn ($u) => ['id' => (int) $u['id'], 'email' => $u['email'], 'display_name' => $u['display_name']], $rows)]);
+    }
+
     public static function update(Request $request, array $params): Response
     {
         $auth = $request->requirePermission('users.manage');

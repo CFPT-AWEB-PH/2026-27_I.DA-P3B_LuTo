@@ -86,8 +86,8 @@ final class StockController
             $params[] = (int) $q['item_id'];
         }
         $stmt = Database::connection()->prepare(
-            'SELECT l.*, u.id AS user_id, u.email, u.display_name, i.name AS item_name, i.reference AS item_reference, i.unit AS item_unit
-             FROM loans l JOIN users u ON u.id = l.user_id JOIN items i ON i.id = l.item_id
+            'SELECT l.*, u.id AS user_id, u.email, u.display_name, i.name AS item_name, i.reference AS item_reference, i.unit AS item_unit, ou.room_id AS origin_room_id
+             FROM loans l JOIN users u ON u.id = l.user_id JOIN items i ON i.id = l.item_id LEFT JOIN storage_units ou ON ou.id = l.origin_unit_id
              WHERE ' . implode(' AND ', $where) . ' ORDER BY l.taken_at DESC LIMIT 500'
         );
         $stmt->execute($params);
@@ -167,7 +167,11 @@ final class StockController
             'quantity_returned' => Quantity::out($l['quantity_returned']),
             'remaining' => Quantity::out(Quantity::sub((string) $l['quantity'], (string) $l['quantity_returned'])),
             'status' => $l['status'],
-            'origin' => ['unit_id' => $l['origin_unit_id'] === null ? null : (int) $l['origin_unit_id'], 'path' => $l['origin_path']],
+            'origin' => [
+                'unit_id' => $l['origin_unit_id'] === null ? null : (int) $l['origin_unit_id'],
+                'room_id' => isset($l['origin_room_id']) ? (int) $l['origin_room_id'] : null,
+                'path' => $l['origin_path'],
+            ],
             'comment' => $l['comment'],
             'taken_at' => $l['taken_at'],
             'closed_at' => $l['closed_at'],
@@ -182,14 +186,14 @@ final class StockController
         $id = (int) $params['id'];
         $ids = ($request->query['deep'] ?? '') === '1' ? [$id, ...ItemController::descendants($pdo, $id)] : [$id];
         $stmt = $pdo->prepare(
-            'SELECT s.item_id, s.unit_id, s.quantity, i.name, i.reference, i.unit, i.min_quantity, u.path_text
+            'SELECT s.item_id, s.unit_id, s.quantity, i.name, i.reference, i.unit, i.min_quantity, i.is_consumable, u.path_text
              FROM stock_levels s JOIN items i ON i.id = s.item_id JOIN storage_units u ON u.id = s.unit_id
              WHERE s.quantity > 0 AND s.unit_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY i.name'
         );
         $stmt->execute($ids);
         return Response::json(['contents' => array_map(static fn ($r) => [
             'item_id' => (int) $r['item_id'], 'unit_id' => (int) $r['unit_id'], 'name' => $r['name'], 'reference' => $r['reference'],
-            'unit' => $r['unit'], 'quantity' => Quantity::out($r['quantity']), 'path' => $r['path_text'],
+            'unit' => $r['unit'], 'is_consumable' => (bool) $r['is_consumable'], 'quantity' => Quantity::out($r['quantity']), 'path' => $r['path_text'],
         ], $stmt->fetchAll())]);
     }
 }

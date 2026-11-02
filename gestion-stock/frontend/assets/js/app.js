@@ -12,16 +12,29 @@ import * as allowlistPage from './pages/allowlist.js';
 import * as roomsPage from './pages/rooms.js';
 import * as roomEditorPage from './pages/room-editor.js';
 import * as storageTypesPage from './pages/storage-types.js';
+import * as itemsPage from './pages/items.js';
+import * as itemPage from './pages/item.js';
+import * as loansPage from './pages/loans.js';
+import * as movementsPage from './pages/movements.js';
+import * as catalogAdminPage from './pages/catalog-admin.js';
+import * as settingsPage from './pages/settings.js';
+import { searchBox } from './search-box.js';
 
 // nav: false = page accessible mais absente du menu ; « :param » = segment variable
 const routes = [
   { path: '/', label: 'Accueil', page: homePage },
+  { path: '/items', label: 'Objets', page: itemsPage, permission: 'stock.view' },
+  { path: '/items/:id', label: 'Objet', page: itemPage, permission: 'stock.view', nav: false, menu: '/items' },
   { path: '/rooms', label: 'Salles', page: roomsPage, permission: 'rooms.view' },
   { path: '/rooms/:id', label: 'Salle', page: roomEditorPage, permission: 'rooms.view', nav: false, menu: '/rooms' },
+  { path: '/loans', label: 'Emprunts et retours', page: loansPage, permission: 'stock.view' },
+  { path: '/movements', label: 'Historique', page: movementsPage, permission: 'history.view' },
+  { path: '/admin/catalog', label: 'Catégories et champs', page: catalogAdminPage, permission: 'items.edit' },
   { path: '/admin/storage-types', label: 'Types de rangement', page: storageTypesPage, permission: 'storage.edit' },
   { path: '/admin/users', label: 'Utilisateurs', page: usersPage, permission: 'users.manage' },
   { path: '/admin/roles', label: 'Rôles et permissions', page: rolesPage, permission: 'roles.manage' },
   { path: '/admin/allowlist', label: "Liste d'autorisation", page: allowlistPage, permission: 'users.manage' },
+  { path: '/admin/settings', label: 'Paramètres', page: settingsPage, permission: 'settings.manage' },
 ];
 
 function matchRoute(pathname) {
@@ -39,6 +52,7 @@ let currentPage = null;
 const root = document.getElementById('root');
 const session = {
   me: null,
+  settings: {},
   can(permission) {
     return this.me?.permissions.includes(permission) ?? false;
   },
@@ -50,10 +64,22 @@ export function navigate(path, { replace = false } = {}) {
   render();
 }
 
+/** Paramètres partagés (nom de l'application, couleurs de remplissage). */
+export async function loadSettings() {
+  session.settings = (await api('/settings')).settings;
+  const brand = document.querySelector('.brand');
+  if (brand) brand.textContent = appName();
+}
+
+function appName() {
+  return session.settings['app.name'] || 'Gestion de stock';
+}
+
 async function loadSession() {
   try {
     session.me = await api('/auth/me');
     setCsrfToken(session.me.csrf_token);
+    await loadSettings();
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 401) throw error;
     session.me = null;
@@ -95,7 +121,7 @@ function render() {
     view.append(h('h1', {}, 'Accès refusé'), h('p', {}, "Votre rôle ne permet pas d'accéder à cette page."));
     return;
   }
-  document.title = `${route.label} · Gestion de stock`;
+  document.title = `${route.label} · ${appName()}`;
   route.page.render(view, session, match.params);
   view.focus({ preventScroll: true });
 }
@@ -119,6 +145,7 @@ function renderShell() {
         if (error.status !== 401) return showError(error);
       }
       session.me = null;
+      view = null;
       navigate('/login', { replace: true });
     },
   }, 'Déconnexion');
@@ -132,7 +159,8 @@ function renderShell() {
   clear(root,
     h('header', { class: 'topbar' },
       toggle,
-      h('a', { class: 'brand', href: '/' }, 'Gestion de stock'),
+      h('a', { class: 'brand', href: '/' }, appName()),
+      session.can('stock.view') && searchBox(navigate),
       h('div', { class: 'user-menu' },
         h('span', { class: 'user-name' }, user.display_name || user.email),
         h('span', { class: 'badge' }, user.role.name),
@@ -160,6 +188,7 @@ window.addEventListener('popstate', render);
 onUnauthorized(() => {
   if (!session.me) return;
   session.me = null;
+  view = null;
   navigate('/login', { replace: true });
 });
 

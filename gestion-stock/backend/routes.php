@@ -27,6 +27,7 @@ $router->add('GET', '/auth/link', [AuthController::class, 'link']);
 $router->add('POST', '/auth/logout', [AuthController::class, 'logout']);
 
 $router->add('GET', '/users', [UserController::class, 'index']);
+$router->add('GET', '/users/options', [UserController::class, 'options']);
 $router->add('PATCH', '/users/{id:\d+}', [UserController::class, 'update']);
 
 $router->add('GET', '/roles', [RoleController::class, 'index']);

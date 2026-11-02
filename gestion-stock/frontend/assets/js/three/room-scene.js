@@ -107,6 +107,16 @@ export class RoomScene {
     return this.units.find((u) => u.id === id) ?? null;
   }
 
+  /** Couleurs imposées par rangement (ex. état de remplissage) ; null rétablit les couleurs d'origine. */
+  setColorOverrides(map) {
+    this.colorOverrides = map;
+    if (!this.room) return;
+    this.clearGroup(this.unitsGroup);
+    this.buildUnits();
+    this.refreshOverlay();
+    this.requestRender();
+  }
+
   // ===== Construction de la salle =====
 
   buildRoom() {
@@ -274,7 +284,8 @@ export class RoomScene {
     return this.materials.get(key);
   }
 
-  buildPanels(u, group) {
+  buildPanels(source, group) {
+    const u = this.colorOverrides?.has(source.id) ? { ...source, color: this.colorOverrides.get(source.id) } : source;
     const { width: w, height: h, depth: d } = { width: u.width_mm, height: u.height_mm, depth: u.depth_mm };
     const p = u.panel_mm;
     const add = (x0, y0, z0, x1, y1, z1, mat = this.material(u.color)) => {
