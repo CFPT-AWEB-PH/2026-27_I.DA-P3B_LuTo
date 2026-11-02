@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Space;
 
 use App\Http\HttpException;
+use App\Stock\ItemIndex;
+use App\Stock\Quantity;
 use PDO;
 
 /** Lecture des salles et rangements, et mise à jour des chemins utilisés par la recherche. */
@@ -82,6 +84,8 @@ final class SpaceRepository
                 $update->execute([$path, $id]);
             }
         }
+        // Les chemins et étiquettes font partie du texte de recherche des objets rangés ici
+        ItemIndex::reindexRoom($pdo, $roomId);
     }
 
     /** @param array<string, mixed> $room @return array<string, mixed> */
@@ -121,6 +125,7 @@ final class SpaceRepository
             'pos_z_mm' => (int) $u['pos_z_mm'],
             'rotation_deg' => (int) $u['rotation_deg'],
             'panel_mm' => (int) $u['panel_mm'],
+            'capacity' => Quantity::out($u['capacity']),
             'color' => $u['color'],
             'sort_order' => (int) $u['sort_order'],
             'path' => $u['path_text'],

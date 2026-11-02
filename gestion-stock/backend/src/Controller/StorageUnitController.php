@@ -90,6 +90,9 @@ final class StorageUnitController
             SpaceValidator::unit($pdo, $room, $unit, $type, $parent);
             SpaceValidator::childrenFit($pdo, $unit, $type, $room['display_unit']);
             self::assertReferenceFree($pdo, $unit['reference'], $id);
+            if (!(int) $type['can_hold_items'] && self::stockCount($pdo, [$id]) > 0) {
+                Input::fail('type_id', 'Ce type ne peut pas contenir d\'objets, or ce rangement en contient.');
+            }
 
             unset($unit['id']);
             $unit['parent_id'] = $parentId;
@@ -97,7 +100,7 @@ final class StorageUnitController
             if ($changes !== []) {
                 $set = implode(', ', array_map(static fn (string $c) => "{$c} = ?", array_keys($changes)));
                 $pdo->prepare("UPDATE storage_units SET {$set} WHERE id = ?")->execute([...array_values($changes), $id]);
-                if (isset($changes['name']) || array_key_exists('parent_id', $changes)) {
+                if (array_intersect_key($changes, array_flip(['name', 'parent_id', 'label', 'reference'])) !== []) {
                     Repo::rebuildPaths($pdo, (int) $room['id']);
                 }
             }
@@ -119,7 +122,11 @@ final class StorageUnitController
             $unit = Repo::unit($pdo, $id);
             Repo::room($pdo, (int) $unit['room_id'], true);
             self::requireEditRight($auth, $unit['parent_id'] === null ? null : (int) $unit['parent_id']);
-            $descendants = count(self::descendantIds($pdo, $id));
+            $subtree = [$id, ...self::descendantIds($pdo, $id)];
+            if (($count = self::stockCount($pdo, $subtree)) > 0) {
+                throw new HttpException(409, "« {$unit['name']} » contient encore {$count} objet(s) en stock. Déplacez-les ou corrigez le stock avant de le supprimer.");
+            }
+            $descendants = count($subtree) - 1;
             $pdo->prepare('DELETE FROM storage_units WHERE id = ?')->execute([$id]);
             return ['name' => $unit['name'], 'room_id' => (int) $unit['room_id'], 'descendants_deleted' => $descendants];
         });
@@ -187,6 +194,21 @@ final class StorageUnitController
         return Response::json(['created' => count($created)], 201);
     }
 
+    /**
+     * Nombre d'objets différents en stock dans ces rangements.
+     *
+     * @param list<int> $unitIds
+     */
+    public static function stockCount(PDO $pdo, array $unitIds): int
+    {
+        if ($unitIds === []) {
+            return 0;
+        }
+        $stmt = $pdo->prepare('SELECT COUNT(DISTINCT item_id) FROM stock_levels WHERE quantity > 0 AND unit_id IN (' . implode(',', array_fill(0, count($unitIds), '?')) . ')');
+        $stmt->execute($unitIds);
+        return (int) $stmt->fetchColumn();
+    }
+
     private static function requireEditRight(AuthContext $auth, ?int $parentId): void
     {
         $auth->require($parentId === null ? 'furniture.edit' : 'storage.edit');
@@ -213,6 +235,7 @@ final class StorageUnitController
             'pos_z_mm' => [static fn () => $in->int('pos_z_mm', -200_000, 200_000), 0],
             'rotation_deg' => [static fn () => $in->int('rotation_deg', 0, 359), 0],
             'panel_mm' => [static fn () => $in->int('panel_mm', 0, 200), (int) $type['default_panel_mm']],
+            'capacity' => [static fn () => $in->optionalQuantity('capacity'), false],
             'color' => [static fn () => $in->color('color'), $type['default_color']],
             'sort_order' => [static fn () => $in->int('sort_order', -100_000, 100_000), 0],
         ];
@@ -221,6 +244,7 @@ final class StorageUnitController
             $unit[$key] = match (true) {
                 $in->has($key) => $read(),
                 $current !== null && $key !== 'type_id' => is_int($default) ? (int) $current[$key] : $current[$key],
+                $default === false => null,
                 $default !== null => $default,
                 default => $read(),
             };

@@ -12,6 +12,7 @@ use App\Http\Request;
 use App\Http\Response;
 use App\Space\SpaceRepository as Repo;
 use App\Space\SpaceValidator;
+use App\Stock\Quantity;
 use PDO;
 
 final class RoomController
@@ -38,7 +39,7 @@ final class RoomController
     public static function show(Request $request, array $params): Response
     {
         $request->requirePermission('rooms.view');
-        return Response::json(self::payload(Database::connection(), (int) $params['id']));
+        return Response::json(self::payload(Database::connection(), (int) $params['id'], $request->auth?->can('stock.view') ?? false));
     }
 
     public static function create(Request $request): Response
@@ -57,7 +58,7 @@ final class RoomController
         });
 
         Audit::log($auth->userId, 'room.created', 'room', $id, ['name' => $room['name']], $request->ip);
-        return Response::json(self::payload(Database::connection(), $id), 201);
+        return Response::json(self::payload(Database::connection(), $id, $request->auth?->can('stock.view') ?? false), 201);
     }
 
     public static function update(Request $request, array $params): Response
@@ -78,7 +79,7 @@ final class RoomController
             if ($changes !== []) {
                 $set = implode(', ', array_map(static fn (string $c) => "{$c} = ?", array_keys($changes)));
                 $pdo->prepare("UPDATE rooms SET {$set} WHERE id = ?")->execute([...array_values(self::toDb($changes)), $id]);
-                if (isset($changes['name'])) {
+                if (isset($changes['name']) || isset($changes['label'])) {
                     Repo::rebuildPaths($pdo, $id);
                 }
             }
@@ -88,7 +89,7 @@ final class RoomController
         if ($changes !== []) {
             Audit::log($auth->userId, 'room.updated', 'room', $id, $changes, $request->ip);
         }
-        return Response::json(self::payload(Database::connection(), $id));
+        return Response::json(self::payload(Database::connection(), $id, $request->auth?->can('stock.view') ?? false));
     }
 
     public static function delete(Request $request, array $params): Response
@@ -97,6 +98,12 @@ final class RoomController
         $id = (int) $params['id'];
         $summary = Database::transaction(static function (PDO $pdo) use ($id): array {
             $room = Repo::room($pdo, $id, true);
+            $ids = $pdo->prepare('SELECT id FROM storage_units WHERE room_id = ?');
+            $ids->execute([$id]);
+            $unitIds = array_map('intval', $ids->fetchAll(PDO::FETCH_COLUMN));
+            if (($items = StorageUnitController::stockCount($pdo, $unitIds)) > 0) {
+                throw new HttpException(409, "La salle contient encore {$items} objet(s) en stock. Déplacez-les ou corrigez le stock avant de la supprimer.");
+            }
             $count = $pdo->prepare('SELECT COUNT(*) FROM storage_units WHERE room_id = ?');
             $count->execute([$id]);
             $pdo->prepare('DELETE FROM rooms WHERE id = ?')->execute([$id]);
@@ -156,7 +163,7 @@ final class RoomController
         });
 
         Audit::log($auth->userId, 'room.duplicated', 'room', $newId, ['source_id' => $sourceId], $request->ip);
-        return Response::json(self::payload(Database::connection(), $newId), 201);
+        return Response::json(self::payload(Database::connection(), $newId, $request->auth?->can('stock.view') ?? false), 201);
     }
 
     public static function createOpening(Request $request, array $params): Response
@@ -175,7 +182,7 @@ final class RoomController
         });
 
         Audit::log($auth->userId, 'opening.created', 'room', $roomId, ['opening_id' => $id], $request->ip);
-        return Response::json(self::payload(Database::connection(), $roomId), 201);
+        return Response::json(self::payload(Database::connection(), $roomId, $request->auth?->can('stock.view') ?? false), 201);
     }
 
     public static function updateOpening(Request $request, array $params): Response
@@ -195,7 +202,7 @@ final class RoomController
         });
 
         Audit::log($auth->userId, 'opening.updated', 'room', $roomId, ['opening_id' => $id], $request->ip);
-        return Response::json(self::payload(Database::connection(), $roomId));
+        return Response::json(self::payload(Database::connection(), $roomId, $request->auth?->can('stock.view') ?? false));
     }
 
     public static function deleteOpening(Request $request, array $params): Response
@@ -206,7 +213,7 @@ final class RoomController
         $opening = self::findOpening($pdo, $id);
         $pdo->prepare('DELETE FROM room_openings WHERE id = ?')->execute([$id]);
         Audit::log($auth->userId, 'opening.deleted', 'room', (int) $opening['room_id'], ['opening_id' => $id], $request->ip);
-        return Response::json(self::payload($pdo, (int) $opening['room_id']));
+        return Response::json(self::payload($pdo, (int) $opening['room_id'], $request->auth?->can('stock.view') ?? false));
     }
 
     private const COLUMNS = [
@@ -313,12 +320,26 @@ final class RoomController
     }
 
     /** @return array<string, mixed> */
-    public static function payload(PDO $pdo, int $id): array
+    public static function payload(PDO $pdo, int $id, bool $withStock): array
     {
-        return [
+        $payload = [
             'room' => Repo::formatRoom(Repo::room($pdo, $id)),
             'openings' => array_map([Repo::class, 'formatOpening'], Repo::openings($pdo, $id)),
             'units' => array_map([Repo::class, 'formatUnit'], Repo::units($pdo, $id)),
         ];
+        // Stock direct de chaque rangement : quantité totale et nombre d'objets (état de remplissage)
+        if ($withStock) {
+            $stmt = $pdo->prepare(
+                'SELECT s.unit_id, SUM(s.quantity) AS quantity, COUNT(*) AS items
+                 FROM stock_levels s JOIN storage_units u ON u.id = s.unit_id
+                 WHERE u.room_id = ? AND s.quantity > 0 GROUP BY s.unit_id'
+            );
+            $stmt->execute([$id]);
+            $payload['stock'] = [];
+            foreach ($stmt->fetchAll() as $row) {
+                $payload['stock'][(string) $row['unit_id']] = ['quantity' => Quantity::out($row['quantity']), 'items' => (int) $row['items']];
+            }
+        }
+        return $payload;
     }
 }

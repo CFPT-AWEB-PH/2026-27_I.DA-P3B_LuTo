@@ -110,6 +110,30 @@ final class Input
         return $points;
     }
 
+    /**
+     * Quantité décimale (3 décimales au plus), renvoyée sous forme de chaîne exacte pour SQL.
+     */
+    public function quantity(string $key, bool $allowZero = false): string
+    {
+        $value = $this->data[$key] ?? null;
+        if (!is_int($value) && !is_float($value)) {
+            self::fail($key, 'Quantité numérique attendue.');
+        }
+        if ($value < 0 || (!$allowZero && $value == 0) || $value > 999_999_999) {
+            self::fail($key, $allowZero ? 'La quantité ne peut pas être négative.' : 'La quantité doit être supérieure à zéro.');
+        }
+        $thousandths = $value * 1000;
+        if (abs($thousandths - round($thousandths)) > 1e-6) {
+            self::fail($key, '3 décimales au maximum.');
+        }
+        return number_format(round($thousandths) / 1000, 3, '.', '');
+    }
+
+    public function optionalQuantity(string $key, bool $allowZero = false): ?string
+    {
+        return ($this->data[$key] ?? null) === null ? null : $this->quantity($key, $allowZero);
+    }
+
     /** Entier facultatif : $default si absent ou null. */
     public function optionalInt(string $key, ?int $default, int $min = PHP_INT_MIN, int $max = PHP_INT_MAX): ?int
     {

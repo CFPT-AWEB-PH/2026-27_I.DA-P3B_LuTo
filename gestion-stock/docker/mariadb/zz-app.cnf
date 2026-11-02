@@ -8,3 +8,6 @@ innodb_flush_log_at_trx_commit = 1
 max_connections = 50
 performance_schema = OFF
 skip-name-resolve
+# Recherche plein texte : mots de 2 lettres indexés (ex. « M4 »), pas de mots vides anglais
+innodb_ft_min_token_size = 2
+innodb_ft_enable_stopword = OFF

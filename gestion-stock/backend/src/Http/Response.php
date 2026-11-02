@@ -6,6 +6,8 @@ namespace App\Http;
 
 final class Response
 {
+    private ?string $raw = null;
+
     /** @param array<string, string> $headers */
     public function __construct(
         public readonly int $status = 200,
@@ -22,6 +24,14 @@ final class Response
     public static function noContent(): self
     {
         return new self(204);
+    }
+
+    /** Contenu binaire (photo) avec son type MIME. */
+    public static function binary(string $content, string $contentType, string $cacheControl = 'private, max-age=86400'): self
+    {
+        $response = new self(200, null, ['Content-Type' => $contentType, 'Cache-Control' => $cacheControl, 'X-Content-Type-Options' => 'nosniff']);
+        $response->raw = $content;
+        return $response;
     }
 
     /** Redirection vers un chemin local uniquement (pas de redirection ouverte). */
@@ -49,13 +59,17 @@ final class Response
     public function send(): void
     {
         http_response_code($this->status);
-        header('Content-Type: application/json; charset=utf-8');
-        // Les réponses de l'API ne doivent jamais être mises en cache (données authentifiées)
-        header('Cache-Control: no-store');
+        if ($this->raw === null) {
+            header('Content-Type: application/json; charset=utf-8');
+            // Les réponses de l'API ne doivent jamais être mises en cache (données authentifiées)
+            header('Cache-Control: no-store');
+        }
         foreach ($this->headers as $name => $value) {
             header("{$name}: {$value}");
         }
-        if ($this->body !== null) {
+        if ($this->raw !== null) {
+            echo $this->raw;
+        } elseif ($this->body !== null) {
             echo json_encode($this->body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         }
     }
