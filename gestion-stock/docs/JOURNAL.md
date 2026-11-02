@@ -105,3 +105,44 @@ Vérifié dans le navigateur : page de connexion, messages d'erreur, redirection
 - Le contenu en objets des rangements, leur taux de remplissage et la légende des couleurs arrivent avec la phase 5 (stock).
 - Le menu contextuel (clic droit) est prévu en phase 6 : pour l'instant, le clic droit dans la vue 3D déplace la caméra.
 - L'éditeur réel (avec authentification) n'a pas été ouvert dans un navigateur par moi : le serveur a été testé par l'API, l'interface par le banc local.
+
+## Phase 5 : stock, recherche, emprunts et historique (2026-11-02)
+
+**Fait**
+- Migration `0004_stock` : catégories, champs personnalisés (texte, nombre, date, oui/non, liste ; globaux ou par catégorie, obligatoires ou non), objets (référence unique, unité, stock minimal, consommable, photo), stock par emplacement (`CHECK quantity >= 0`), emprunts, journal des mouvements immuable (chemins d'origine et de destination copiés), capacité des rangements, couleurs de remplissage paramétrables.
+- Opérations de stock : prise (emprunt à rendre, ou consommation pour les consommables), retour partiel ou total vers l'origine ou un autre rangement, réapprovisionnement, correction (motif obligatoire, avant et après), déplacement. Chacune est **atomique** : verrou de la ligne de l'objet, mise à jour conditionnelle (`quantity >= ?`), journalisation dans la même transaction.
+- Recherche côté serveur :
+  - index FULLTEXT (préfixes, mots de 2 lettres, sans mots vides) sur un texte agrégé : nom, référence, description, catégorie, champs recherchables, chemin complet, étiquettes et références des rangements, étiquette de la salle ;
+  - complétée par des LIKE sur le nom et la référence ;
+  - pertinence : référence exacte, puis début de référence ou de nom, puis score plein texte ;
+  - filtres par catégorie, salle, rangement (avec sous-rangements) et stock bas ; tri ; pagination ; suggestions ;
+  - index mis à jour à chaque renommage de salle, de rangement ou de catégorie.
+- Photos : décodées puis réencodées en WebP (1200 px maximum, 5 Mo et 40 mégapixels maximum à l'envoi), servies uniquement aux utilisateurs connectés.
+- Protection des données : suppression refusée pour un rangement ou une salle qui contient encore du stock, et pour un objet en stock ou en prêt. Un objet qui a un historique est archivé, pas supprimé.
+- Interface :
+  - recherche globale dans la barre supérieure (suggestions, clavier, raccourcis / et Ctrl+K) ;
+  - catalogue (filtres, tri, emplacements exacts, « Voir en 3D ») et fiche objet ;
+  - fenêtres de prise, retour, ajout, correction et déplacement ;
+  - pages emprunts et retours, historique filtrable (utilisateur, salle, type, période), catégories et champs, paramètres (nom, couleurs de remplissage) ;
+  - dans l'éditeur 3D : objets du rangement sélectionné (prise directe, ajout de stock, nouvel objet sur place) et mode couleurs de remplissage avec légende (vide, partiel, plein si la capacité est atteinte).
+
+**Tests**
+- `stock_test.php` : **86 vérifications, 0 échec** :
+  - scénario C : recherche par 16 critères (nom, préfixe, référence exacte ou partielle, description, catégorie, salle, étiquettes, armoire, tiroir, boîte, compartiment, champ personnalisé, sans accents, majuscules), quantité et emplacement exacts, lien vers la 3D ;
+  - scénario D : prise de 4, refus au-delà du stock, retour partiel de 1,5, reste de 2,5 à rendre, retour du reste ailleurs, historique complet ;
+  - corrections et déplacements tracés (qui, avant, après, anciens et nouveaux emplacements) ;
+  - **20 prises simultanées sur un stock de 6** : exactement 6 acceptées et 14 refusées, stock à 0, jamais négatif ;
+  - photos (fichier non image refusé, réencodage WebP) ;
+  - **5000 objets** : recherches en 65 à 265 ms, requête HTTP complète incluse, sur le Pi.
+- Non-régression : `auth_test` 58 et `spaces_test` 80 vérifications, 0 échec. Test de restauration réussi (22 tables).
+- Interface vérifiée sur le banc local (fausse API) : catalogue, suggestions et navigation au clavier, fiche, prise refusée puis acceptée, couleurs de remplissage et contenu dans la 3D.
+
+**Problèmes trouvés et corrigés**
+- La limitation des tentatives de connexion comptait aussi les connexions réussies. Deux séries de tests en 10 minutes bloquaient alors des comptes légitimes. Elle ne compte plus que les **échecs** (test ajouté).
+- Dans le test de volume, une variable écrasait le compteur de vérifications.
+
+**Limites connues**
+- L'orientation EXIF des photos de téléphone n'est pas appliquée (extension `exif` absente) : une photo peut apparaître tournée. Il suffit de la réenvoyer, ou d'ajouter l'extension plus tard.
+- Pas d'export CSV de l'historique pour l'instant.
+- Le mode hors ligne (file d'attente) n'est pas fait : prévu avec la PWA en phase 6. Aucune opération de stock n'est simulée hors ligne.
+- Données réelles constatées : la salle « test » créée par l'utilisateur (conservée).
