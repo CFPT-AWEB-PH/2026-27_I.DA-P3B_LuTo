@@ -37,7 +37,8 @@ services:
       dockerfile: docker/php/Dockerfile
       args:
         APP_VERSION: ${APP_VERSION:-dev}
-    image: gestion_stock-php:${APP_VERSION:-dev}
+    # "current" = dernière version validée par activate-release.sh / rollback.sh
+    image: gestion_stock-php:${APP_VERSION:-current}
     restart: unless-stopped
     environment:
       APP_ENV: ${APP_ENV:-production}
@@ -68,7 +69,7 @@ services:
     build:
       context: .
       dockerfile: docker/caddy/Dockerfile
-    image: gestion_stock-caddy:${APP_VERSION:-dev}
+    image: gestion_stock-caddy:${APP_VERSION:-current}
     restart: unless-stopped
     ports:
       - "80:80"

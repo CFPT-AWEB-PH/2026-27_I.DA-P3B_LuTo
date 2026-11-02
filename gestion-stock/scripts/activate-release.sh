@@ -43,8 +43,13 @@ grep -q '"status":"ok"' <<< "$health" || die "état inattendu"
 
 [[ -n "$previous" ]] && echo "$previous" > "$dir/.previous"
 ln -sfn "$dir" "$BASE/current"
+tag_current "$release"
 
-# Conserver les 5 dernières versions pour pouvoir revenir en arrière
-ls -1dt "$BASE"/releases/*/ | tail -n +6 | xargs -r rm -rf
+# Conserver les 5 dernières versions (code et images) pour pouvoir revenir en arrière
+ls -1dt "$BASE"/releases/*/ | tail -n +6 | while read -r old; do
+    old_release=$(basename "$old")
+    docker image rm "gestion_stock-php:$old_release" "gestion_stock-caddy:$old_release" >/dev/null 2>&1 || true
+    rm -rf "$old"
+done
 
 log "Version $release active."

@@ -24,5 +24,6 @@ for service in mariadb php caddy backup; do
 done
 curl -fsS --max-time 10 http://127.0.0.1/api/health; echo
 ln -sfn "$dir" "$BASE/current"
+tag_current "$target"
 log "Version $target active. Sauvegardes disponibles :"
 ls -1t "$SHARED/backups/manual/" | head -5

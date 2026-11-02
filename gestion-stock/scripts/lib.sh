@@ -23,6 +23,14 @@ wait_healthy() {
     die "le service $service n'est pas opérationnel (état : ${status:-absent})"
 }
 
+# Désigne les images d'une version comme "current" (utilisées par les commandes docker compose manuelles)
+tag_current() {
+    local release=$1
+    for image in gestion_stock-php gestion_stock-caddy; do
+        docker tag "$image:$release" "$image:current"
+    done
+}
+
 # Exécute une commande SQL en root dans le conteneur MariaDB, sans exposer le mot de passe dans ps
 db_root() {
     docker compose exec -T mariadb sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -uroot "$@"' sh "$@"
