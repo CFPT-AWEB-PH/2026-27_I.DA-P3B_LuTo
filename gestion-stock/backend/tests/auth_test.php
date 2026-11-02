@@ -13,33 +13,12 @@ use Tests\ApiClient;
 
 require '/app/bootstrap.php';
 require __DIR__ . '/lib/ApiClient.php';
+require __DIR__ . '/lib/assert.php';
 
 $adminEmail = getenv('TEST_ADMIN_EMAIL') ?: exit("TEST_ADMIN_EMAIL manquant\n");
 $base = getenv('TEST_BASE_URL') ?: 'http://caddy';
 $student = 'eleve.test@test.invalid';
 $outsider = 'intrus@test.invalid';
-
-$failures = 0;
-$count = 0;
-function check(string $label, bool $ok, mixed $detail = null): void
-{
-    global $failures, $count;
-    $count++;
-    if ($ok) {
-        echo "  ok    {$label}\n";
-        return;
-    }
-    $failures++;
-    echo "  ÉCHEC {$label}" . ($detail === null ? '' : ' -> ' . json_encode($detail, JSON_UNESCAPED_UNICODE)) . "\n";
-}
-function status(string $label, array $response, int $expected): void
-{
-    check("{$label} [{$expected}]", $response['status'] === $expected, ['status' => $response['status'], 'body' => $response['body']]);
-}
-function location(array $response): string
-{
-    return $response['headers']['location'][0] ?? '';
-}
 
 function cleanup(): void
 {
@@ -158,5 +137,4 @@ foreach (['auth.login', 'auth.denied', 'auth.logout', 'role.created', 'role.dele
 }
 
 cleanup();
-echo "\n{$count} vérifications, {$failures} échec(s).\n";
-exit($failures === 0 ? 0 : 1);
+finish();

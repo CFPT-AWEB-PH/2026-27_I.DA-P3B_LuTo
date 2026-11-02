@@ -27,6 +27,9 @@ final class Database
                 PDO::ATTR_TIMEOUT => 5,
                 PDO::MYSQL_ATTR_INIT_COMMAND => "SET time_zone = '+00:00', sql_mode = 'STRICT_ALL_TABLES,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION,ERROR_FOR_DIVISION_BY_ZERO'",
             ]);
+            // READ COMMITTED : après l'obtention d'un verrou (SELECT … FOR UPDATE), les lectures suivantes
+            // voient les dernières données validées, au lieu d'un instantané pris avant le verrou.
+            self::$pdo->exec('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED');
         }
         return self::$pdo;
     }

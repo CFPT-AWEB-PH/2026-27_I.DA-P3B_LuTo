@@ -66,6 +66,56 @@ final class Input
         return $value;
     }
 
+    /** @param list<string> $allowed */
+    public function enum(string $key, array $allowed): string
+    {
+        $value = $this->data[$key] ?? null;
+        if (!is_string($value) || !in_array($value, $allowed, true)) {
+            self::fail($key, 'Valeur non autorisée.');
+        }
+        return $value;
+    }
+
+    /** Couleur « #rrggbb », renvoyée en minuscules. */
+    public function color(string $key): string
+    {
+        $value = $this->data[$key] ?? null;
+        if (!is_string($value) || !preg_match('/^#[0-9a-fA-F]{6}$/', $value)) {
+            self::fail($key, 'Couleur au format #rrggbb attendue.');
+        }
+        return strtolower($value);
+    }
+
+    /**
+     * Liste de points [[x, z], …] en entiers.
+     *
+     * @return list<array{int, int}>
+     */
+    public function points(string $key, int $minPoints, int $maxPoints, int $min, int $max): array
+    {
+        $value = $this->data[$key] ?? null;
+        if (!is_array($value) || !array_is_list($value) || count($value) < $minPoints || count($value) > $maxPoints) {
+            self::fail($key, "Entre {$minPoints} et {$maxPoints} points attendus.");
+        }
+        $points = [];
+        foreach ($value as $i => $point) {
+            if (!is_array($point) || !array_is_list($point) || count($point) !== 2 || !is_int($point[0]) || !is_int($point[1])) {
+                self::fail($key, 'Point n° ' . ($i + 1) . ' invalide.');
+            }
+            if (min($point) < $min || max($point) > $max) {
+                self::fail($key, 'Point n° ' . ($i + 1) . " hors limites ({$min} à {$max}).");
+            }
+            $points[] = [$point[0], $point[1]];
+        }
+        return $points;
+    }
+
+    /** Entier facultatif : $default si absent ou null. */
+    public function optionalInt(string $key, ?int $default, int $min = PHP_INT_MIN, int $max = PHP_INT_MAX): ?int
+    {
+        return ($this->data[$key] ?? null) === null ? $default : $this->int($key, $min, $max);
+    }
+
     /** @return list<string> */
     public function stringList(string $key, int $maxItems, int $maxLength): array
     {
