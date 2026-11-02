@@ -68,3 +68,40 @@ Vérifié dans le navigateur : page de connexion, messages d'erreur, redirection
 **Non vérifié** : l'affichage des pages d'administration une fois connecté. Je ne me suis pas connecté moi-même dans le navigateur ; à tester par l'utilisateur avec un lien de connexion.
 
 **Reporté à la fin** : HTTPS et connexion Google (OpenID Connect).
+
+## Phase 4 : salles en 3D, armoires et rangements (2026-11-02)
+
+**Fait**
+- Migration `0003_spaces` : salles (contour polygonal, porte de référence, apparence), ouvertures, 8 types de rangement fournis (armoire, étagère, tiroir, compartiment, boîte, bac, séparateur, case) et types personnalisés, rangements imbriqués sans limite de profondeur, chemin complet tenu à jour (« Salle › Armoire › Tiroir › Boîte › Case ») pour la recherche de la phase 5.
+- API : salles (création, modification, duplication, suppression), ouvertures, rangements (création, modification, déplacement vers un autre parent, suppression en cascade), génération d'une grille intérieure (étagères, compartiments, cases), types de rangement. Permissions : `rooms.view`, `rooms.edit`, `furniture.edit` (meubles), `storage.edit` (rangements internes et types).
+- Validation spatiale côté serveur (voir ARCHITECTURE §3) et verrou de salle avec isolation READ COMMITTED : deux écritures simultanées ne peuvent pas créer de chevauchement.
+- Éditeur 3D (Three.js 0.170.0 local, rendu à la demande) :
+  - murs découpés autour des ouvertures, fenêtres vitrées, murs côté caméra masqués automatiquement (ou transparents, masqués, pleins) ;
+  - porte de référence et origine signalées ; revêtements de sol générés ;
+  - sélection au clic ou dans l'arborescence, cotes de la salle et du rangement sélectionné, masquage temporaire ;
+  - tiroirs qui s'ouvrent (double-clic) ; vues 3D, dessus et depuis la porte ;
+  - déplacement des meubles à la souris (pas de 1 cm, ou 10 cm avec Maj ; contour rouge si la position est impossible) ;
+  - ajustement fin par boutons ou clavier, rotation de ±90°, emplacement libre proposé à la création ;
+  - mise en évidence par l'adresse `?unit=` : ouverture des parents et cadrage.
+- Fenêtres : paramètres de la salle (rectangle ou contour libre avec aperçu du plan et du repère), ouvertures, meuble ou rangement (dimensions et position dans l'unité de la salle), génération d'intérieur. Page « Types de rangement ».
+
+**Tests**
+- `spaces_test.php` : **80 vérifications, 0 échec**. Il couvre :
+  - scénario A : contours invalides refusés, porte et ouvertures sur leurs murs, armoire à l'échelle, rotation de 90°, persistance après relecture ;
+  - scénario B : 4 étagères générées, tiroirs, boîte, 3 cases, soit 5 niveaux d'imbrication avec positions et chemins conservés ;
+  - débordements et chevauchements refusés, cohérence après redimensionnement de la salle ou d'une armoire, références uniques, renommage propagé, duplication ;
+  - deux créations simultanées au même endroit : une acceptée, une refusée ;
+  - toutes les écritures refusées pour un Élève (403).
+- `auth_test.php` : 57 vérifications, 0 échec (non-régression).
+- Interface : vérifiée dans un banc de test **local** (serveur Node sur 127.0.0.1 servant `frontend/`, fausse API en mémoire, aucun identifiant). Points vérifiés :
+  - rendu de la salle en L, cotes, mise en évidence d'une case au 5e niveau (tiroir ouvert automatiquement) ;
+  - glisser-déposer d'une armoire, création d'un meuble avec emplacement libre ;
+  - fenêtre de la salle, mobile 375 px sans défilement horizontal.
+- Corrigés pendant ces tests : « 0 » parasite dans l'arborescence, cadrage faux avant le premier rendu (matrices non à jour), champs masqués encore visibles, débordement horizontal sur mobile.
+
+**Limites connues**
+- Les salles ont un plafond horizontal unique (pas de sous-pente).
+- Le déplacement à la souris concerne les meubles. Les rangements internes se placent par formulaire, boutons ou clavier.
+- Le contenu en objets des rangements, leur taux de remplissage et la légende des couleurs arrivent avec la phase 5 (stock).
+- Le menu contextuel (clic droit) est prévu en phase 6 : pour l'instant, le clic droit dans la vue 3D déplace la caméra.
+- L'éditeur réel (avec authentification) n'a pas été ouvert dans un navigateur par moi : le serveur a été testé par l'API, l'interface par le banc local.

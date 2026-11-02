@@ -42,11 +42,21 @@ Seul `caddy` publie des ports (80/443). MariaDB et PHP ne sont joignables que de
   - Axe **X** : le long du mur de la porte, vers la droite (vu de l'intérieur, dos à la porte, vers la gauche).
   - Axe **Y** : vertical, vers le haut.
   - Axe **Z** : perpendiculaire au mur de la porte, vers l'intérieur de la salle.
-- La porte est définie par `door_offset_x` (distance de O au bord de la porte), sa largeur et sa hauteur. Elle est l'élément de référence affiché en premier et le repère reste attaché au mur de la porte : modifier la longueur de la salle ne déplace pas les armoires.
-- Les rotations sont stockées en degrés autour de Y.
-- Chaque rangement imbriqué a une position **relative à son parent** (coin inférieur avant gauche du volume intérieur du parent). Les positions absolues sont calculées.
-
-À confirmer lors de la phase 4 : salles non rectangulaires (murs définis comme une suite de segments), prévues dans le schéma dès le début.
+- **Contour** : la salle est un polygone `[[x, z], …]` (rectangle par défaut, forme libre possible, ex. en L). Le sommet 0 est l'origine, le segment 0 (sommet 0 → sommet 1, sur l'axe X) est le **mur de la porte**. Chaque segment est un mur, numéroté à partir de 1 dans l'interface. L'épaisseur des murs est ajoutée côté extérieur, donc les cotes saisies sont intérieures.
+- **Porte de référence** : `door_offset_mm` (distance de l'origine au bord de la porte), largeur et hauteur, toujours sur le mur 1. Les autres ouvertures (fenêtres, portes, passages) se placent sur n'importe quel mur, par distance depuis le début du mur.
+- **Meuble** (rangement sans parent) : position = son **coin arrière gauche bas** dans le repère de la salle. La rotation (degrés) se fait autour de l'axe vertical passant par ce coin, dans le même sens que `rotation.y` de Three.js. Dans l'interface, les boutons ±90° tournent autour du centre, en recalculant le coin.
+- **Rangement imbriqué** : position = son coin arrière gauche bas, **relatif au coin arrière gauche bas du volume intérieur du parent**. Il est toujours aligné sur son parent. Déplacer un meuble déplace donc tout son contenu.
+- **Volume intérieur** selon la forme du type (épaisseur des parois `p`) :
+  - façade ouverte (armoire, compartiment, case) : L−2p × P−p × H−2p ;
+  - dessus ouvert (tiroir, boîte, bac) : L−2p × P−2p × H−p ;
+  - niveau d'étagère : planche en bas, L × P × H−p ;
+  - séparateur : aucun volume.
+- **Règles vérifiées par le serveur** :
+  - meubles entièrement dans la salle, rotation comprise (polygones, théorème de l'axe séparateur) ;
+  - aucun chevauchement entre meubles, sauf s'ils sont superposés en hauteur ;
+  - sous-rangements dans le volume intérieur de leur parent, sans chevauchement ;
+  - une modification de la salle ou d'un parent est refusée si elle invaliderait ce qui existe.
+- Les mêmes fonctions existent en JavaScript (`frontend/assets/js/spatial.js`) pour le pré-contrôle visuel. Le serveur reste seul juge.
 
 ## 4. Modèle de données (aperçu)
 
