@@ -1,23 +1,21 @@
 import { api } from '../api.js';
 import { clear, formatDate, h } from '../dom.js';
-import { confirmDialog, emptyState, showError, toast } from '../ui.js';
+import { confirmDialog, emptyState, errorState, pageHeader, skeleton, showError, toast } from '../ui.js';
+import { icon } from '../icons.js';
 
 export async function render(view, session) {
-  const search = h('input', { type: 'search', placeholder: 'Nom ou adresse…', 'aria-label': 'Rechercher un utilisateur' });
+  const search = h('input', { type: 'search', placeholder: 'Nom ou adresse e-mail…', 'aria-label': 'Rechercher un utilisateur' });
   const roleFilter = h('select', { 'aria-label': 'Filtrer par rôle' }, h('option', { value: '' }, 'Tous les rôles'));
   const activeFilter = h('select', { 'aria-label': 'Filtrer par statut' },
     h('option', { value: '' }, 'Tous les statuts'),
     h('option', { value: '1' }, 'Actifs'),
     h('option', { value: '0' }, 'Désactivés'),
   );
-  const list = h('div', { class: 'list-container' }, h('p', { class: 'muted' }, 'Chargement…'));
+  const list = h('div', { class: 'list-container' }, skeleton('row', 4));
 
   view.append(
-    h('div', { class: 'page-header' },
-      h('h1', {}, 'Utilisateurs'),
-      h('p', { class: 'muted' }, "Les comptes sont créés à la première connexion, avec le rôle par défaut. L'accès se règle dans la liste d'autorisation."),
-    ),
-    h('div', { class: 'toolbar' }, search, roleFilter, activeFilter),
+    pageHeader({ title: 'Utilisateurs', description: 'Un compte est créé à la première connexion, avec le rôle par défaut. Qui peut se connecter se règle dans Accès autorisés.' }),
+    h('div', { class: 'toolbar' }, h('div', { class: 'toolbar-search' }, icon('search'), search), roleFilter, activeFilter),
     list,
   );
 
@@ -25,7 +23,7 @@ export async function render(view, session) {
   try {
     roles = (await api('/roles')).roles;
   } catch (error) {
-    return showError(error);
+    return clear(list, errorState(error, () => location.reload()));
   }
   roleFilter.append(...roles.map((r) => h('option', { value: r.id }, r.name)));
 
@@ -37,9 +35,9 @@ export async function render(view, session) {
     if (activeFilter.value) params.set('active', activeFilter.value);
     try {
       const { users } = await api(`/users?${params}`);
-      clear(list, users.length ? table(users, roles, session, load) : emptyState('Aucun utilisateur ne correspond.'));
+      clear(list, users.length ? h('div', { class: 'card card-flush' }, table(users, roles, session, load)) : h('div', { class: 'card' }, emptyState('Aucun utilisateur ne correspond à ces critères.', { iconName: 'users' })));
     } catch (error) {
-      showError(error);
+      clear(list, errorState(error, load));
     }
   };
   search.addEventListener('input', () => {
@@ -71,7 +69,7 @@ function row(user, roles, session, reload) {
     const ok = await confirmDialog({
       title: 'Changer le rôle',
       message: `Attribuer le rôle « ${role.name} » à ${user.display_name || user.email} ?`,
-      confirmLabel: 'Changer le rôle',
+      confirmLabel: 'Attribuer ce rôle',
     });
     if (!ok) {
       roleSelect.value = user.role.id;
@@ -79,7 +77,7 @@ function row(user, roles, session, reload) {
     }
     try {
       await api(`/users/${user.id}`, { method: 'PATCH', body: { role_id: role.id } });
-      toast('Rôle modifié.');
+      toast(`Rôle « ${role.name} » attribué.`);
       reload();
     } catch (error) {
       roleSelect.value = user.role.id;
@@ -99,7 +97,7 @@ function row(user, roles, session, reload) {
         message: activate
           ? `${user.email} pourra de nouveau se connecter.`
           : `${user.email} sera immédiatement déconnecté et ne pourra plus se connecter.`,
-        confirmLabel: activate ? 'Réactiver' : 'Désactiver',
+        confirmLabel: activate ? 'Réactiver le compte' : 'Désactiver le compte',
         danger: !activate,
       });
       if (!ok) return;
@@ -115,12 +113,12 @@ function row(user, roles, session, reload) {
 
   return h('tr', { class: !user.is_active && 'is-inactive' },
     h('td', { 'data-label': 'Utilisateur' },
-      h('div', { class: 'cell-title' }, user.display_name || '–', isSelf && h('span', { class: 'badge' }, 'vous')),
-      h('div', { class: 'muted small' }, user.email)),
+      h('div', { class: 'cell-title' }, user.display_name || user.email, isSelf && h('span', { class: 'badge badge-accent' }, 'Vous')),
+      user.display_name && h('span', { class: 'sub' }, user.email)),
     h('td', { 'data-label': 'Rôle' }, roleSelect),
     h('td', { 'data-label': 'Statut' },
       h('span', { class: ['status', user.is_active ? 'status-ok' : 'status-off'] }, user.is_active ? 'Actif' : 'Désactivé')),
-    h('td', { 'data-label': 'Dernière connexion' }, formatDate(user.last_login_at)),
+    h('td', { 'data-label': 'Dernière connexion', class: 'num' }, user.last_login_at ? formatDate(user.last_login_at) : 'Jamais'),
     h('td', { class: 'cell-actions' }, toggle),
   );
 }

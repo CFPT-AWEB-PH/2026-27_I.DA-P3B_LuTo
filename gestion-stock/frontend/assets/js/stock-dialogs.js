@@ -3,11 +3,21 @@
 
 import { api } from './api.js';
 import { h } from './dom.js';
-import { busy, field, openDialog, showError, toast } from './ui.js';
+import { icon } from './icons.js';
+import { busy, checkbox, emptyState, field, locationLabel, openDialog, showError, skeleton, stepper, toast } from './ui.js';
+
+// Abréviations et mots invariables : jamais de « s »
+const INVARIABLE = /^(mm|cm|dm|m|km|g|kg|mg|l|ml|cl|dl|m2|m²|m3|m³|lot|kit)$|[sxz]$/i;
+
+/** Unité accordée : « 2 pièces », « 3 rouleaux », mais « 2 kg ». */
+export function unitLabel(unit, value) {
+  if (!unit || Math.abs(Number(value ?? 0)) < 2 || INVARIABLE.test(unit)) return unit;
+  return /(eau|au|eu)$/i.test(unit) ? `${unit}x` : `${unit}s`;
+}
 
 export function formatQuantity(value, unit = '') {
   const text = Number(value ?? 0).toLocaleString('fr-CH', { maximumFractionDigits: 3 });
-  return unit ? `${text} ${unit}` : text;
+  return unit ? `${text} ${unitLabel(unit, value)}` : text;
 }
 
 function quantityInput(name, value = '', min = 0.001) {
@@ -22,11 +32,11 @@ function parseQuantity(input) {
 export function pickUnit({ title = 'Choisir un emplacement', roomId = null } = {}) {
   return openDialog(title, (close) => {
     const roomSelect = h('select', { 'aria-label': 'Salle' }, h('option', { value: '' }, 'Choisir une salle…'));
-    const tree = h('div', { class: 'picker-tree' }, h('p', { class: 'muted small' }, 'Choisissez une salle.'));
+    const tree = h('div', { class: 'picker-tree' }, emptyState('Choisissez d’abord une salle.', { iconName: 'room' }));
 
     const loadRoom = async (id) => {
       if (!id) return;
-      tree.replaceChildren(h('p', { class: 'muted small' }, 'Chargement…'));
+      tree.replaceChildren(skeleton('text', 5));
       try {
         const { units } = await api(`/rooms/${id}`);
         const node = (u) => {
@@ -34,11 +44,11 @@ export function pickUnit({ title = 'Choisir un emplacement', roomId = null } = {
           return h('li', {},
             u.can_hold_items
               ? h('button', { class: 'tree-label', type: 'button', onclick: () => close({ id: u.id, path: u.path }) }, u.name, u.label && h('span', { class: 'badge' }, u.label))
-              : h('span', { class: 'tree-label is-disabled' }, u.name),
+              : h('span', { class: 'tree-label is-disabled', title: 'Ce rangement ne reçoit pas d’objets directement' }, u.name),
             kids.length > 0 && h('ul', {}, kids.map(node)));
         };
         const roots = units.filter((u) => u.parent_id === null);
-        tree.replaceChildren(roots.length ? h('ul', { class: 'tree' }, roots.map(node)) : h('p', { class: 'muted small' }, 'Cette salle ne contient aucun rangement.'));
+        tree.replaceChildren(roots.length ? h('ul', { class: 'tree' }, roots.map(node)) : emptyState('Cette salle ne contient encore aucun rangement.', { iconName: 'drawer' }));
       } catch (error) { showError(error); }
     };
     roomSelect.addEventListener('change', () => loadRoom(roomSelect.value));
@@ -47,7 +57,7 @@ export function pickUnit({ title = 'Choisir un emplacement', roomId = null } = {
       if (roomId) loadRoom(roomId);
     }).catch(showError);
 
-    return h('div', { class: 'dialog-body' }, field('Salle', roomSelect), tree,
+    return h('div', { class: 'dialog-body' }, field('Salle', roomSelect), h('p', { class: 'field-hint' }, 'Puis le rangement exact. Les éléments grisés ne reçoivent pas d’objets directement.'), tree,
       h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => close(undefined) }, 'Annuler')));
   }, { wide: true });
 }
@@ -56,19 +66,23 @@ export function pickUnit({ title = 'Choisir un emplacement', roomId = null } = {
 export function pickItem(title = 'Choisir un objet') {
   return openDialog(title, (close) => {
     const input = h('input', { type: 'search', placeholder: 'Nom ou référence…', autocomplete: 'off', 'aria-label': 'Rechercher un objet' });
-    const list = h('ul', { class: 'plain-list pick-list' });
+    const list = h('ul', { class: 'plain-list pick-list', 'aria-live': 'polite' });
     let timer;
+    const search = async () => {
+      try {
+        const q = input.value.trim();
+        const { items } = await api(`/items?q=${encodeURIComponent(q)}&per_page=15`);
+        list.replaceChildren(...(items.length
+          ? items.map((i) => h('li', {}, h('button', { class: 'tree-label', type: 'button', onclick: () => close(i) },
+            h('span', { class: 'list-row-main' }, h('strong', {}, i.name), h('span', { class: 'sub' }, `${i.reference}, ${formatQuantity(i.total_quantity, i.unit)} en stock`)))))
+          : [h('li', {}, emptyState(q ? `Aucun objet ne correspond à « ${q} ».` : 'Aucun objet dans le catalogue.', { iconName: 'search' }))]));
+      } catch (error) { showError(error); }
+    };
     input.addEventListener('input', () => {
       clearTimeout(timer);
-      timer = setTimeout(async () => {
-        try {
-          const { items } = await api(`/items?q=${encodeURIComponent(input.value.trim())}&per_page=15`);
-          list.replaceChildren(...items.map((i) => h('li', {}, h('button', { class: 'tree-label', type: 'button', onclick: () => close(i) },
-            h('strong', {}, i.name), h('span', { class: 'muted small' }, ` ${i.reference} · ${formatQuantity(i.total_quantity, i.unit)}`)))));
-        } catch (error) { showError(error); }
-      }, 200);
+      timer = setTimeout(search, 200);
     });
-    setTimeout(() => input.focus(), 0);
+    search();
     return h('div', { class: 'dialog-body' }, input, list,
       h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => close(undefined) }, 'Annuler')));
   });
@@ -77,23 +91,26 @@ export function pickItem(title = 'Choisir un objet') {
 /** Bouton qui ouvre le sélecteur d'emplacement et mémorise le choix. */
 function unitField(label, initial = null, hint = null) {
   let value = initial;
-  const text = h('span', { class: 'unit-choice-text' }, initial?.path ?? 'Aucun emplacement choisi');
+  const text = h('span', { class: 'unit-choice-text' });
+  const show = () => text.replaceChildren(value ? locationLabel(value.path) : 'Aucun emplacement choisi');
+  show();
   const hidden = h('input', { type: 'hidden', name: 'unit_id' });
   const button = h('button', { class: 'btn btn-small', type: 'button', onclick: async () => {
-    const picked = await pickUnit();
-    if (picked) { value = picked; text.textContent = picked.path; }
-  } }, 'Choisir…');
+    const picked = await pickUnit({ title: label });
+    if (picked) { value = picked; show(); button.lastChild.textContent = 'Changer'; }
+  } }, icon('pin'), initial ? 'Changer' : 'Choisir');
   const wrapper = field(label, h('div', { class: 'unit-choice' }, text, button, hidden), hint);
+  wrapper.querySelector('label').removeAttribute('for');
   return { element: wrapper, get value() { return value; } };
 }
 
 function operationDialog(title, build) {
   return openDialog(title, (close) => {
-    const { body, submit, label = 'Valider' } = build();
+    const { body, submit, label = 'Enregistrer', danger = false } = build();
     const form = h('form', { class: 'dialog-body', novalidate: true }, ...body,
       h('div', { class: 'dialog-actions' },
         h('button', { class: 'btn', type: 'button', onclick: () => close(undefined) }, 'Annuler'),
-        h('button', { class: 'btn btn-primary', type: 'submit' }, label)));
+        h('button', { class: ['btn', danger ? 'btn-danger' : 'btn-primary'], type: 'submit' }, h('span', {}, label))));
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       busy(event.submitter, async () => {
@@ -109,24 +126,25 @@ function operationDialog(title, build) {
 /** Prise d'un objet dans un emplacement précis. */
 export function takeDialog(item, location) {
   return operationDialog(`Prendre « ${item.name} »`, () => {
-    const quantity = quantityInput('quantity', 1);
+    const quantity = quantityInput('quantity', Math.min(1, location.quantity) || 1);
     quantity.max = location.quantity;
-    const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'Facultatif (projet, classe…)' });
+    const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'Projet, classe… (facultatif)' });
     const returnable = h('input', { type: 'checkbox', checked: !item.is_consumable });
     return {
       label: 'Prendre',
       body: [
-        h('p', { class: 'path' }, location.path),
-        h('p', {}, 'Disponible ici : ', h('strong', {}, formatQuantity(location.quantity, item.unit))),
-        field(`Quantité (${item.unit})`, quantity),
-        field('Commentaire', comment),
-        h('label', { class: 'checkbox' }, returnable, 'À rendre (ouvre un emprunt à mon nom)'),
+        h('div', { class: 'dialog-lead' },
+          locationLabel(location.path),
+          h('div', { class: 'dialog-lead-row' }, 'Disponible ici', h('strong', {}, formatQuantity(location.quantity, item.unit)))),
+        field(`Quantité (${item.unit})`, stepper(quantity)),
+        field('Pour quoi faire ?', comment),
+        checkbox(returnable, 'Je le rendrai', 'Ouvre un emprunt à votre nom. Décochez pour un consommable utilisé.'),
       ],
       submit: async () => {
         const r = await api('/stock/take', { method: 'POST', body: {
           item_id: item.id, unit_id: location.unit_id, quantity: parseQuantity(quantity), comment: comment.value, returnable: returnable.checked,
         } });
-        toast(`${formatQuantity(parseQuantity(quantity), item.unit)} pris. Reste ici : ${formatQuantity(r.remaining, item.unit)}.`);
+        toast(`Prise enregistrée : ${formatQuantity(parseQuantity(quantity), item.unit)}. Il en reste ${formatQuantity(r.remaining, item.unit)} à cet emplacement.`);
         return r;
       },
     };
@@ -139,14 +157,15 @@ export function returnDialog(loan) {
   return operationDialog(`Rendre « ${loan.item?.name ?? 'objet'} »`, () => {
     const quantity = quantityInput('quantity', loan.remaining);
     quantity.max = loan.remaining;
-    const target = unitField('Emplacement de retour', loan.origin.unit_id ? { id: loan.origin.unit_id, path: loan.origin.path } : null,
-      "Par défaut, l'emplacement d'origine.");
-    const comment = h('input', { name: 'comment', maxlength: 500 });
+    const target = unitField('Rangé à', loan.origin.unit_id ? { id: loan.origin.unit_id, path: loan.origin.path } : null,
+      "Par défaut, l'emplacement d'où l'objet a été pris.");
+    const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'État, remarque… (facultatif)' });
     return {
       label: 'Enregistrer le retour',
       body: [
-        h('p', {}, 'Reste à rendre : ', h('strong', {}, formatQuantity(loan.remaining, unit))),
-        field(`Quantité rendue (${unit})`, quantity, 'Un retour partiel laisse l\'emprunt ouvert pour le reste.'),
+        h('div', { class: 'dialog-lead' },
+          h('div', { class: 'dialog-lead-row' }, 'Reste à rendre', h('strong', {}, formatQuantity(loan.remaining, unit)))),
+        field(`Quantité rendue (${unit})`, stepper(quantity), 'Un retour partiel garde l’emprunt ouvert pour le reste.'),
         target.element,
         field('Commentaire', comment),
       ],
@@ -154,7 +173,7 @@ export function returnDialog(loan) {
         const body = { quantity: parseQuantity(quantity), comment: comment.value };
         if (target.value && target.value.id !== loan.origin.unit_id) body.unit_id = target.value.id;
         const r = await api(`/loans/${loan.id}/return`, { method: 'POST', body });
-        toast(r.status === 'closed' ? 'Retour enregistré, emprunt clôturé.' : `Retour enregistré. Reste à rendre : ${formatQuantity(r.remaining_to_return, unit)}.`);
+        toast(r.status === 'closed' ? 'Retour enregistré. Emprunt terminé.' : `Retour enregistré. Il reste ${formatQuantity(r.remaining_to_return, unit)} à rendre.`);
         return r;
       },
     };
@@ -166,14 +185,14 @@ export function addDialog(item, location = null) {
   return operationDialog(`Ajouter du stock : « ${item.name} »`, () => {
     const quantity = quantityInput('quantity', '');
     const target = unitField('Emplacement', location ? { id: location.unit_id, path: location.path } : null);
-    const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'Facultatif (commande, fournisseur…)' });
+    const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'Commande, fournisseur… (facultatif)' });
     return {
-      label: 'Ajouter',
-      body: [target.element, field(`Quantité ajoutée (${item.unit})`, quantity), field('Commentaire', comment)],
+      label: 'Ajouter au stock',
+      body: [target.element, field(`Quantité ajoutée (${item.unit})`, stepper(quantity)), field('Commentaire', comment)],
       submit: async () => {
-        if (!target.value) throw Object.assign(new Error('Choisissez un emplacement.'), { fields: { unit_id: 'Emplacement obligatoire.' } });
+        if (!target.value) throw Object.assign(new Error('Choisissez où ranger ce stock.'), { fields: { unit_id: 'Choisissez un emplacement.' } });
         const r = await api('/stock/add', { method: 'POST', body: { item_id: item.id, unit_id: target.value.id, quantity: parseQuantity(quantity), comment: comment.value } });
-        toast(`Stock mis à jour : ${formatQuantity(r.quantity, item.unit)} à cet emplacement.`);
+        toast(`Stock ajouté. ${formatQuantity(r.quantity, item.unit)} à cet emplacement.`);
         return r;
       },
     };
@@ -184,18 +203,19 @@ export function addDialog(item, location = null) {
 export function adjustDialog(item, location) {
   return operationDialog(`Corriger le stock : « ${item.name} »`, () => {
     const quantity = quantityInput('quantity', location.quantity, 0);
-    const comment = h('input', { name: 'comment', required: true, minlength: 3, maxlength: 500, placeholder: 'Motif obligatoire (inventaire, casse…)' });
+    const comment = h('input', { name: 'comment', required: true, minlength: 3, maxlength: 500, placeholder: 'Inventaire, casse, perte…' });
     return {
-      label: 'Corriger',
+      label: 'Enregistrer la correction',
       body: [
-        h('p', { class: 'path' }, location.path),
-        h('p', {}, 'Stock enregistré : ', h('strong', {}, formatQuantity(location.quantity, item.unit))),
-        field(`Quantité réelle constatée (${item.unit})`, quantity),
-        field('Motif', comment),
+        h('div', { class: 'dialog-lead' },
+          locationLabel(location.path),
+          h('div', { class: 'dialog-lead-row' }, 'Quantité enregistrée', h('strong', {}, formatQuantity(location.quantity, item.unit)))),
+        field(`Quantité réellement présente (${item.unit})`, stepper(quantity)),
+        field('Motif (obligatoire, visible dans l’historique)', comment),
       ],
       submit: async () => {
         const r = await api('/stock/adjust', { method: 'POST', body: { item_id: item.id, unit_id: location.unit_id, quantity: parseQuantity(quantity), comment: comment.value } });
-        toast('Correction enregistrée.');
+        toast(`Correction enregistrée : ${formatQuantity(r.quantity, item.unit)} à cet emplacement.`);
         return r;
       },
     };
@@ -207,22 +227,24 @@ export function moveDialog(item, location) {
   return operationDialog(`Déplacer « ${item.name} »`, () => {
     const quantity = quantityInput('quantity', location.quantity);
     quantity.max = location.quantity;
-    const target = unitField('Nouvel emplacement');
-    const comment = h('input', { name: 'comment', maxlength: 500 });
+    const target = unitField('Vers');
+    const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'Facultatif' });
     return {
       label: 'Déplacer',
       body: [
-        h('p', {}, 'Depuis : ', h('span', { class: 'path' }, location.path)),
-        field(`Quantité (${item.unit}, disponible : ${formatQuantity(location.quantity)})`, quantity),
+        h('div', { class: 'dialog-lead' },
+          h('div', { class: 'dialog-lead-row' }, 'Depuis', h('strong', {}, formatQuantity(location.quantity, item.unit))),
+          locationLabel(location.path)),
+        field(`Quantité à déplacer (${item.unit})`, stepper(quantity)),
         target.element,
         field('Commentaire', comment),
       ],
       submit: async () => {
-        if (!target.value) throw Object.assign(new Error('Choisissez la destination.'), { fields: { unit_id: 'Destination obligatoire.' } });
+        if (!target.value) throw Object.assign(new Error('Choisissez la destination.'), { fields: { unit_id: 'Choisissez où déplacer le stock.' } });
         const r = await api('/stock/move', { method: 'POST', body: {
           item_id: item.id, from_unit_id: location.unit_id, to_unit_id: target.value.id, quantity: parseQuantity(quantity), comment: comment.value,
         } });
-        toast('Déplacement enregistré.');
+        toast('Stock déplacé.');
         return r;
       },
     };
@@ -269,15 +291,15 @@ export async function itemDialog(item = null, { canAddStock = false, location = 
     renderCustom();
 
     return {
-      label: item ? 'Enregistrer' : 'Créer',
+      label: item ? 'Enregistrer les modifications' : 'Créer l’objet',
       body: [
-        h('div', { class: 'form-grid' }, field('Nom', name), field('Référence unique', reference)),
-        field('Description', description),
-        h('div', { class: 'form-grid form-grid-3' }, field('Catégorie', category), field('Unité', unit), field('Stock minimal (alerte)', min)),
+        h('div', { class: 'form-grid' }, field('Nom', name), field('Référence', reference, 'Code unique, par exemple celui de l’étiquette.')),
+        h('div', { class: 'form-grid form-grid-3' }, field('Catégorie', category), field('Unité', unit), field('Alerte sous', min, 'Stock minimal.')),
         units,
-        h('label', { class: 'checkbox' }, consumable, 'Consommable (une prise n\'est pas à rendre)'),
+        checkbox(consumable, 'Consommable', 'Une prise ne crée pas d’emprunt (papier, piles…).'),
+        field('Description', description),
         custom,
-        initialUnit && h('fieldset', { class: 'form-section' }, h('legend', {}, 'Stock initial (facultatif)'),
+        initialUnit && h('fieldset', { class: 'form-section' }, h('legend', {}, 'Stock de départ (facultatif)'),
           h('div', { class: 'form-grid' }, initialUnit.element, field('Quantité', initialQuantity))),
       ],
       submit: async () => {
@@ -292,7 +314,7 @@ export async function itemDialog(item = null, { canAddStock = false, location = 
           body.initial_stock = Number(initialQuantity.value);
         }
         const r = await api(item ? `/items/${item.id}` : '/items', { method: item ? 'PATCH' : 'POST', body });
-        toast(item ? 'Objet enregistré.' : 'Objet créé.');
+        toast(item ? 'Modifications enregistrées.' : `« ${r.item.name} » ajouté au catalogue.`);
         return r.item;
       },
     };

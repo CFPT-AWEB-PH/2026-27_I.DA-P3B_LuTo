@@ -2,7 +2,8 @@
 
 import { api } from '../api.js';
 import { h } from '../dom.js';
-import { busy, confirmDialog, field, openDialog, showError, toast } from '../ui.js';
+import { busy, confirmDialog, emptyState, field, openDialog, showError, toast } from '../ui.js';
+import { icon } from '../icons.js';
 import { formatLength, fromDisplay, toDisplay, UNITS, wallLength } from '../spatial.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -98,7 +99,7 @@ export function openRoomDialog(room = null) {
         h('td', {}, index === 0 ? 'Origine' : `P${index + 1}`),
         h('td', {}, h('input', { type: 'number', step: UNITS[unit].step, value: toDisplay(x, unit), readonly: fixedX, dataset: { length: '', axis: 'x' }, 'aria-label': `X du point ${index + 1}` })),
         h('td', {}, h('input', { type: 'number', step: UNITS[unit].step, value: toDisplay(z, unit), readonly: fixedZ, dataset: { length: '', axis: 'z' }, 'aria-label': `Z du point ${index + 1}` })),
-        h('td', {}, index > 2 && h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Supprimer ce point', onclick: (e) => { e.target.closest('tr').remove(); renumber(); update(); } }, '×')),
+        h('td', {}, index > 2 && h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Supprimer ce point', onclick: (e) => { e.currentTarget.closest('tr').remove(); renumber(); update(); } }, icon('x'))),
       );
     };
     const renumber = () => [...pointsBody.rows].forEach((row, i) => { row.cells[0].textContent = i === 0 ? 'Origine' : `P${i + 1}`; });
@@ -188,7 +189,7 @@ export function openRoomDialog(room = null) {
         h('div', { class: 'form-grid form-grid-3' }, field('Sol', floorColor), field('Revêtement', material), field('Murs', wallColor))),
       h('div', { class: 'dialog-actions' },
         h('button', { class: 'btn', type: 'button', onclick: () => close(undefined) }, 'Annuler'),
-        h('button', { class: 'btn btn-primary', type: 'submit' }, room ? 'Enregistrer' : 'Créer la salle')),
+        h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, room ? 'Enregistrer la salle' : 'Créer la salle'))),
     );
     form.addEventListener('input', update);
     update();
@@ -232,7 +233,7 @@ export function openOpeningsDialog(payload, onChange) {
     const renderList = () => {
       list.replaceChildren(
         h('p', { class: 'field-hint' }, `La porte de référence est sur le mur 1, à ${formatLength(room.door_offset_mm, unit)} de l'origine. Elle se règle dans les paramètres de la salle.`),
-        openings.length === 0 ? h('p', { class: 'muted' }, 'Aucune autre ouverture.') : h('ul', { class: 'plain-list' }, openings.map((o) => h('li', { class: 'list-row' },
+        openings.length === 0 ? emptyState('Ajoutez fenêtres, portes et passages pour un rendu fidèle.', { iconName: 'door' }) : h('ul', { class: 'plain-list' }, openings.map((o) => h('li', { class: 'list-row' },
           h('span', {}, h('strong', {}, `${KIND_LABELS[o.kind]}${o.name ? ` « ${o.name} »` : ''}`),
             ` · mur ${o.wall_index + 1}, à ${formatLength(o.offset_mm, unit)}, ${formatLength(o.width_mm, unit)} × ${formatLength(o.height_mm, unit)}, allège ${formatLength(o.sill_mm, unit)}`),
           h('span', { class: 'list-row-actions' },
@@ -247,7 +248,7 @@ export function openOpeningsDialog(payload, onChange) {
               } catch (error) { showError(error); }
             } }, 'Supprimer')))),
         ),
-        h('button', { class: 'btn btn-primary', type: 'button', onclick: () => renderForm(null) }, 'Ajouter une ouverture'),
+        h('button', { class: 'btn btn-primary', type: 'button', onclick: () => renderForm(null) }, icon('plus'), 'Ajouter une ouverture'),
       );
     };
 
@@ -268,7 +269,7 @@ export function openOpeningsDialog(payload, onChange) {
           field(`Hauteur (${unit})`, oheight), field(`Allège / hauteur du bas (${unit})`, sill)),
         h('div', { class: 'dialog-actions' },
           h('button', { class: 'btn', type: 'button', onclick: () => formSlot.replaceChildren() }, 'Annuler'),
-          h('button', { class: 'btn btn-primary', type: 'submit' }, 'Enregistrer')),
+          h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, 'Enregistrer l’ouverture'))),
       );
       form.addEventListener('submit', (event) => {
         event.preventDefault();

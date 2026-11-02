@@ -1,19 +1,14 @@
 import { api } from '../api.js';
 import { clear, h } from '../dom.js';
-import { busy, confirmDialog, field, openDialog, showError, toast } from '../ui.js';
+import { busy, checkbox, confirmDialog, errorState, field, openDialog, pageHeader, plural, showError, skeleton, toast } from '../ui.js';
+import { icon } from '../icons.js';
 
 export async function render(view) {
-  const list = h('div', { class: 'role-grid' }, h('p', { class: 'muted' }, 'Chargement…'));
-  const addButton = h('button', { class: 'btn btn-primary', type: 'button' }, 'Nouveau rôle');
+  const list = h('div', { class: 'role-grid' }, skeleton('card', 3));
+  const addButton = h('button', { class: 'btn btn-primary', type: 'button' }, icon('plus'), 'Nouveau rôle');
 
   view.append(
-    h('div', { class: 'page-header page-header-actions' },
-      h('div', {},
-        h('h1', {}, 'Rôles et permissions'),
-        h('p', { class: 'muted' }, 'Le rôle par défaut est attribué à chaque nouvel utilisateur. Le rôle administrateur possède toujours toutes les permissions.'),
-      ),
-      addButton,
-    ),
+    pageHeader({ title: 'Rôles et permissions', description: 'Le rôle par défaut est donné à chaque nouvel utilisateur. Le rôle administrateur a toujours toutes les permissions.', actions: addButton }),
     list,
   );
 
@@ -21,7 +16,7 @@ export async function render(view) {
   try {
     permissions = (await api('/permissions')).permissions;
   } catch (error) {
-    return showError(error);
+    return clear(list, errorState(error, () => location.reload()));
   }
 
   const load = async () => {
@@ -29,7 +24,7 @@ export async function render(view) {
       const { roles } = await api('/roles');
       clear(list, roles.map((role) => card(role, permissions, load)));
     } catch (error) {
-      showError(error);
+      clear(list, errorState(error, load));
     }
   };
   addButton.addEventListener('click', () => editRole(null, permissions).then((saved) => saved && load()));
@@ -50,7 +45,7 @@ function card(role, permissions, reload) {
         const ok = await confirmDialog({
           title: 'Rôle par défaut',
           message: `Les nouveaux utilisateurs recevront le rôle « ${role.name} ».`,
-          confirmLabel: 'Définir par défaut',
+          confirmLabel: 'Utiliser par défaut',
         });
         if (!ok) return;
         try {
@@ -61,14 +56,14 @@ function card(role, permissions, reload) {
           showError(error);
         }
       },
-    }, 'Définir par défaut'),
+    }, 'Utiliser par défaut'),
     !role.is_protected && !role.is_default && h('button', {
       class: 'btn btn-small btn-danger-ghost', type: 'button',
       onclick: async () => {
         const ok = await confirmDialog({
           title: 'Supprimer le rôle',
-          message: `Supprimer définitivement le rôle « ${role.name} » ?`,
-          confirmLabel: 'Supprimer',
+          message: `Le rôle « ${role.name} » sera supprimé définitivement.`,
+          confirmLabel: 'Supprimer le rôle',
           danger: true,
         });
         if (!ok) return;
@@ -90,7 +85,7 @@ function card(role, permissions, reload) {
       role.is_default && h('span', { class: 'badge' }, 'Par défaut'),
     ),
     role.description && h('p', { class: 'muted' }, role.description),
-    h('p', { class: 'small' }, `${role.user_count} utilisateur(s) · ${role.permissions.length} permission(s)`),
+    h('p', { class: 'role-count' }, `${plural(role.user_count, 'utilisateur')}, ${plural(role.permissions.length, 'permission')}`),
     h('ul', { class: 'permission-summary' }, labels.map((label) => h('li', {}, label))),
     actions,
   );
@@ -111,7 +106,7 @@ function editRole(role, permissions) {
         isProtected && h('p', { class: 'field-hint' }, 'Le rôle administrateur possède toujours toutes les permissions.'),
         categories.map((category) => h('div', { class: 'permission-group' },
           h('h3', {}, category),
-          permissions.filter((p) => p.category === category).map((p) => h('label', { class: 'checkbox' },
+          permissions.filter((p) => p.category === category).map((p) => checkbox(
             h('input', {
               type: 'checkbox', value: p.code, 'data-permission': '',
               checked: isProtected || (role?.permissions.includes(p.code) ?? false),
@@ -121,7 +116,7 @@ function editRole(role, permissions) {
       ),
       h('div', { class: 'dialog-actions' },
         h('button', { class: 'btn', type: 'button', onclick: () => close(false) }, 'Annuler'),
-        h('button', { class: 'btn btn-primary', type: 'submit' }, 'Enregistrer'),
+        h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, role ? 'Enregistrer le rôle' : 'Créer le rôle')),
       ),
     );
 

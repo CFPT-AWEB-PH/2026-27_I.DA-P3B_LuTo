@@ -4,13 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f3f4f1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1311" media="(prefers-color-scheme: dark)">
   <title>Gestion de stock</title>
   <link rel="stylesheet" href="/assets/css/app.css">
   <script type="module" src="/assets/js/app.js"></script>
 </head>
 <body>
   <div id="root" class="boot">
-    <p class="boot-message">Chargement…</p>
+    <div class="boot-spinner" role="presentation"></div>
+    <p class="boot-message" role="status">Chargement…</p>
   </div>
   <div id="toasts" class="toasts" aria-live="polite" aria-atomic="false"></div>
 </body>

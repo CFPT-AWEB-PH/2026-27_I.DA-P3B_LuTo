@@ -3,7 +3,8 @@
 
 import { api, ApiError, onUnauthorized, setCsrfToken } from './api.js';
 import { clear, h } from './dom.js';
-import { showError } from './ui.js';
+import { icon } from './icons.js';
+import { emptyState, showError } from './ui.js';
 import * as homePage from './pages/home.js';
 import * as loginPage from './pages/login.js';
 import * as usersPage from './pages/users.js';
@@ -21,21 +22,23 @@ import * as settingsPage from './pages/settings.js';
 import { searchBox } from './search-box.js';
 
 // nav: false = page accessible mais absente du menu ; « :param » = segment variable
+// group : section du menu ; tab : présent dans la barre d'onglets mobile
 const routes = [
-  { path: '/', label: 'Accueil', page: homePage },
-  { path: '/items', label: 'Objets', page: itemsPage, permission: 'stock.view' },
+  { path: '/', label: 'Accueil', icon: 'home', page: homePage, group: 'stock', tab: true },
+  { path: '/items', label: 'Objets', icon: 'box', page: itemsPage, permission: 'stock.view', group: 'stock', tab: true },
   { path: '/items/:id', label: 'Objet', page: itemPage, permission: 'stock.view', nav: false, menu: '/items' },
-  { path: '/rooms', label: 'Salles', page: roomsPage, permission: 'rooms.view' },
+  { path: '/rooms', label: 'Salles', icon: 'room', page: roomsPage, permission: 'rooms.view', group: 'stock', tab: true },
   { path: '/rooms/:id', label: 'Salle', page: roomEditorPage, permission: 'rooms.view', nav: false, menu: '/rooms' },
-  { path: '/loans', label: 'Emprunts et retours', page: loansPage, permission: 'stock.view' },
-  { path: '/movements', label: 'Historique', page: movementsPage, permission: 'history.view' },
-  { path: '/admin/catalog', label: 'Catégories et champs', page: catalogAdminPage, permission: 'items.edit' },
-  { path: '/admin/storage-types', label: 'Types de rangement', page: storageTypesPage, permission: 'storage.edit' },
-  { path: '/admin/users', label: 'Utilisateurs', page: usersPage, permission: 'users.manage' },
-  { path: '/admin/roles', label: 'Rôles et permissions', page: rolesPage, permission: 'roles.manage' },
-  { path: '/admin/allowlist', label: "Liste d'autorisation", page: allowlistPage, permission: 'users.manage' },
-  { path: '/admin/settings', label: 'Paramètres', page: settingsPage, permission: 'settings.manage' },
+  { path: '/loans', label: 'Emprunts', icon: 'loans', page: loansPage, permission: 'stock.view', group: 'stock', tab: true },
+  { path: '/movements', label: 'Historique', icon: 'history', page: movementsPage, permission: 'history.view', group: 'stock' },
+  { path: '/admin/catalog', label: 'Catégories et champs', icon: 'tag', page: catalogAdminPage, permission: 'items.edit', group: 'admin' },
+  { path: '/admin/storage-types', label: 'Types de rangement', icon: 'layers', page: storageTypesPage, permission: 'storage.edit', group: 'admin' },
+  { path: '/admin/users', label: 'Utilisateurs', icon: 'users', page: usersPage, permission: 'users.manage', group: 'admin' },
+  { path: '/admin/roles', label: 'Rôles et permissions', icon: 'shield', page: rolesPage, permission: 'roles.manage', group: 'admin' },
+  { path: '/admin/allowlist', label: 'Accès autorisés', icon: 'listCheck', page: allowlistPage, permission: 'users.manage', group: 'admin' },
+  { path: '/admin/settings', label: 'Paramètres', icon: 'sliders', page: settingsPage, permission: 'settings.manage', group: 'admin' },
 ];
+const GROUPS = { stock: 'Stock', admin: 'Administration' };
 
 function matchRoute(pathname) {
   for (const route of routes) {
@@ -67,12 +70,16 @@ export function navigate(path, { replace = false } = {}) {
 /** Paramètres partagés (nom de l'application, couleurs de remplissage). */
 export async function loadSettings() {
   session.settings = (await api('/settings')).settings;
-  const brand = document.querySelector('.brand');
-  if (brand) brand.textContent = appName();
+  document.querySelectorAll('.brand-name').forEach((el) => { el.textContent = appName(); });
 }
 
-function appName() {
+export function appName() {
   return session.settings['app.name'] || 'Gestion de stock';
+}
+
+/** Titre de l'onglet du navigateur : « Page · Application ». */
+export function setTitle(title) {
+  document.title = `${title} · ${appName()}`;
 }
 
 async function loadSession() {
@@ -95,6 +102,7 @@ function render() {
     currentPage = null;
     view = null;
     root.className = 'login-root';
+    document.title = `Connexion · ${appName()}`;
     loginPage.render(clear(root));
     return;
   }
@@ -104,72 +112,147 @@ function render() {
   const match = matchRoute(location.pathname);
   const route = match?.route;
   const menuPath = route?.menu ?? route?.path;
-  document.querySelectorAll('.nav-link').forEach((link) => {
+  document.querySelectorAll('.nav-link, .tab[href]').forEach((link) => {
     link.toggleAttribute('aria-current', link.getAttribute('href') === menuPath);
+    if (link.hasAttribute('aria-current')) link.setAttribute('aria-current', 'page');
   });
-  document.body.classList.remove('nav-open');
+  setNavOpen(false);
 
   currentPage?.dispose?.();
   currentPage = route?.page ?? null;
   view.className = 'view';
   clear(view);
+  // Transition d'entrée unique et courte : signale le changement de page sans ralentir
+  view.classList.remove('view-enter');
+  void view.offsetWidth;
+  view.classList.add('view-enter');
+  window.scrollTo({ top: 0 });
+
   if (!route) {
-    view.append(h('h1', {}, 'Page introuvable'), h('p', {}, h('a', { href: '/' }, "Retour à l'accueil")));
+    document.title = `Page introuvable · ${appName()}`;
+    view.append(emptyState("Cette adresse ne correspond à aucune page. Elle a peut-être changé.", {
+      title: 'Page introuvable', iconName: 'search',
+      action: h('a', { class: 'btn btn-primary', href: '/' }, "Revenir à l'accueil"),
+    }));
     return;
   }
   if (route.permission && !session.can(route.permission)) {
-    view.append(h('h1', {}, 'Accès refusé'), h('p', {}, "Votre rôle ne permet pas d'accéder à cette page."));
+    document.title = `Accès refusé · ${appName()}`;
+    view.append(emptyState("Votre rôle ne donne pas accès à cette page. Demandez à un administrateur si vous en avez besoin.", {
+      title: 'Accès refusé', iconName: 'shield',
+      action: h('a', { class: 'btn', href: '/' }, "Revenir à l'accueil"),
+    }));
     return;
   }
-  document.title = `${route.label} · ${appName()}`;
+  setTitle(route.label);
   route.page.render(view, session, match.params);
   view.focus({ preventScroll: true });
+}
+
+function setNavOpen(open) {
+  document.body.classList.toggle('nav-open', open);
+  document.querySelector('.nav-toggle')?.setAttribute('aria-expanded', String(open));
+  if (open) document.querySelector('.sidebar')?.focus({ preventScroll: true });
+}
+
+function initials(user) {
+  const source = user.display_name || user.email;
+  const words = source.split(/[\s.@_-]+/).filter(Boolean);
+  return ((words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')).toUpperCase() || '?';
+}
+
+async function logout() {
+  try {
+    await api('/auth/logout', { method: 'POST' });
+  } catch (error) {
+    if (error.status !== 401) return showError(error);
+  }
+  session.me = null;
+  view = null;
+  navigate('/login', { replace: true });
+}
+
+function userMenu(user) {
+  const button = h('button', {
+    class: 'user-button', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+    'aria-label': `Compte de ${user.display_name || user.email}`,
+  }, h('span', { class: 'avatar', 'aria-hidden': 'true' }, initials(user)),
+  h('span', { class: 'user-button-name' }, user.display_name || user.email), icon('chevronDown'));
+  const menu = h('div', { class: 'popover', role: 'menu', hidden: true },
+    h('div', { class: 'popover-header' },
+      h('strong', {}, user.display_name || user.email),
+      h('span', {}, user.display_name ? user.email : null),
+      h('div', {}, h('span', { class: 'badge badge-accent' }, user.role.name))),
+    h('button', { class: 'menu-item menu-item-danger', type: 'button', role: 'menuitem', onclick: logout }, icon('logOut'), 'Se déconnecter'));
+  const wrapper = h('div', { class: 'popover-anchor' }, button, menu);
+
+  const toggle = (open) => {
+    menu.hidden = !open;
+    button.setAttribute('aria-expanded', String(open));
+    if (open) menu.querySelector('[role=menuitem]').focus();
+  };
+  button.addEventListener('click', () => toggle(menu.hidden));
+  document.addEventListener('pointerdown', (event) => { if (!menu.hidden && !wrapper.contains(event.target)) toggle(false); });
+  wrapper.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !menu.hidden) { toggle(false); button.focus(); } });
+  return wrapper;
 }
 
 function renderShell() {
   const { user } = session.me;
   root.className = 'app';
   view = h('main', { id: 'view', class: 'view', tabindex: '-1' });
+  const visible = routes.filter((r) => r.nav !== false && (!r.permission || session.can(r.permission)));
 
-  const toggle = h('button', {
-    class: 'icon-btn nav-toggle', type: 'button', 'aria-label': 'Menu',
-    onclick: () => document.body.classList.toggle('nav-open'),
-  }, '☰');
+  const brand = () => h('a', { class: 'brand', href: '/' },
+    h('span', { class: 'brand-mark', 'aria-hidden': 'true' }, icon('drawer')),
+    h('span', { class: 'brand-name' }, appName()));
 
-  const logout = h('button', {
-    class: 'btn btn-ghost', type: 'button',
-    onclick: async () => {
-      try {
-        await api('/auth/logout', { method: 'POST' });
-      } catch (error) {
-        if (error.status !== 401) return showError(error);
-      }
-      session.me = null;
-      view = null;
-      navigate('/login', { replace: true });
-    },
-  }, 'Déconnexion');
+  const search = session.can('stock.view') ? searchBox(navigate) : null;
 
-  const nav = h('nav', { class: 'sidebar', 'aria-label': 'Navigation principale' },
-    h('ul', {}, routes
-      .filter((r) => r.nav !== false && (!r.permission || session.can(r.permission)))
-      .map((r) => h('li', {}, h('a', { class: 'nav-link', href: r.path }, r.label)))),
+  const nav = h('nav', { class: 'sidebar', id: 'sidebar', tabindex: '-1', 'aria-label': 'Navigation principale' },
+    h('div', { class: 'sidebar-brand' }, brand()),
+    Object.entries(GROUPS).map(([key, title]) => {
+      const items = visible.filter((r) => r.group === key);
+      return items.length > 0 && h('div', { class: 'nav-group' },
+        key !== 'stock' && h('p', { class: 'nav-heading', id: `nav-${key}` }, title),
+        h('ul', { 'aria-labelledby': key !== 'stock' ? `nav-${key}` : null }, items.map((r) => h('li', {},
+          h('a', { class: 'nav-link', href: r.path }, icon(r.icon), r.label)))));
+    }),
   );
 
+  // Mobile : quatre destinations du quotidien, le reste dans « Plus »
+  const tabbar = h('nav', { class: 'tabbar', 'aria-label': 'Navigation rapide' },
+    visible.filter((r) => r.tab).map((r) => h('a', { class: 'tab', href: r.path },
+      h('span', { class: 'tab-pill' }, icon(r.icon)), r.label)),
+    visible.some((r) => !r.tab) && h('button', { class: 'tab', type: 'button', 'aria-controls': 'sidebar', onclick: () => setNavOpen(true) },
+      h('span', { class: 'tab-pill' }, icon('menu')), 'Plus'));
+
+  const offline = h('div', { class: 'offline-banner', role: 'status', hidden: navigator.onLine },
+    icon('wifiOff'), 'Hors connexion : consultation seulement, les modifications reprendront au retour du réseau.');
+  window.addEventListener('offline', () => { offline.hidden = false; });
+  window.addEventListener('online', () => { offline.hidden = true; });
+
   clear(root,
+    h('a', { class: 'skip-link', href: '#view' }, 'Aller au contenu'),
     h('header', { class: 'topbar' },
-      toggle,
-      h('a', { class: 'brand', href: '/' }, appName()),
-      session.can('stock.view') && searchBox(navigate),
-      h('div', { class: 'user-menu' },
-        h('span', { class: 'user-name' }, user.display_name || user.email),
-        h('span', { class: 'badge' }, user.role.name),
-        logout,
-      ),
+      h('button', {
+        class: 'icon-btn nav-toggle', type: 'button', 'aria-label': 'Ouvrir le menu', 'aria-controls': 'sidebar', 'aria-expanded': 'false',
+        onclick: () => setNavOpen(!document.body.classList.contains('nav-open')),
+      }, icon('menu')),
+      brand(),
+      search,
+      h('div', { class: 'topbar-end' },
+        search && h('button', {
+          class: 'icon-btn search-toggle', type: 'button', 'aria-label': 'Rechercher',
+          onclick: () => { document.body.classList.add('search-open'); search.querySelector('input').focus(); },
+        }, icon('search')),
+        userMenu(user)),
     ),
+    offline,
     nav,
-    h('div', { class: 'nav-backdrop', onclick: () => document.body.classList.remove('nav-open') }),
+    h('div', { class: 'nav-backdrop', onclick: () => setNavOpen(false) }),
     view,
+    tabbar,
   );
 }
 
@@ -180,7 +263,16 @@ document.addEventListener('click', (event) => {
   const url = new URL(link.href);
   if (url.origin !== location.origin || url.pathname.startsWith('/api/') || link.target) return;
   event.preventDefault();
+  if (link.classList.contains('skip-link')) return view?.focus();
   if (url.pathname !== location.pathname || url.search !== location.search) navigate(url.pathname + url.search);
+  else setNavOpen(false);
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && document.body.classList.contains('nav-open')) {
+    setNavOpen(false);
+    document.querySelector('.nav-toggle')?.focus();
+  }
 });
 
 window.addEventListener('popstate', render);
@@ -197,7 +289,7 @@ try {
   render();
 } catch (error) {
   clear(root, h('div', { class: 'boot' },
-    h('p', { class: 'boot-message' }, error.message ?? 'Erreur de chargement.'),
-    h('button', { class: 'btn btn-primary', onclick: () => location.reload() }, 'Réessayer'),
+    emptyState(error.message ?? "L'application n'a pas pu démarrer.", { title: 'Démarrage impossible', iconName: 'wifiOff' }),
+    h('button', { class: 'btn btn-primary', onclick: () => location.reload() }, icon('refresh'), 'Réessayer'),
   ));
 }

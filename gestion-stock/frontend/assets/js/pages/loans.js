@@ -2,44 +2,74 @@
 
 import { api } from '../api.js';
 import { clear, formatDate, h } from '../dom.js';
-import { emptyState, showError } from '../ui.js';
+import { icon } from '../icons.js';
+import { emptyState, errorState, locationLabel, pageHeader, skeleton } from '../ui.js';
 import { formatQuantity, returnDialog } from '../stock-dialogs.js';
+
+/** Groupe de boutons à choix unique (plus rapide qu'une liste déroulante pour 2 options). */
+function segmented(label, options, value, onChange) {
+  const group = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': label });
+  const sync = () => group.querySelectorAll('[role=radio]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === value)));
+  group.append(...options.map(([v, t]) => h('button', {
+    class: 'segmented-option', type: 'button', role: 'radio', dataset: { value: v },
+    onclick: () => { if (v !== value) { value = v; sync(); onChange(v); } },
+  }, t)));
+  sync();
+  return { element: group, get value() { return value; } };
+}
 
 export function render(view, session) {
   const canAll = session.can('history.view');
-  const scope = h('select', { 'aria-label': 'Emprunts affichés' },
-    h('option', { value: 'mine' }, 'Mes emprunts'), canAll && h('option', { value: 'all' }, 'Tous les emprunts'));
-  const status = h('select', { 'aria-label': 'Statut' }, h('option', { value: 'open' }, 'En cours'), h('option', { value: 'closed' }, 'Clôturés'));
-  const list = h('div', { class: 'list-container' });
+  const list = h('div', { class: 'loan-list' }, skeleton('row', 3));
+  const scope = canAll ? segmented('Emprunts affichés', [['mine', 'Les miens'], ['all', 'Tout le monde']], 'mine', () => load()) : { value: 'mine' };
+  const status = segmented('Statut', [['open', 'En cours'], ['closed', 'Rendus']], 'open', () => load());
 
   view.append(
-    h('div', { class: 'page-header' }, h('h1', {}, 'Emprunts et retours'),
-      h('p', { class: 'muted' }, 'Les retours partiels laissent l\'emprunt ouvert pour la quantité restante.')),
-    h('div', { class: 'toolbar' }, scope, status),
+    pageHeader({ title: 'Emprunts', description: 'Ce qui est sorti et doit revenir. Un retour partiel garde l’emprunt ouvert pour la quantité restante.' }),
+    h('div', { class: 'toolbar' }, scope.element, status.element),
     list,
   );
 
   const load = async () => {
+    list.setAttribute('aria-busy', 'true');
     try {
       const { loans } = await api(`/loans?scope=${scope.value}&status=${status.value}`);
-      clear(list, loans.length ? h('table', { class: 'data-table' },
-        h('thead', {}, h('tr', {}, ['Objet', 'Emprunteur', 'Pris le', 'Quantité', 'Reste à rendre', 'Origine', ''].map((t) => h('th', {}, t)))),
-        h('tbody', {}, loans.map((loan) => h('tr', {},
-          h('td', { 'data-label': 'Objet' }, h('a', { href: `/items/${loan.item.id}` }, loan.item.name), h('div', { class: 'muted small' }, loan.item.reference)),
-          h('td', { 'data-label': 'Emprunteur' }, loan.user.display_name || loan.user.email),
-          h('td', { 'data-label': 'Pris le' }, formatDate(loan.taken_at), loan.comment && h('div', { class: 'muted small' }, loan.comment)),
-          h('td', { 'data-label': 'Quantité' }, formatQuantity(loan.quantity, loan.item.unit)),
-          h('td', { 'data-label': 'Reste à rendre' }, loan.status === 'open' ? h('strong', {}, formatQuantity(loan.remaining, loan.item.unit)) : `rendu le ${formatDate(loan.closed_at)}`),
-          h('td', { 'data-label': 'Origine' }, loan.origin.room_id
-            ? h('a', { class: 'path', href: `/rooms/${loan.origin.room_id}?unit=${loan.origin.unit_id}`, title: 'Voir en 3D' }, loan.origin.path)
-            : h('span', { class: 'path' }, loan.origin.path || '–')),
-          h('td', { class: 'cell-actions' }, loan.status === 'open' && session.can('stock.take')
-            && (loan.user.id === session.me.user.id || session.can('stock.adjust'))
-            && h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: async () => { if (await returnDialog(loan)) load(); } }, 'Rendre')),
-        )))) : emptyState(status.value === 'open' ? 'Aucun emprunt en cours.' : 'Aucun emprunt clôturé.'));
-    } catch (error) { showError(error); }
+      clear(list, loans.length ? loans.map((loan) => card(loan)) : h('div', { class: 'card' }, status.value === 'open'
+        ? emptyState(scope.value === 'mine' ? 'Vous n’avez rien à rendre.' : 'Aucun objet n’est sorti en ce moment.', { title: 'Aucun emprunt en cours', iconName: 'check' })
+        : emptyState('Les emprunts rendus apparaîtront ici.', { title: 'Aucun emprunt rendu', iconName: 'history' })));
+    } catch (error) {
+      clear(list, errorState(error, load));
+    } finally {
+      list.removeAttribute('aria-busy');
+    }
   };
-  scope.addEventListener('change', load);
-  status.addEventListener('change', load);
+
+  function card(loan) {
+    const open = loan.status === 'open';
+    const mine = loan.user.id === session.me.user.id;
+    const returned = Number(loan.quantity) - Number(loan.remaining);
+    const bar = h('div', { class: 'progress-bar' });
+    bar.style.width = `${Math.round((returned / Number(loan.quantity)) * 100)}%`;
+    return h('article', { class: 'loan-card' },
+      h('div', { class: 'loan-main' },
+        h('a', { class: 'loan-title', href: `/items/${loan.item.id}` }, loan.item.name),
+        h('div', { class: 'loan-meta' },
+          (scope.value === 'all' || !mine) && h('span', {}, icon('users'), loan.user.display_name || loan.user.email),
+          h('span', {}, icon('history'), open ? `Pris le ${formatDate(loan.taken_at)}` : `Rendu le ${formatDate(loan.closed_at)}`),
+          loan.comment && h('span', {}, loan.comment)),
+        loan.origin.path && (loan.origin.room_id
+          ? locationLabel(loan.origin.path, { href: `/rooms/${loan.origin.room_id}?unit=${loan.origin.unit_id}` })
+          : locationLabel(loan.origin.path))),
+      h('div', { class: 'loan-remaining' },
+        open
+          ? [h('strong', {}, formatQuantity(loan.remaining, loan.item.unit)), h('span', {}, `à rendre sur ${formatQuantity(loan.quantity)}`)]
+          : [h('strong', {}, formatQuantity(loan.quantity, loan.item.unit)), h('span', {}, 'rendus')],
+        open && returned > 0 && h('div', { class: 'progress', role: 'img', 'aria-label': `${formatQuantity(returned)} déjà rendus` }, bar)),
+      open && session.can('stock.take') && (mine || session.can('stock.adjust'))
+        ? h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => { if (await returnDialog(loan)) load(); } }, icon('undo'), 'Rendre')
+        : h('span'),
+    );
+  }
+
   load();
 }

@@ -2,35 +2,55 @@
 
 import { api } from '../api.js';
 import { clear, h } from '../dom.js';
-import { emptyState, showError } from '../ui.js';
-import { formatQuantity, itemDialog, takeDialog } from '../stock-dialogs.js';
+import { icon } from '../icons.js';
+import { emptyState, errorState, locationLabel, pageHeader, plural, showError, skeleton } from '../ui.js';
+import { formatQuantity, itemDialog, takeDialog, unitLabel } from '../stock-dialogs.js';
 import { navigate } from '../app.js';
 
 export async function render(view, session) {
   const params = new URLSearchParams(location.search);
-  const search = h('input', { type: 'search', placeholder: 'Nom, référence, emplacement, étiquette…', value: params.get('q') ?? '', 'aria-label': 'Rechercher un objet' });
+  const search = h('input', { type: 'search', placeholder: 'Nom, référence, salle, tiroir, étiquette…', value: params.get('q') ?? '', 'aria-label': 'Rechercher un objet', enterkeyhint: 'search' });
   const category = h('select', { 'aria-label': 'Catégorie' }, h('option', { value: '' }, 'Toutes les catégories'));
   const room = h('select', { 'aria-label': 'Salle' }, h('option', { value: '' }, 'Toutes les salles'));
-  const sort = h('select', { 'aria-label': 'Tri' },
-    [['relevance', 'Pertinence'], ['name', 'Nom'], ['reference', 'Référence'], ['quantity', 'Quantité'], ['updated', 'Modification récente']]
+  const sort = h('select', { 'aria-label': 'Trier par' },
+    [['relevance', 'Les plus pertinents'], ['name', 'Nom (A → Z)'], ['reference', 'Référence'], ['quantity', 'Quantité'], ['updated', 'Modifiés récemment']]
       .map(([v, t]) => h('option', { value: v, selected: v === (params.get('sort') ?? 'relevance') }, t)));
   const low = h('input', { type: 'checkbox', checked: params.get('low') === '1' });
   const archived = h('input', { type: 'checkbox', checked: params.get('archived') === '1' });
-  const results = h('div', { class: 'results' });
-  const summary = h('p', { class: 'muted small', 'aria-live': 'polite' });
-  const pager = h('div', { class: 'pager' });
+  const results = h('div', { class: 'results' }, skeleton('row', 5));
+  const summary = h('p', { class: 'result-summary', 'aria-live': 'polite' });
+  const pager = h('nav', { class: 'pager', 'aria-label': 'Pages de résultats' });
   let page = Number(params.get('page') ?? 1);
 
+  // Mobile : filtres repliés derrière un bouton qui indique combien sont actifs
+  const filterCount = h('span', { class: 'nav-count', hidden: true });
+  const filterToggle = h('button', { class: 'btn filter-toggle', type: 'button', 'aria-expanded': 'false', 'aria-controls': 'item-filters',
+    onclick: () => filterToggle.setAttribute('aria-expanded', String(filterToggle.getAttribute('aria-expanded') !== 'true')) },
+  icon('sliders'), 'Filtres', filterCount);
+  const syncFilterCount = () => {
+    const n = [category.value, room.value, sort.value !== 'relevance', low.checked, archived.checked].filter(Boolean).length;
+    filterCount.hidden = n === 0;
+    filterCount.textContent = String(n);
+  };
+
+  const create = async () => {
+    const item = await itemDialog(null, { canAddStock: session.can('stock.add') });
+    if (item) navigate(`/items/${item.id}`);
+  };
+
   view.append(
-    h('div', { class: 'page-header page-header-actions' },
-      h('div', {}, h('h1', {}, 'Objets'), h('p', { class: 'muted' }, 'Recherchez par nom, référence, catégorie, salle, armoire, tiroir, boîte, étiquette ou champ personnalisé.')),
-      session.can('items.edit') && h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
-        const item = await itemDialog(null, { canAddStock: session.can('stock.add') });
-        if (item) navigate(`/items/${item.id}`);
-      } }, 'Nouvel objet')),
-    h('div', { class: 'toolbar' }, search, category, room, sort,
-      h('label', { class: 'checkbox toolbar-check' }, low, 'Stock bas'),
-      session.can('items.edit') && h('label', { class: 'checkbox toolbar-check' }, archived, 'Archivés')),
+    pageHeader({
+      title: 'Objets',
+      description: 'Cherchez par nom, référence, catégorie ou emplacement : salle, armoire, tiroir, étiquette.',
+      actions: session.can('items.edit') && h('button', { class: 'btn btn-primary', type: 'button', onclick: create }, icon('plus'), 'Nouvel objet'),
+    }),
+    h('div', { class: 'toolbar toolbar-filters' },
+      h('div', { class: 'toolbar-search' }, icon('search'), search),
+      filterToggle,
+      h('div', { class: 'filter-panel', id: 'item-filters' },
+        category, room, sort,
+        h('label', { class: 'chip-toggle' }, low, 'Stock bas'),
+        session.can('items.edit') && h('label', { class: 'chip-toggle' }, archived, 'Archivés'))),
     summary, results, pager,
   );
 
@@ -39,6 +59,13 @@ export async function render(view, session) {
     category.append(...categories.map((c) => h('option', { value: c.id, selected: String(c.id) === params.get('category_id') }, c.name)));
     room.append(...rooms.map((r) => h('option', { value: r.id, selected: String(r.id) === params.get('room_id') }, r.name)));
   } catch (error) { showError(error); }
+
+  const filtered = () => Boolean(search.value.trim() || category.value || room.value || low.checked || archived.checked);
+  const reset = () => {
+    search.value = ''; category.value = ''; room.value = ''; low.checked = false; archived.checked = false; page = 1;
+    load();
+    search.focus();
+  };
 
   let sequence = 0;
   const load = async () => {
@@ -50,24 +77,34 @@ export async function render(view, session) {
     if (low.checked) query.set('low', '1');
     if (archived.checked) query.set('archived', '1');
     if (page > 1) query.set('page', page);
+    syncFilterCount();
     history.replaceState(null, '', `/items${query.size ? `?${query}` : ''}`);
     const current = ++sequence;
     results.setAttribute('aria-busy', 'true');
     try {
       const data = await api(`/items?${query}`);
       if (current !== sequence) return; // une réponse plus récente est déjà affichée
-      summary.textContent = `${data.total} objet(s)`;
-      clear(results, data.items.length ? data.items.map((item) => card(item, session)) : emptyState(search.value ? 'Aucun objet ne correspond à cette recherche.' : 'Aucun objet.'));
+      summary.textContent = data.total ? plural(data.total, 'objet') : '';
+      clear(results, data.items.length
+        ? data.items.map((item) => card(item))
+        : h('div', { class: 'card' }, filtered()
+          ? emptyState(search.value.trim() ? `Aucun objet ne correspond à « ${search.value.trim()} ». Vérifiez l’orthographe ou essayez une référence.` : 'Aucun objet ne correspond à ces filtres.', {
+            title: 'Aucun résultat', iconName: 'search', action: h('button', { class: 'btn', type: 'button', onclick: reset }, 'Effacer la recherche et les filtres'),
+          })
+          : emptyState(session.can('items.edit') ? 'Ajoutez un premier objet pour commencer l’inventaire.' : 'Le catalogue est vide pour le moment.', {
+            title: 'Aucun objet', iconName: 'box',
+            action: session.can('items.edit') && h('button', { class: 'btn btn-primary', type: 'button', onclick: create }, icon('plus'), 'Nouvel objet'),
+          })));
       const pages = Math.ceil(data.total / data.per_page);
       clear(pager, pages > 1 && [
-        h('button', { class: 'btn btn-small', type: 'button', disabled: page <= 1, onclick: () => { page--; load(); } }, '← Précédent'),
-        h('span', { class: 'muted small' }, `Page ${page} / ${pages}`),
-        h('button', { class: 'btn btn-small', type: 'button', disabled: page >= pages, onclick: () => { page++; load(); } }, 'Suivant →'),
+        h('button', { class: 'btn btn-small', type: 'button', disabled: page <= 1, onclick: () => { page--; load(); window.scrollTo({ top: 0 }); } }, icon('chevronLeft'), 'Précédente'),
+        h('span', { class: 'num' }, `Page ${page} sur ${pages}`),
+        h('button', { class: 'btn btn-small', type: 'button', disabled: page >= pages, onclick: () => { page++; load(); window.scrollTo({ top: 0 }); } }, 'Suivante', icon('chevronRight')),
       ]);
     } catch (error) {
-      showError(error);
+      if (current === sequence) clear(results, errorState(error, load));
     } finally {
-      results.removeAttribute('aria-busy');
+      if (current === sequence) results.removeAttribute('aria-busy');
     }
   };
 
@@ -77,37 +114,41 @@ export async function render(view, session) {
   load();
   search.focus();
 
-  async function refresh() { await load(); }
-
-  function card(item, s) {
+  function card(item) {
     const main = item.locations[0];
-    return h('article', { class: ['card', 'item-card', item.is_low && 'is-low'] },
-      item.photo_url ? h('img', { class: 'item-thumb', src: item.photo_url, alt: '', loading: 'lazy' }) : h('div', { class: 'item-thumb item-thumb-empty', 'aria-hidden': 'true' }, '▣'),
+    const empty = Number(item.total_quantity) === 0;
+    return h('article', { class: ['item-card', item.is_low && 'is-low', empty && 'is-empty'] },
+      item.photo_url
+        ? h('img', { class: 'item-thumb', src: item.photo_url, alt: '', loading: 'lazy', decoding: 'async' })
+        : h('div', { class: 'item-thumb item-thumb-empty', 'aria-hidden': 'true' }, icon('box')),
       h('div', { class: 'item-main' },
-        h('div', { class: 'item-title' },
-          h('a', { href: `/items/${item.id}` }, item.name),
+        h('h2', { class: 'item-name' }, h('a', { href: `/items/${item.id}` }, item.name)),
+        h('div', { class: 'item-meta' },
+          h('span', { class: 'item-ref' }, item.reference),
           item.category && categoryBadge(item.category),
-          item.is_low && h('span', { class: 'badge badge-warn' }, 'Stock bas')),
-        h('div', { class: 'muted small' }, `Réf. ${item.reference}`),
-        item.locations.length
-          ? h('ul', { class: 'location-list' }, item.locations.slice(0, 3).map((l) => h('li', {},
-            h('a', { href: `/rooms/${l.room_id}?unit=${l.unit_id}`, title: 'Voir en 3D' }, l.path), ' · ', h('strong', {}, formatQuantity(l.quantity, item.unit)))),
-            item.locations.length > 3 && h('li', { class: 'muted' }, `+ ${item.locations.length - 3} autre(s) emplacement(s)`))
-          : h('p', { class: 'muted small' }, 'Aucun stock enregistré.')),
+          item.is_low && h('span', { class: 'badge badge-warn' }, icon('alert'), empty ? 'Épuisé' : 'Stock bas'),
+          !item.is_active && h('span', { class: 'badge' }, 'Archivé')),
+        item.locations.length > 0 && h('ul', { class: 'location-list', 'aria-label': 'Emplacements' },
+          item.locations.slice(0, 2).map((l) => h('li', {},
+            locationLabel(l.path, { href: `/rooms/${l.room_id}?unit=${l.unit_id}`, quantity: item.locations.length > 1 ? formatQuantity(l.quantity) : null }))),
+          item.locations.length > 2 && h('li', { class: 'location-more' }, `+ ${plural(item.locations.length - 2, 'autre emplacement', 'autres emplacements')}`))),
       h('div', { class: 'item-side' },
-        h('div', { class: 'item-qty' }, formatQuantity(item.total_quantity), h('span', { class: 'muted small' }, ` ${item.unit}`)),
+        h('p', { class: 'item-qty' },
+          h('span', { class: 'qty-num' }, formatQuantity(item.total_quantity)),
+          h('span', { class: 'qty-unit' }, unitLabel(item.unit, item.total_quantity)),
+          h('span', { class: 'sr-only' }, 'en stock')),
         h('div', { class: 'item-actions' },
-          h('a', { class: 'btn btn-small', href: `/items/${item.id}` }, 'Fiche'),
-          main && h('a', { class: 'btn btn-small', href: `/rooms/${main.room_id}?unit=${main.unit_id}` }, 'Voir en 3D'),
-          main && s.can('stock.take') && h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: async () => { if (await takeDialog(item, main)) refresh(); } }, 'Prendre'))),
+          main && session.can('stock.take') && item.is_active && h('button', {
+            class: 'btn btn-small btn-primary', type: 'button', 'aria-label': `Prendre ${item.name}`,
+            onclick: async () => { if (await takeDialog(item, main)) load(); },
+          }, icon('take'), 'Prendre'))),
     );
   }
 }
 
-/** Pastille colorée : la couleur passe par le CSSOM (la CSP interdit les attributs style). */
+/** Pastille de catégorie : la couleur passe par le CSSOM (la CSP interdit les attributs style). */
 export function categoryBadge(category) {
-  const badge = h('span', { class: 'badge category-badge' }, category.name);
-  badge.style.borderColor = category.color;
-  badge.style.color = category.color;
-  return badge;
+  const dot = h('span', { class: 'dot', 'aria-hidden': 'true' });
+  dot.style.background = category.color;
+  return h('span', { class: 'badge category-badge' }, dot, category.name);
 }

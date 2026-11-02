@@ -2,7 +2,9 @@
 
 import { api } from '../api.js';
 import { clear, h } from '../dom.js';
-import { busy, confirmDialog, field, openDialog, showError, toast } from '../ui.js';
+import { busy, confirmDialog, emptyState, errorState, field, locationLabel, openDialog, plural, showError, skeleton, toast } from '../ui.js';
+import { icon } from '../icons.js';
+import { setTitle } from '../app.js';
 import {
   findFreeSpot, formatLength, fromDisplay, rotateAroundCenter, SHAPE_LABELS, toDisplay, unitInterior, UNITS,
 } from '../spatial.js';
@@ -25,37 +27,42 @@ export async function render(view, session, params) {
   const tree = h('nav', { class: 'editor-tree', 'aria-label': 'Rangements de la salle' });
   const details = h('aside', { class: 'editor-details', 'aria-live': 'polite' });
   const stage = h('div', { class: 'editor-stage' });
-  const hint = h('p', { class: 'editor-hint' }, 'Clic : sélectionner · glisser : tourner · clic droit ou Maj + glisser : déplacer la vue · molette : zoom · double-clic : ouvrir un tiroir');
+  const hint = h('p', { class: 'editor-hint' }, 'Clic : sélectionner  ·  Glisser : tourner  ·  Clic droit ou Maj + glisser : déplacer la vue  ·  Molette : zoomer  ·  Double-clic : ouvrir un tiroir');
+  // L'aide s'efface dès la première interaction : elle a servi
+  stage.addEventListener('pointerdown', () => hint.classList.add('is-faded'), { once: true });
 
   const pressed = (button, on) => button.setAttribute('aria-pressed', String(on));
-  const dimsButton = h('button', { class: 'btn btn-small', type: 'button', 'aria-pressed': 'false' }, 'Cotes');
-  const moveButton = can('furniture.edit') && h('button', { class: 'btn btn-small', type: 'button', 'aria-pressed': 'false', title: 'Faire glisser le meuble sélectionné au sol (Maj : pas de 10 cm)' }, 'Déplacer');
+  const label = (text) => h('span', { class: 'btn-label' }, text);
+  const dimsButton = h('button', { class: 'btn btn-small', type: 'button', 'aria-pressed': 'false', title: 'Afficher les cotes' }, icon('ruler'), label('Cotes'));
+  const moveButton = can('furniture.edit') && h('button', { class: 'btn btn-small', type: 'button', 'aria-pressed': 'false', title: 'Faire glisser le meuble sélectionné au sol (Maj : pas de 10 cm)' }, icon('move'), label('Déplacer'));
   const colorSelect = can('stock.view') && h('select', { class: 'select-small', 'aria-label': 'Couleurs des rangements' },
-    h('option', { value: 'original' }, "Couleurs : d'origine"), h('option', { value: 'fill' }, 'Couleurs : remplissage'));
+    h('option', { value: 'original' }, "Couleurs d'origine"), h('option', { value: 'fill' }, 'Couleurs de remplissage'));
   const legend = h('div', { class: 'fill-legend', hidden: true });
   const wallSelect = h('select', { class: 'select-small', 'aria-label': 'Affichage des murs' },
     [['auto', 'Murs : auto'], ['transparent', 'Murs : transparents'], ['hidden', 'Murs : masqués'], ['solid', 'Murs : pleins']].map(([v, t]) => h('option', { value: v }, t)));
+  const preset = (name, text) => h('button', { class: 'segmented-option', type: 'button', onclick: () => scene?.viewPreset(name) }, text);
 
   view.classList.add('view-wide');
   view.append(h('div', { class: 'editor' },
     h('div', { class: 'editor-toolbar' },
-      h('a', { class: 'btn btn-small btn-ghost', href: '/rooms' }, '← Salles'),
-      title,
+      h('div', { class: 'editor-heading' },
+        h('a', { class: 'icon-btn icon-btn-small', href: '/rooms', 'aria-label': 'Retour aux salles', title: 'Retour aux salles' }, icon('arrowLeft')),
+        title),
+      h('div', { class: 'editor-tools' },
       h('div', { class: 'toolbar-group', role: 'group', 'aria-label': 'Points de vue' },
-        h('button', { class: 'btn btn-small', type: 'button', onclick: () => scene?.viewPreset('iso') }, 'Vue 3D'),
-        h('button', { class: 'btn btn-small', type: 'button', onclick: () => scene?.viewPreset('top') }, 'Dessus'),
-        h('button', { class: 'btn btn-small', type: 'button', onclick: () => scene?.viewPreset('door') }, 'Depuis la porte')),
-      h('div', { class: 'toolbar-group' }, dimsButton, wallSelect, colorSelect, moveButton,
-        h('button', { class: 'btn btn-small', type: 'button', onclick: () => { scene?.showAll(); renderTree(); renderDetails(); } }, 'Tout afficher')),
+        h('div', { class: 'segmented' }, preset('iso', 'Vue 3D'), preset('top', 'Dessus'), preset('door', 'Porte'))),
+      h('span', { class: 'toolbar-divider', 'aria-hidden': 'true' }),
+      h('div', { class: 'toolbar-group', role: 'group', 'aria-label': 'Affichage' }, dimsButton, wallSelect, colorSelect, moveButton,
+        h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Réafficher les éléments masqués', onclick: () => { scene?.showAll(); renderTree(); renderDetails(); } }, icon('eye'), label('Tout afficher'))),
       h('div', { class: 'toolbar-group toolbar-end' },
-        can('furniture.edit') && h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: () => editUnit(null, null) }, 'Ajouter un meuble'),
-        can('rooms.edit') && h('button', { class: 'btn btn-small', type: 'button', onclick: async () => {
+        can('rooms.edit') && h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Fenêtres, portes et passages', onclick: async () => {
           await openOpeningsDialog(state.payload, (payload) => apply(payload));
-        } }, 'Ouvertures'),
-        can('rooms.edit') && h('button', { class: 'btn btn-small', type: 'button', onclick: async () => {
+        } }, icon('door'), label('Ouvertures')),
+        can('rooms.edit') && h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Dimensions, porte et apparence', onclick: async () => {
           const result = await openRoomDialog(state.payload.room);
           if (result) apply(result);
-        } }, 'Paramètres')),
+        } }, icon('sliders'), label('Salle')),
+        can('furniture.edit') && h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: () => editUnit(null, null) }, icon('plus'), 'Meuble'))),
     ),
     tree, h('div', { class: 'editor-canvas' }, stage, hint, legend), details,
   ));
@@ -69,7 +76,7 @@ export async function render(view, session, params) {
   function apply(payload) {
     state.payload = payload;
     title.textContent = payload.room.name;
-    document.title = `${payload.room.name} · Gestion de stock`;
+    setTitle(payload.room.name);
     if (state.selectedId !== null && !unitById(state.selectedId)) state.selectedId = null;
     scene?.setData(payload.room, payload.openings, payload.units);
     applyColors();
@@ -190,21 +197,23 @@ export async function render(view, session, params) {
       return h('li', { class: ['tree-node', u.id === state.selectedId && 'is-selected', hidden && 'is-hidden'] },
         h('div', { class: 'tree-row' },
           kids.length
-            ? h('button', { class: 'tree-toggle', type: 'button', 'aria-expanded': String(open), 'aria-label': open ? 'Replier' : 'Déplier',
-              onclick: () => { if (open) state.expanded.delete(u.id); else state.expanded.add(u.id); renderTree(); } }, open ? '▾' : '▸')
+            ? h('button', { class: 'tree-toggle', type: 'button', 'aria-expanded': String(open), 'aria-label': `${open ? 'Replier' : 'Déplier'} ${u.name}`,
+              onclick: () => { if (open) state.expanded.delete(u.id); else state.expanded.add(u.id); renderTree(); } }, icon('chevronRight'))
             : h('span', { class: 'tree-toggle' }),
           h('button', { class: 'tree-label', type: 'button', onclick: () => select(u.id, { focus: true }) },
             h('span', { class: 'tree-swatch', dataset: { color: u.color } }), u.name, u.label && h('span', { class: 'badge' }, u.label)),
-          h('button', { class: 'tree-eye', type: 'button', 'aria-pressed': String(hidden), title: hidden ? 'Afficher' : 'Masquer temporairement',
-            onclick: () => { scene?.setHidden(u.id, !hidden); renderTree(); } }, hidden ? '◌' : '●'),
+          h('button', { class: 'tree-eye', type: 'button', 'aria-pressed': String(hidden), title: hidden ? 'Afficher' : 'Masquer temporairement', 'aria-label': `${hidden ? 'Afficher' : 'Masquer'} ${u.name}`,
+            onclick: () => { scene?.setHidden(u.id, !hidden); renderTree(); } }, icon(hidden ? 'eyeOff' : 'eye')),
         ),
-        kids.length > 0 && open && h('ul', {}, kids.map(node)),
+        kids.length > 0 && open && h('ul', { class: 'tree-children' }, kids.map(node)),
       );
     };
     const roots = childrenOf(null);
     clear(tree,
-      h('h2', { class: 'panel-title' }, 'Rangements'),
-      roots.length ? h('ul', { class: 'tree' }, roots.map(node)) : h('p', { class: 'muted small' }, 'Aucun meuble dans cette salle.'));
+      h('h2', { class: 'panel-subtitle' }, 'Rangements', h('span', { class: 'count' }, String(state.payload.units.length))),
+      roots.length ? h('ul', { class: 'tree' }, roots.map(node)) : emptyState(can('furniture.edit') ? 'Ajoutez un premier meuble : armoire, étagère, bac…' : 'Aucun meuble dans cette salle.', {
+        iconName: 'drawer', action: can('furniture.edit') && h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: () => editUnit(null, null) }, icon('plus'), 'Ajouter un meuble'),
+      }));
     // Pastilles de couleur sans style en ligne (CSP) : couleur appliquée via le CSSOM
     tree.querySelectorAll('.tree-swatch').forEach((el) => { el.style.background = el.dataset.color; });
   }
@@ -218,8 +227,8 @@ export async function render(view, session, params) {
     if (!u) {
       const { room, units, openings } = state.payload;
       clear(details,
-        h('h2', { class: 'panel-title' }, room.name),
-        room.description && h('p', { class: 'muted' }, room.description),
+        h('div', { class: 'detail-header' }, h('h2', { class: 'panel-title' }, room.name), room.label && h('span', { class: 'badge' }, room.label)),
+        room.description && h('p', { class: 'muted small' }, room.description),
         h('dl', { class: 'props' },
           h('dt', {}, 'Hauteur'), h('dd', {}, formatLength(room.height_mm, unit)),
           h('dt', {}, 'Murs'), h('dd', {}, `${room.outline.length} (épaisseur ${formatLength(room.wall_thickness_mm, unit)})`),
@@ -227,8 +236,8 @@ export async function render(view, session, params) {
           h('dt', {}, 'Ouvertures'), h('dd', {}, String(openings.length)),
           h('dt', {}, 'Meubles'), h('dd', {}, String(childrenOf(null).length)),
           h('dt', {}, 'Rangements'), h('dd', {}, String(units.length))),
-        h('p', { class: 'field-hint' }, "Repère : origine au coin gauche du mur de la porte (vu de l'intérieur), au sol. X longe le mur de la porte, Z entre dans la salle, Y monte."),
-        h('p', { class: 'muted small' }, 'Sélectionnez un meuble dans la vue ou dans la liste.'));
+        h('p', { class: 'alert alert-info', role: 'note' }, icon('info'), h('span', {}, 'Sélectionnez un meuble dans la vue ou dans la liste pour voir son contenu.')),
+        h('p', { class: 'field-hint' }, "Repère : l'origine est au coin gauche du mur de la porte (vu de l'intérieur), au sol. X longe le mur de la porte, Z entre dans la salle, Y monte."));
       return;
     }
 
@@ -239,15 +248,16 @@ export async function render(view, session, params) {
     const hidden = scene?.hidden.has(u.id) ?? false;
 
     const actions = h('div', { class: 'detail-actions' },
-      editRight && h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: () => editUnit(u, parent) }, 'Modifier'),
-      can('storage.edit') && u.can_contain_units && inside && h('button', { class: 'btn btn-small', type: 'button', onclick: () => editUnit(null, u) }, 'Ajouter un rangement dedans'),
-      can('storage.edit') && u.can_contain_units && inside && kids.length === 0 && h('button', { class: 'btn btn-small', type: 'button', onclick: () => generate(u) }, "Générer l'intérieur"),
+      editRight && h('button', { class: 'btn btn-small', type: 'button', onclick: () => editUnit(u, parent) }, icon('edit'), 'Modifier'),
       u.shape === 'drawer' && h('button', { class: 'btn btn-small', type: 'button', onclick: () => { scene?.setDrawerOpen(u.id, !scene.isDrawerOpen(u.id)); setTimeout(renderDetails, 260); } },
-        scene?.isDrawerOpen(u.id) ? 'Fermer le tiroir' : 'Ouvrir le tiroir'),
-      h('button', { class: 'btn btn-small', type: 'button', onclick: () => scene?.focus(u.id) }, 'Centrer'),
-      h('button', { class: 'btn btn-small', type: 'button', onclick: () => { scene?.setHidden(u.id, !hidden); renderTree(); renderDetails(); } }, hidden ? 'Afficher' : 'Masquer'),
-      editRight && h('button', { class: 'btn btn-small btn-danger-ghost', type: 'button', onclick: () => remove(u) }, 'Supprimer'),
+        icon('drawer'), scene?.isDrawerOpen(u.id) ? 'Fermer le tiroir' : 'Ouvrir le tiroir'),
+      h('button', { class: 'icon-btn icon-btn-small', type: 'button', title: 'Centrer la vue', 'aria-label': 'Centrer la vue sur ce rangement', onclick: () => scene?.focus(u.id) }, icon('focus')),
+      h('button', { class: 'icon-btn icon-btn-small', type: 'button', title: hidden ? 'Afficher' : 'Masquer temporairement', 'aria-label': hidden ? 'Afficher ce rangement' : 'Masquer ce rangement', onclick: () => { scene?.setHidden(u.id, !hidden); renderTree(); renderDetails(); } }, icon(hidden ? 'eyeOff' : 'eye')),
+      editRight && h('button', { class: 'icon-btn icon-btn-small btn-danger-ghost', type: 'button', title: 'Supprimer', 'aria-label': `Supprimer ${u.name}`, onclick: () => remove(u) }, icon('trash')),
     );
+    const addInside = can('storage.edit') && u.can_contain_units && inside && h('div', { class: 'detail-actions' },
+      h('button', { class: 'btn btn-small', type: 'button', onclick: () => editUnit(null, u) }, icon('plus'), 'Rangement dedans'),
+      kids.length === 0 && h('button', { class: 'btn btn-small', type: 'button', onclick: () => generate(u) }, icon('grid'), "Générer l'intérieur"));
 
     const position = editRight && nudgePad(u);
 
@@ -255,9 +265,17 @@ export async function render(view, session, params) {
       h('div', { class: 'detail-header' },
         h('h2', { class: 'panel-title' }, u.name),
         h('span', { class: 'badge' }, u.type_name), u.label && h('span', { class: 'badge badge-accent' }, u.label)),
-      h('p', { class: 'path' }, u.path),
-      u.description && h('p', { class: 'muted' }, u.description),
+      locationLabel(u.path),
+      u.description && h('p', { class: 'muted small' }, u.description),
       actions,
+      u.can_hold_items && can('stock.view') && contentsSection(u),
+      (u.can_contain_units || kids.length > 0) && [
+        h('h3', { class: 'panel-subtitle' }, 'Rangements à l’intérieur', h('span', { class: 'count' }, String(kids.length))),
+        kids.length
+          ? h('ul', { class: 'plain-list' }, kids.map((k) => h('li', {}, h('button', { class: 'tree-label', type: 'button', onclick: () => select(k.id, { focus: true }) }, icon('chevronRight'), k.name, h('span', { class: 'sub' }, k.type_name)))))
+          : h('p', { class: 'muted small' }, 'Aucun pour le moment.'),
+        addInside],
+      h('h3', { class: 'panel-subtitle' }, 'Dimensions et position'),
       h('dl', { class: 'props' },
         u.reference && [h('dt', {}, 'Référence'), h('dd', {}, u.reference)],
         h('dt', {}, 'Dimensions (L × P × H)'), h('dd', {}, `${formatLength(u.width_mm, unit)} × ${formatLength(u.depth_mm, unit)} × ${formatLength(u.height_mm, unit)}`),
@@ -267,11 +285,6 @@ export async function render(view, session, params) {
         h('dt', {}, 'Épaisseur des parois'), h('dd', {}, formatLength(u.panel_mm, unit)),
         inside && [h('dt', {}, 'Intérieur utile'), h('dd', {}, `${formatLength(inside.width, unit)} × ${formatLength(inside.depth, unit)} × ${formatLength(inside.height, unit)}`)]),
       position,
-      h('h3', { class: 'panel-subtitle' }, `Contenu (${kids.length})`),
-      kids.length
-        ? h('ul', { class: 'plain-list' }, kids.map((k) => h('li', {}, h('button', { class: 'link-btn', type: 'button', onclick: () => select(k.id, { focus: true }) }, k.name), h('span', { class: 'muted small' }, ` · ${k.type_name}`))))
-        : h('p', { class: 'muted small' }, u.can_contain_units ? 'Aucun sous-rangement.' : 'Ce type ne contient pas de rangements.'),
-      u.can_hold_items && can('stock.view') && contentsSection(u),
     );
   }
 
@@ -279,53 +292,54 @@ export async function render(view, session, params) {
     const unit = unitLabel();
     const stepSelect = h('select', { class: 'select-small', 'aria-label': 'Pas de déplacement' },
       [[1, '1 mm'], [10, '1 cm'], [100, '10 cm'], [500, '50 cm']].map(([v, t]) => h('option', { value: v, selected: v === 10 }, t)));
-    const b = (text, key, sign, title) => h('button', { class: 'btn btn-small', type: 'button', title, onclick: () => nudge(u, key, sign * Number(stepSelect.value)) }, text);
+    const b = (text, key, sign, title) => h('button', { class: 'btn btn-small', type: 'button', title, 'aria-label': title, onclick: (e) => busy(e.currentTarget, () => nudge(u, key, sign * Number(stepSelect.value))) }, text);
     return h('div', { class: 'nudge' },
       h('h3', { class: 'panel-subtitle' }, 'Ajuster la position'),
+      h('div', { class: 'nudge-row' }, h('label', { class: 'small muted', for: stepSelect.id = `step-${u.id}` }, 'Pas'), stepSelect,
+        u.parent_id === null && [
+          h('button', { class: 'icon-btn icon-btn-small icon-btn-bordered', type: 'button', title: 'Pivoter de 90° à gauche', 'aria-label': 'Pivoter de 90° à gauche', onclick: () => patchUnit(u, rotateAroundCenter(u, u.rotation_deg - 90)) }, icon('rotateLeft')),
+          h('button', { class: 'icon-btn icon-btn-small icon-btn-bordered', type: 'button', title: 'Pivoter de 90° à droite', 'aria-label': 'Pivoter de 90° à droite', onclick: () => patchUnit(u, rotateAroundCenter(u, u.rotation_deg + 90)) }, icon('rotateRight'))]),
       h('div', { class: 'nudge-grid' },
         b('X −', 'pos_x_mm', -1, 'Vers la gauche'), b('X +', 'pos_x_mm', 1, 'Vers la droite'),
+        b('Y −', 'pos_y_mm', -1, 'Plus bas'),
         b(u.parent_id === null ? 'Z −' : 'Arrière', 'pos_z_mm', -1, u.parent_id === null ? 'Vers le mur de la porte' : 'Vers le fond'),
         b(u.parent_id === null ? 'Z +' : 'Avant', 'pos_z_mm', 1, u.parent_id === null ? 'Vers le fond de la salle' : 'Vers la façade'),
-        b('Y −', 'pos_y_mm', -1, 'Plus bas'), b('Y +', 'pos_y_mm', 1, 'Plus haut'),
-        stepSelect),
-      u.parent_id === null && h('div', { class: 'nudge-grid' },
-        h('button', { class: 'btn btn-small', type: 'button', onclick: () => patchUnit(u, rotateAroundCenter(u, u.rotation_deg - 90)) }, '⟲ 90°'),
-        h('button', { class: 'btn btn-small', type: 'button', onclick: () => patchUnit(u, rotateAroundCenter(u, u.rotation_deg + 90)) }, '⟳ 90°')),
-      h('p', { class: 'field-hint' }, `Clavier dans la vue 3D : flèches (Maj : ×10), Pg préc./suiv. pour la hauteur. Unité : ${unit}.`),
+        b('Y +', 'pos_y_mm', 1, 'Plus haut')),
+      h('p', { class: 'field-hint' }, `Au clavier dans la vue : flèches (Maj : ×10), Page préc./suiv. pour la hauteur. Unité : ${unit}.`),
     );
   }
 
   /** Objets rangés dans ce rangement (et ses sous-rangements), avec prise et ajout directs. */
   function contentsSection(u) {
-    const body = h('div', {}, h('p', { class: 'muted small' }, 'Chargement…'));
+    const body = h('div', {}, skeleton('text', 2));
     const location = { unit_id: u.id, path: u.path };
     const load = async () => {
       try {
         const { contents } = await api(`/storage-units/${u.id}/contents?deep=1`);
         clear(body, contents.length
           ? h('ul', { class: 'plain-list contents-list' }, contents.map((c) => h('li', { class: 'list-row' },
-            h('span', {},
-              h('a', { href: `/items/${c.item_id}` }, c.name), ' · ', h('strong', {}, formatQuantity(c.quantity, c.unit)),
-              c.unit_id !== u.id && h('div', { class: 'muted small' }, c.path.split(' › ').slice(-1)[0])),
-            can('stock.take') && h('button', { class: 'btn btn-small', type: 'button', onclick: async () => {
+            h('div', { class: 'list-row-main' },
+              h('a', { href: `/items/${c.item_id}` }, c.name),
+              h('span', { class: 'sub' }, formatQuantity(c.quantity, c.unit), c.unit_id !== u.id && `, dans ${c.path.split(' › ').slice(-1)[0]}`)),
+            can('stock.take') && h('button', { class: 'btn btn-small', type: 'button', 'aria-label': `Prendre ${c.name}`, onclick: async () => {
               const item = { id: c.item_id, name: c.name, unit: c.unit, is_consumable: c.is_consumable };
               if (await takeDialog(item, { unit_id: c.unit_id, path: c.path, quantity: c.quantity })) { await reload(); }
             } }, 'Prendre'))))
           : h('p', { class: 'muted small' }, 'Aucun objet rangé ici.'));
-      } catch (error) { showError(error); }
+      } catch (error) { clear(body, errorState(error, load)); }
     };
     load();
     return h('div', {},
-      h('h3', { class: 'panel-subtitle' }, 'Objets', u.capacity && ` (capacité ${formatQuantity(u.capacity)})`),
+      h('h3', { class: 'panel-subtitle' }, 'Objets rangés ici', u.capacity && h('span', { class: 'count' }, `capacité ${formatQuantity(u.capacity)}`)),
       body,
       h('div', { class: 'detail-actions' },
         can('stock.add') && h('button', { class: 'btn btn-small', type: 'button', onclick: async () => {
           const item = await pickItem('Ajouter du stock ici : choisir l\'objet');
           if (item && await addDialog(item, location)) await reload();
-        } }, 'Ajouter du stock ici'),
+        } }, icon('plus'), 'Ajouter du stock'),
         can('items.edit') && can('stock.add') && h('button', { class: 'btn btn-small', type: 'button', onclick: async () => {
           if (await itemDialog(null, { canAddStock: true, location: { id: u.id, path: u.path } })) await reload();
-        } }, 'Nouvel objet ici')));
+        } }, 'Nouvel objet')));
   }
 
   // ===== Actions =====
@@ -334,13 +348,13 @@ export async function render(view, session, params) {
     const count = state.payload.units.filter((x) => x.path.startsWith(`${u.path} › `)).length;
     const ok = await confirmDialog({
       title: 'Supprimer',
-      message: count ? `Supprimer « ${u.name} » et les ${count} rangement(s) qu'il contient ?` : `Supprimer « ${u.name} » ?`,
+      message: count ? `« ${u.name} » et ${plural(count, 'rangement')} à l'intérieur seront supprimés.` : `« ${u.name} » sera supprimé.`,
       confirmLabel: 'Supprimer', danger: true,
     });
     if (!ok) return;
     try {
       await api(`/storage-units/${u.id}`, { method: 'DELETE' });
-      toast('Rangement supprimé.');
+      toast(`« ${u.name} » supprimé.`);
       state.selectedId = u.parent_id;
       await reload();
     } catch (error) { showError(error); }
@@ -359,7 +373,7 @@ export async function render(view, session, params) {
         h('div', { class: 'form-grid' }, field('Type', type), field('Espacement (mm)', gap), field('Rangées (hauteur)', rows), field('Colonnes (largeur)', columns)),
         h('div', { class: 'dialog-actions' },
           h('button', { class: 'btn', type: 'button', onclick: () => close(false) }, 'Annuler'),
-          h('button', { class: 'btn btn-primary', type: 'submit' }, 'Générer')));
+          h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, 'Générer'))));
       form.addEventListener('submit', (event) => {
         event.preventDefault();
         busy(event.submitter, async () => {
@@ -367,7 +381,7 @@ export async function render(view, session, params) {
             const r = await api(`/storage-units/${u.id}/generate`, { method: 'POST', body: {
               rows: Number(rows.value), columns: Number(columns.value), gap_mm: Number(gap.value || 0), type_id: Number(type.value),
             } });
-            toast(`${r.created} rangement(s) créé(s).`);
+            toast(`${plural(r.created, 'rangement créé', 'rangements créés')}.`);
             close(true);
           } catch (error) { showError(error, form); }
         });
@@ -437,7 +451,7 @@ export async function render(view, session, params) {
         h('div', { class: 'form-grid form-grid-3' }, field('Épaisseur des parois (mm)', panel), field('Couleur', color), field('Capacité (objets)', capacity, "Pour l'état « plein ».")),
         h('div', { class: 'dialog-actions' },
           h('button', { class: 'btn', type: 'button', onclick: () => close(false) }, 'Annuler'),
-          h('button', { class: 'btn btn-primary', type: 'submit' }, u ? 'Enregistrer' : 'Ajouter')));
+          h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, u ? 'Enregistrer' : isFurniture ? 'Ajouter le meuble' : 'Ajouter le rangement'))));
       if (!u) applyTypeDefaults();
 
       form.addEventListener('submit', (event) => {
@@ -455,7 +469,7 @@ export async function render(view, session, params) {
         busy(event.submitter, async () => {
           try {
             const result = await api(u ? `/storage-units/${u.id}` : '/storage-units', { method: u ? 'PATCH' : 'POST', body });
-            toast(u ? 'Modifications enregistrées.' : 'Rangement ajouté.');
+            toast(u ? 'Modifications enregistrées.' : `« ${name.value} » ajouté.`);
             close(result.unit.id);
           } catch (error) { showError(error, form); }
         });
@@ -482,7 +496,7 @@ export async function render(view, session, params) {
       scene?.highlight(highlight);
     }
   } catch (error) {
-    title.textContent = 'Salle introuvable';
-    showError(error);
+    title.textContent = error.status === 404 ? 'Salle introuvable' : 'Salle';
+    clear(details, errorState(error, () => location.reload()));
   }
 }

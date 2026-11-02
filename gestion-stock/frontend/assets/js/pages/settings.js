@@ -2,7 +2,7 @@
 
 import { api } from '../api.js';
 import { h } from '../dom.js';
-import { busy, field, showError, toast } from '../ui.js';
+import { busy, errorState, field, pageHeader, showError, toast } from '../ui.js';
 import { loadSettings } from '../app.js';
 
 export async function render(view) {
@@ -10,7 +10,7 @@ export async function render(view) {
   try {
     settings = (await api('/settings')).settings;
   } catch (error) {
-    return showError(error);
+    return view.append(pageHeader({ title: 'Paramètres' }), errorState(error, () => location.reload()));
   }
   const colors = settings['fill.colors'] ?? { empty: '#9ca3af', partial: '#f59e0b', full: '#dc2626' };
   const name = h('input', { name: 'app.name', maxlength: 80, value: settings['app.name'] ?? 'Gestion de stock' });
@@ -20,10 +20,10 @@ export async function render(view) {
 
   const form = h('form', { class: 'card', novalidate: true },
     field('Nom de l\'application', name),
-    h('fieldset', { class: 'form-section' }, h('legend', {}, 'Couleurs de remplissage des rangements (vue 3D)'),
-      h('p', { class: 'field-hint' }, 'Plein : quantité atteignant la capacité indiquée sur le rangement. Partiel : contient des objets. Vide : aucun objet.'),
+    h('fieldset', { class: 'form-section' }, h('legend', {}, 'Couleurs de remplissage dans la vue 3D'),
+      h('p', { class: 'field-hint' }, 'Vide : aucun objet. Partiel : contient des objets. Plein : la capacité indiquée sur le rangement est atteinte.'),
       h('div', { class: 'form-grid form-grid-3' }, field('Vide', empty), field('Partiellement rempli', partial), field('Plein', full))),
-    h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Enregistrer')));
+    h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, 'Enregistrer les paramètres'))));
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -36,5 +36,5 @@ export async function render(view) {
     });
   });
 
-  view.append(h('div', { class: 'page-header' }, h('h1', {}, 'Paramètres')), form);
+  view.append(pageHeader({ title: 'Paramètres', description: 'Nom affiché et couleurs communes à tous les utilisateurs.' }), form);
 }
