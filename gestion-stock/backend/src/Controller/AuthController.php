@@ -33,11 +33,16 @@ final class AuthController
     /** Ouverture d'un lien à usage unique : navigation du navigateur, d'où les redirections. */
     public static function link(Request $request): Response
     {
+        $bucket = 'login-failures:' . $request->ip;
         try {
-            RateLimiter::hit('login:' . $request->ip, 20, 600);
+            // 20 échecs par tranche de 10 minutes et par adresse ; les connexions réussies ne comptent pas
+            RateLimiter::assertAllowed($bucket, 20, 600);
             $email = LoginLinks::consume((string) ($request->query['token'] ?? ''));
             $userId = LoginService::login($email, $request->ip);
         } catch (HttpException $e) {
+            if ($e->status !== 429) {
+                RateLimiter::hit($bucket, 600);
+            }
             $code = $e->details['code'] ?? ($e->status === 429 ? 'rate_limited' : 'error');
             return Response::redirect('/login?error=' . rawurlencode((string) $code));
         }

@@ -136,5 +136,19 @@ foreach (['auth.login', 'auth.denied', 'auth.logout', 'role.created', 'role.dele
     check("Audit « {$action} »", isset($audit[$action]));
 }
 
+echo "== Limitation des tentatives\n";
+// Compteur dédié : les tests suivants ne doivent pas être bloqués
+$bucket = 'test-bucket-' . bin2hex(random_bytes(4));
+for ($i = 0; $i < 20; $i++) {
+    \App\Auth\RateLimiter::hit($bucket, 600);
+}
+try {
+    \App\Auth\RateLimiter::assertAllowed($bucket, 20, 600);
+    check('Blocage après 20 échecs', false);
+} catch (\App\Http\HttpException $e) {
+    check('Blocage après 20 échecs (429)', $e->status === 429);
+}
+Database::connection()->prepare("DELETE FROM rate_limits WHERE bucket = ?")->execute([$bucket]);
+
 cleanup();
 finish();
