@@ -9,13 +9,32 @@ import * as loginPage from './pages/login.js';
 import * as usersPage from './pages/users.js';
 import * as rolesPage from './pages/roles.js';
 import * as allowlistPage from './pages/allowlist.js';
+import * as roomsPage from './pages/rooms.js';
+import * as roomEditorPage from './pages/room-editor.js';
+import * as storageTypesPage from './pages/storage-types.js';
 
+// nav: false = page accessible mais absente du menu ; « :param » = segment variable
 const routes = [
   { path: '/', label: 'Accueil', page: homePage },
+  { path: '/rooms', label: 'Salles', page: roomsPage, permission: 'rooms.view' },
+  { path: '/rooms/:id', label: 'Salle', page: roomEditorPage, permission: 'rooms.view', nav: false, menu: '/rooms' },
+  { path: '/admin/storage-types', label: 'Types de rangement', page: storageTypesPage, permission: 'storage.edit' },
   { path: '/admin/users', label: 'Utilisateurs', page: usersPage, permission: 'users.manage' },
   { path: '/admin/roles', label: 'Rôles et permissions', page: rolesPage, permission: 'roles.manage' },
   { path: '/admin/allowlist', label: "Liste d'autorisation", page: allowlistPage, permission: 'users.manage' },
 ];
+
+function matchRoute(pathname) {
+  for (const route of routes) {
+    const names = [];
+    const regex = new RegExp('^' + route.path.replace(/:(\w+)/g, (_, name) => { names.push(name); return '(\\d+)'; }) + '$');
+    const m = pathname.match(regex);
+    if (m) return { route, params: Object.fromEntries(names.map((n, i) => [n, m[i + 1]])) };
+  }
+  return null;
+}
+
+let currentPage = null;
 
 const root = document.getElementById('root');
 const session = {
@@ -46,6 +65,8 @@ function render() {
   const path = location.pathname;
   if (!session.me) {
     if (path !== '/login') history.replaceState(null, '', '/login' + location.search);
+    currentPage?.dispose?.();
+    currentPage = null;
     view = null;
     root.className = 'login-root';
     loginPage.render(clear(root));
@@ -54,12 +75,17 @@ function render() {
   if (path === '/login') history.replaceState(null, '', '/');
   if (!view) renderShell();
 
-  const route = routes.find((r) => r.path === location.pathname);
+  const match = matchRoute(location.pathname);
+  const route = match?.route;
+  const menuPath = route?.menu ?? route?.path;
   document.querySelectorAll('.nav-link').forEach((link) => {
-    link.toggleAttribute('aria-current', link.getAttribute('href') === location.pathname);
+    link.toggleAttribute('aria-current', link.getAttribute('href') === menuPath);
   });
   document.body.classList.remove('nav-open');
 
+  currentPage?.dispose?.();
+  currentPage = route?.page ?? null;
+  view.className = 'view';
   clear(view);
   if (!route) {
     view.append(h('h1', {}, 'Page introuvable'), h('p', {}, h('a', { href: '/' }, "Retour à l'accueil")));
@@ -70,7 +96,7 @@ function render() {
     return;
   }
   document.title = `${route.label} · Gestion de stock`;
-  route.page.render(view, session);
+  route.page.render(view, session, match.params);
   view.focus({ preventScroll: true });
 }
 
@@ -99,7 +125,7 @@ function renderShell() {
 
   const nav = h('nav', { class: 'sidebar', 'aria-label': 'Navigation principale' },
     h('ul', {}, routes
-      .filter((r) => !r.permission || session.can(r.permission))
+      .filter((r) => r.nav !== false && (!r.permission || session.can(r.permission)))
       .map((r) => h('li', {}, h('a', { class: 'nav-link', href: r.path }, r.label)))),
   );
 
