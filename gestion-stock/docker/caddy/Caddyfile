@@ -1,0 +1,38 @@
+{
+	# HTTP tant que le nom de domaine n'est pas configuré (voir docs/ARCHITECTURE.md §6)
+	auto_https disable_redirects
+}
+
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy same-origin
+		Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://accounts.google.com"
+	}
+
+	request_body {
+		max_size 6MB
+	}
+
+	handle /api/* {
+		root * /app/public
+		rewrite * /index.php
+		php_fastcgi php:9000
+	}
+
+	handle {
+		root * /srv/frontend
+		try_files {path} /index.html
+		file_server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
