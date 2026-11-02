@@ -244,8 +244,8 @@ $pdo->exec("INSERT INTO items (reference, name, description, unit, search_text)
            'Objet de test de volume', 'pièce',
            CONCAT(ELT(1 + seq % 5, 'Vis', 'Écrou', 'Résistance', 'Condensateur', 'Câble'), ' modèle ', seq, ' VOL-', LPAD(seq, 5, '0'), ' objet de test de volume')
     FROM seq_1_to_5000");
-$count = (int) $pdo->query("SELECT COUNT(*) FROM items WHERE reference LIKE 'VOL-%'")->fetchColumn();
-check('5000 objets insérés', $count === 5000, $count);
+$volume = (int) $pdo->query("SELECT COUNT(*) FROM items WHERE reference LIKE 'VOL-%'")->fetchColumn();
+check('5000 objets insérés', $volume === 5000, $volume);
 $times = [];
 foreach (['résistance', 'modèle 4321', 'VOL-04321', 'cond', 'objet test volume'] as $q) {
     $start = microtime(true);
