@@ -10,6 +10,7 @@ import * as loginPage from './pages/login.js';
 import * as usersPage from './pages/users.js';
 import * as rolesPage from './pages/roles.js';
 import * as allowlistPage from './pages/allowlist.js';
+import * as planPage from './pages/plan.js';
 import * as roomsPage from './pages/rooms.js';
 import * as roomEditorPage from './pages/room-editor.js';
 import * as storageTypesPage from './pages/storage-types.js';
@@ -28,10 +29,11 @@ const routes = [
   { path: '/', label: 'Accueil', icon: 'home', page: homePage, group: 'stock', tab: true },
   { path: '/items', label: 'Objets', icon: 'box', page: itemsPage, permission: 'stock.view', group: 'stock', tab: true },
   { path: '/items/:id', label: 'Objet', page: itemPage, permission: 'stock.view', nav: false, menu: '/items' },
+  { path: '/plan', label: 'Plan', icon: 'plan', page: planPage, permission: 'rooms.view', group: 'stock', tab: true },
   { path: '/rooms', label: 'Salles', icon: 'room', page: roomsPage, permission: 'rooms.view', group: 'stock', tab: true },
   { path: '/rooms/:id', label: 'Salle', page: roomEditorPage, permission: 'rooms.view', nav: false, menu: '/rooms' },
   { path: '/loans', label: 'Emprunts', icon: 'loans', page: loansPage, permission: 'stock.view', group: 'stock', tab: true },
-  { path: '/movements', label: 'Historique', icon: 'history', page: movementsPage, permission: 'history.view', group: 'stock', tab: true },
+  { path: '/movements', label: 'Historique', icon: 'history', page: movementsPage, permission: 'history.view', group: 'stock' },
   { path: '/admin/catalog', label: 'Catégories et champs', icon: 'tag', page: catalogAdminPage, permission: 'items.edit', group: 'admin' },
   { path: '/admin/storage-types', label: 'Types de rangement', icon: 'layers', page: storageTypesPage, permission: 'storage.edit', group: 'admin' },
   { path: '/admin/users', label: 'Utilisateurs', icon: 'users', page: usersPage, permission: 'users.manage', group: 'admin' },

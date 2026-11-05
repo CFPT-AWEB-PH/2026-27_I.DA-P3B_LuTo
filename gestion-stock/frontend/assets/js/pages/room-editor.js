@@ -6,16 +6,21 @@ import { busy, confirmDialog, emptyState, errorState, field, locationLabel, open
 import { icon } from '../icons.js';
 import { setTitle } from '../app.js';
 import {
-  findFreeSpot, formatLength, fromDisplay, gridLayout, rotateAroundCenter, SHAPE_LABELS, stackLayout, toDisplay, unitInterior, unitProblem, UNITS,
+  findFreeSpot, formatLength, freeOffset, fromDisplay, gridLayout, nearestWall, openingProblem, referenceDoor, rotateAroundCenter, SHAPE_LABELS, stackLayout, toDisplay, unitInterior, unitProblem, UNITS, wallLength,
 } from '../spatial.js';
 import { openOpeningsDialog, openRoomDialog } from './room-form.js';
-import { addDialog, formatQuantity, itemDialog, moveDialog, pickItem, takeDialog } from '../stock-dialogs.js';
+import { formatQuantity, itemDialog, moveDialog, storeItemsDialog, takeDialog } from '../stock-dialogs.js';
 import { contextMenu, openContextMenu } from '../context-menu.js';
 import { itemMenuItems } from '../item-menu.js';
+import { clipboard, History, MOD, typingOrDialog } from '../history.js';
+import { createUnitActions, shortcutsDialog, templateSummary, templateThumb, withoutIds } from '../unit-actions.js';
 
 let scene = null;
+let removeShortcuts = null;
 
 export function dispose() {
+  removeShortcuts?.();
+  removeShortcuts = null;
   scene?.dispose();
   scene = null;
 }
@@ -23,13 +28,14 @@ export function dispose() {
 export async function render(view, session, params) {
   const roomId = Number(params.id);
   const can = (p) => session.can(p);
-  const state = { payload: null, types: [], selectedId: null, expanded: new Set(), busy: false, panel: null };
+  const state = { payload: null, types: [], templates: [], selectedId: null, selectedOpening: null, expanded: new Set(), busy: false, panel: null, leftTab: 'tree' };
 
   const title = h('h1', { class: 'editor-title' }, 'Chargement…');
   const tree = h('nav', { class: 'editor-tree', 'aria-label': 'Rangements de la salle' });
+  const history = new History({ onChange: () => refreshHistoryButtons() });
   const details = h('aside', { class: 'editor-details', 'aria-live': 'polite' });
   const stage = h('div', { class: 'editor-stage' });
-  const hint = h('p', { class: 'editor-hint' }, 'Clic : sélectionner  ·  Glisser : tourner  ·  Clic droit : menu d’actions  ·  Clic droit + glisser : déplacer la vue  ·  Molette : zoomer  ·  Double-clic : ouvrir un tiroir et regarder dedans');
+  const hint = h('p', { class: 'editor-hint' }, `Clic : sélectionner  ·  Glisser : tourner  ·  Clic droit : menu  ·  Molette : zoomer  ·  Double-clic : ouvrir un tiroir  ·  ${MOD}+Z : annuler  ·  ? : raccourcis`);
   // L'aide s'efface dès la première interaction : elle a servi
   stage.addEventListener('pointerdown', () => hint.classList.add('is-faded'), { once: true });
 
@@ -37,7 +43,7 @@ export async function render(view, session, params) {
   const label = (text) => h('span', { class: 'btn-label' }, text);
   const dimsButton = h('button', { class: 'btn btn-small', type: 'button', 'aria-pressed': 'false', title: 'Afficher les cotes' }, icon('ruler'), label('Cotes'));
   // Modes du gizmo : W, E, R au clavier dans la vue, comme dans les logiciels de 3D
-  const canEditSomething = can('furniture.edit') || can('storage.edit');
+  const canEditSomething = can('furniture.edit') || can('storage.edit') || can('rooms.edit');
   const GIZMO_MODES = [['none', 'Sélection', 'eye', 'Sélection seule, sans poignées (Q)'], ['translate', 'Déplacer', 'move', 'Déplacer avec les flèches du gizmo (W)'], ['rotate', 'Pivoter', 'rotateRight', 'Pivoter autour du centre (E)'], ['scale', 'Taille', 'ruler', 'Changer les dimensions (R)']];
   const gizmoButtons = GIZMO_MODES.map(([mode, text, iconName, tip]) => h('button', {
     class: 'segmented-option', type: 'button', role: 'radio', title: tip, 'aria-checked': String(mode === 'translate'),
@@ -55,41 +61,67 @@ export async function render(view, session, params) {
   const wallSelect = h('select', { class: 'select-small', 'aria-label': 'Affichage des murs' },
     [['auto', 'Murs : auto'], ['transparent', 'Murs : transparents'], ['hidden', 'Murs : masqués'], ['solid', 'Murs : pleins']].map(([v, t]) => h('option', { value: v }, t)));
   const preset = (name, text) => h('button', { class: 'segmented-option', type: 'button', onclick: () => scene?.viewPreset(name) }, text);
+  const undoButton = h('button', { class: 'icon-btn icon-btn-small icon-btn-bordered', type: 'button', disabled: true, onclick: () => undo() }, icon('undo'));
+  const redoButton = h('button', { class: 'icon-btn icon-btn-small icon-btn-bordered', type: 'button', disabled: true, onclick: () => redo() }, icon('redo'));
+  function refreshHistoryButtons() {
+    undoButton.disabled = !history.canUndo;
+    redoButton.disabled = !history.canRedo;
+    const tip = (word, label, keys) => (label ? `${word} : ${label} (${keys})` : `${word} (${keys})`);
+    for (const [button, word, label, keys] of [[undoButton, 'Annuler', history.undoLabel, `${MOD}+Z`], [redoButton, 'Rétablir', history.redoLabel, `${MOD}+Y`]]) {
+      button.title = tip(word, label, keys);
+      button.setAttribute('aria-label', tip(word, label, keys));
+    }
+  }
+  refreshHistoryButtons();
 
   view.classList.add('view-wide');
   append(view, h('div', { class: 'editor' },
     h('div', { class: 'editor-toolbar' },
       h('div', { class: 'editor-heading' },
-        h('a', { class: 'icon-btn icon-btn-small', href: '/rooms', 'aria-label': 'Retour aux salles', title: 'Retour aux salles' }, icon('arrowLeft')),
+        h('a', { class: 'icon-btn icon-btn-small', href: '/plan', 'aria-label': 'Retour au plan du bâtiment', title: 'Retour au plan du bâtiment' }, icon('arrowLeft')),
         title),
       h('div', { class: 'editor-tools' },
+      canEditSomething && h('div', { class: 'toolbar-group', role: 'group', 'aria-label': 'Historique' }, undoButton, redoButton),
       h('div', { class: 'toolbar-group', role: 'group', 'aria-label': 'Points de vue' },
         h('div', { class: 'segmented' }, preset('iso', 'Vue 3D'), preset('top', 'Dessus'), preset('door', 'Porte'))),
       h('span', { class: 'toolbar-divider', 'aria-hidden': 'true' }),
       h('div', { class: 'toolbar-group', role: 'group', 'aria-label': 'Affichage' }, gizmoSwitch, dimsButton, wallSelect, colorSelect,
         h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Réafficher les éléments masqués', onclick: () => { scene?.showAll(); renderTree(); renderDetails(); } }, icon('eye'), label('Tout afficher'))),
       h('div', { class: 'toolbar-group toolbar-end' },
-        can('rooms.edit') && h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Fenêtres, portes et passages', onclick: () => openOpenings() }, icon('door'), label('Ouvertures')),
+        h('button', { class: 'icon-btn icon-btn-small', type: 'button', title: 'Raccourcis clavier (?)', 'aria-label': 'Raccourcis clavier', onclick: () => shortcutsDialog() }, icon('help')),
+        can('rooms.edit') && h('button', { class: 'btn btn-small', type: 'button', title: 'Ajouter une porte, à déplacer ensuite avec le gizmo', onclick: () => addOpening('door') }, icon('door'), label('Porte')),
+        can('rooms.edit') && h('button', { class: 'btn btn-small', type: 'button', title: 'Ajouter une fenêtre, à déplacer ensuite avec le gizmo', onclick: () => addOpening('window') }, icon('window'), label('Fenêtre')),
         can('rooms.edit') && h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Dimensions, porte et apparence', onclick: () => openSettings() }, icon('sliders'), label('Salle')),
         can('furniture.edit') && h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: () => editUnit(null, null) }, icon('plus'), 'Meuble'))),
     ),
     tree, h('div', { class: 'editor-canvas' }, stage, hint, legend, hud), details,
   ));
 
+  const history_replace = (url) => window.history.replaceState(null, '', url);
+
   // ===== Données =====
 
   const unitById = (id) => state.payload?.units.find((u) => u.id === id) ?? null;
   const childrenOf = (id) => state.payload.units.filter((u) => u.parent_id === id);
   const unitLabel = () => state.payload.room.display_unit;
+  const openingById = (id) => (id === 'ref' ? referenceDoor(state.payload.room) : state.payload.openings.find((o) => o.id === id) ?? null);
+  const actions = createUnitActions({ history, can, reload: () => reload() });
 
   function apply(payload) {
     state.payload = payload;
     title.textContent = payload.room.name;
     setTitle(payload.room.name);
-    if (state.selectedId !== null && !unitById(state.selectedId)) state.selectedId = null;
+    if (state.selectedId !== null && !unitById(state.selectedId)) {
+      state.selectedId = null;
+      const url = new URL(location.href);
+      url.searchParams.delete('unit');
+      history_replace(url);
+    }
+    if (state.selectedOpening !== null && !openingById(state.selectedOpening)) state.selectedOpening = null;
     scene?.setData(payload.room, payload.openings, payload.units, payload.contents ?? []);
     applyColors();
-    scene?.select(state.selectedId);
+    if (state.selectedOpening !== null) scene?.selectOpening(state.selectedOpening);
+    else scene?.select(state.selectedId);
     renderTree();
     renderDetails();
   }
@@ -100,20 +132,42 @@ export async function render(view, session, params) {
 
   function select(id, { focus = false } = {}) {
     state.selectedId = id;
+    state.selectedOpening = null;
     for (let u = unitById(id); u && u.parent_id !== null; u = unitById(u.parent_id)) state.expanded.add(u.parent_id);
     scene?.select(id);
     if (focus && id !== null) scene?.focus(id);
     const url = new URL(location.href);
     if (id === null) url.searchParams.delete('unit'); else url.searchParams.set('unit', id);
-    history.replaceState(null, '', url);
+    history_replace(url);
     renderTree();
     renderDetails();
   }
 
-  async function patchUnit(unit, changes) {
+  function selectOpening(id, { focus = false } = {}) {
+    state.selectedId = null;
+    state.selectedOpening = id;
+    scene?.selectOpening(id);
+    if (focus) scene?.focusOpening(id);
+    const url = new URL(location.href);
+    url.searchParams.delete('unit');
+    history_replace(url);
+    renderTree();
+    renderDetails();
+  }
+
+  async function undo() {
+    if (state.panel) return;
+    if (await history.undo()) renderTree();
+  }
+
+  async function redo() {
+    if (state.panel) return;
+    if (await history.redo()) renderTree();
+  }
+
+  async function patchUnit(unit, changes, label) {
     try {
-      await api(`/storage-units/${unit.id}`, { method: 'PATCH', body: changes });
-      await reload();
+      await actions.patch(unit, changes, label);
       return true;
     } catch (error) {
       showError(error);
@@ -126,7 +180,11 @@ export async function render(view, session, params) {
   try {
     scene = new (await import('../three/room-scene.js')).RoomScene(stage, {
       onSelect: (id) => { if (!state.panel) select(id); },
+      onSelectOpening: (id) => { if (!state.panel) selectOpening(id); },
       canEdit: (u) => can(u.parent_id === null ? 'furniture.edit' : 'storage.edit'),
+      canEditRoom: () => can('rooms.edit') && !state.panel,
+      onOpeningChange: (o, problem) => showOpeningHud(o, problem),
+      onOpeningEnd: (original, o) => { hud.hidden = true; commitOpening(original, o); },
       onGizmoChange: (c, problem, isDraft) => {
         showHud(c, problem);
         if (isDraft) state.panel?.onGizmo?.(c, false);
@@ -139,13 +197,22 @@ export async function render(view, session, params) {
           if (c[key] !== unit[key]) changes[key] = c[key];
         }
         if (Object.keys(changes).length === 0) return scene?.rebuildUnits();
-        // Refus du serveur (chevauchement…) : le rangement revient à sa place
-        if (!await patchUnit(unit, changes)) scene?.rebuildUnits();
+        // Emplacement impossible (chevauchement…) : retour à sa place, avec la raison, sans rien envoyer
+        const problem = unitProblem(state.payload.room, state.payload.units, unitById(unit.parent_id), c);
+        if (problem) {
+          toast(`${problem} « ${unit.name} » revient à sa place.`, 'info');
+          return scene?.rebuildUnits();
+        }
+        if (!await patchUnit(unit, changes, `Déplacer « ${unit.name} »`)) scene?.rebuildUnits();
       },
-      onContextMenu: (unit, point) => {
+      onContextMenu: (unit, point, hit) => {
         if (state.panel) return;
+        if (hit?.opening) {
+          selectOpening(hit.opening.id);
+          return openContextMenu(openingMenuItems(hit.opening), { x: point.clientX, y: point.clientY, label: `Actions pour ${openingName(hit.opening)}` });
+        }
         if (unit) select(unit.id);
-        openContextMenu(unit ? unitMenuItems(unit) : roomMenuItems(), { x: point.clientX, y: point.clientY, label: unit ? `Actions pour ${unit.name}` : 'Actions de la salle' });
+        openContextMenu(unit ? unitMenuItems(unit) : roomMenuItems(hit), { x: point.clientX, y: point.clientY, label: unit ? `Actions pour ${unit.name}` : 'Actions de la salle' });
       },
     });
   } catch (error) {
@@ -200,25 +267,74 @@ export async function render(view, session, params) {
     clear(hud, h('span', {}, parts.join('   ·   ')), problem && h('strong', {}, problem));
   }
 
-  // Flèches : décalage de 10 mm (Maj : 100 mm) ; Pg préc./suiv. : hauteur ; Échap : désélection
-  stage.addEventListener('keydown', (event) => {
+  function showOpeningHud(o, problem) {
+    const unit = unitLabel();
+    hud.hidden = false;
+    hud.classList.toggle('is-invalid', Boolean(problem));
+    clear(hud, h('span', {}, `Mur ${o.wall_index + 1}   ·   à ${formatLength(o.offset_mm, unit)}   ·   ${formatLength(o.width_mm, unit)} × ${formatLength(o.height_mm, unit)}`), problem && h('strong', {}, problem));
+  }
+
+  // Raccourcis de l'éditeur : actifs partout sur la page, sauf pendant une saisie ou dans une fenêtre
+  const onKeyDown = (event) => {
+    if (typingOrDialog(event)) {
+      if (event.key === 'Escape' && state.panel) state.panel.cancel();
+      return;
+    }
+    const key = event.key?.toLowerCase();
+    const mod = event.ctrlKey || event.metaKey;
     const u = unitById(state.selectedId);
-    if (event.key === 'Escape') return state.panel ? state.panel.cancel() : select(null);
+    const door = state.selectedOpening !== null ? openingById(state.selectedOpening) : null;
+    const handle = (action) => { event.preventDefault(); action(); };
+
+    if (mod && key === 'z') return handle(() => (event.shiftKey ? redo() : undo()));
+    if (mod && key === 'y') return handle(redo);
+    if (state.panel) {
+      if (event.key === 'Escape') state.panel.cancel();
+      else if (gizmoSwitch && !mod && { q: 1, w: 1, e: 1, r: 1 }[key]) handle(() => setGizmoMode({ q: 'none', w: 'translate', e: 'rotate', r: 'scale' }[key]));
+      return;
+    }
+    if (mod && key === 'c' && u) return handle(() => copyUnit(u));
+    if (mod && key === 'x' && u) return handle(() => copyUnit(u, true));
+    if (mod && key === 'v') return handle(pasteHere);
+    if (mod && key === 'd' && u) return handle(() => duplicateUnit(u));
+    if (mod && key === 's' && u) return handle(() => saveTemplate(u));
+    if (mod) return undefined;
+
+    if (event.key === 'Escape') return handle(() => select(null));
+    if (event.key === '?') return handle(() => shortcutsDialog());
+    if ((event.key === 'Delete' || event.key === 'Backspace') && u) return handle(() => remove(u));
+    if ((event.key === 'Delete' || event.key === 'Backspace') && door && door.id !== 'ref') return handle(() => deleteOpening(door));
+    if (key === 'f' && u) return handle(() => scene?.focus(u.id));
+    if (key === 'h' && u) return handle(() => { scene?.setHidden(u.id, !scene.hidden.has(u.id)); renderTree(); renderDetails(); });
     const modes = { q: 'none', w: 'translate', e: 'rotate', r: 'scale' };
-    if (gizmoSwitch && modes[event.key?.toLowerCase()] && !event.ctrlKey && !event.metaKey) { event.preventDefault(); return setGizmoMode(modes[event.key.toLowerCase()]); }
-    if (state.panel || !u || !can(u.parent_id === null ? 'furniture.edit' : 'storage.edit')) return;
+    if (gizmoSwitch && modes[key]) return handle(() => setGizmoMode(modes[key]));
+
+    // Flèches : décalage de 10 mm (Maj : 100 mm) ; Pg préc./suiv. : hauteur
     const step = event.shiftKey ? 100 : 10;
+    if (door && can('rooms.edit')) {
+      const slide = { ArrowLeft: -step, ArrowRight: step }[event.key];
+      if (slide && !state.busy) handle(() => nudgeOpening(door, slide));
+      return undefined;
+    }
+    if (!u || !can(u.parent_id === null ? 'furniture.edit' : 'storage.edit')) return undefined;
     const moves = { ArrowLeft: ['pos_x_mm', -step], ArrowRight: ['pos_x_mm', step], ArrowUp: ['pos_z_mm', -step], ArrowDown: ['pos_z_mm', step], PageUp: ['pos_y_mm', step], PageDown: ['pos_y_mm', -step] };
     const move = moves[event.key];
-    if (!move || state.busy) return;
+    if (!move || state.busy) return undefined;
     event.preventDefault();
-    nudge(u, move[0], move[1]);
-  });
+    return nudge(u, move[0], move[1]);
+  };
+  document.addEventListener('keydown', onKeyDown);
+  removeShortcuts = () => document.removeEventListener('keydown', onKeyDown);
 
   async function nudge(u, key, delta) {
+    const parent = unitById(u.parent_id);
+    const c = { ...u, [key]: u[key] + delta };
+    const problem = unitProblem(state.payload.room, state.payload.units, parent, c);
+    if (problem) return toast(problem, 'info');
     state.busy = true;
-    await patchUnit(u, { [key]: u[key] + delta });
+    await patchUnit(u, { [key]: c[key] }, `Déplacer « ${u.name} »`);
     state.busy = false;
+    return undefined;
   }
 
   // ===== Arborescence =====
@@ -246,11 +362,29 @@ export async function render(view, session, params) {
       );
     };
     const roots = childrenOf(null);
-    clear(tree,
+    const tabs = (can('furniture.edit') || can('storage.edit')) && h('div', { class: 'segmented panel-tabs', role: 'tablist', 'aria-label': 'Panneau de gauche' },
+      [['tree', 'Rangements'], ['library', 'Bibliothèque']].map(([key, text]) => h('button', {
+        class: 'segmented-option', type: 'button', role: 'tab', 'aria-selected': String(state.leftTab === key), 'aria-checked': String(state.leftTab === key),
+        onclick: () => { state.leftTab = key; renderTree(); },
+      }, text)));
+    if (state.leftTab === 'library') {
+      clear(tree, tabs, libraryPanel());
+      tree.querySelectorAll('.tree-swatch').forEach((el) => { el.style.background = el.dataset.color; });
+      return;
+    }
+    const doors = [referenceDoor(state.payload.room), ...state.payload.openings];
+    clear(tree, tabs,
       h('h2', { class: 'panel-subtitle' }, 'Rangements', h('span', { class: 'count' }, String(state.payload.units.length))),
       roots.length ? h('ul', { class: 'tree' }, roots.map(node)) : emptyState(can('furniture.edit') ? 'Ajoutez un premier meuble : armoire, étagère, bac…' : 'Aucun meuble dans cette salle.', {
         iconName: 'drawer', action: can('furniture.edit') && h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: () => editUnit(null, null) }, icon('plus'), 'Ajouter un meuble'),
-      }));
+      }),
+      h('h2', { class: 'panel-subtitle' }, 'Portes et fenêtres', h('span', { class: 'count' }, String(doors.length))),
+      h('ul', { class: 'tree' }, doors.map((o) => {
+        const row = h('div', { class: 'tree-row' }, h('span', { class: 'tree-toggle' }),
+          h('button', { class: 'tree-label', type: 'button', onclick: () => selectOpening(o.id, { focus: true }) }, icon(o.kind === 'window' ? 'window' : 'door'), openingName(o)));
+        contextMenu(row, () => openingMenuItems(o), { label: `Actions pour ${openingName(o)}` });
+        return h('li', { class: ['tree-node', o.id === state.selectedOpening && 'is-selected'] }, row);
+      })));
     // Pastilles de couleur sans style en ligne (CSP) : couleur appliquée via le CSSOM
     tree.querySelectorAll('.tree-swatch').forEach((el) => { el.style.background = el.dataset.color; });
   }
@@ -261,6 +395,7 @@ export async function render(view, session, params) {
     if (!state.payload || state.panel) return;
     const unit = unitLabel();
     const u = unitById(state.selectedId);
+    if (state.selectedOpening !== null && openingById(state.selectedOpening)) return renderOpeningDetails(openingById(state.selectedOpening));
     if (!u) {
       const { room, units, openings } = state.payload;
       clear(details,
@@ -273,9 +408,9 @@ export async function render(view, session, params) {
           h('dt', {}, 'Ouvertures'), h('dd', {}, String(openings.length)),
           h('dt', {}, 'Meubles'), h('dd', {}, String(childrenOf(null).length)),
           h('dt', {}, 'Rangements'), h('dd', {}, String(units.length))),
-        h('p', { class: 'alert alert-info', role: 'note' }, icon('info'), h('span', {}, 'Sélectionnez un meuble dans la vue ou dans la liste pour voir son contenu.')),
+        h('p', { class: 'alert alert-info', role: 'note' }, icon('info'), h('span', {}, 'Cliquez sur un meuble ou une porte, dans la vue ou la liste, pour voir son contenu et le déplacer.')),
         h('p', { class: 'field-hint' }, "Repère : l'origine est au coin gauche du mur de la porte (vu de l'intérieur), au sol. X longe le mur de la porte, Z entre dans la salle, Y monte."));
-      return;
+      return undefined;
     }
 
     const parent = unitById(u.parent_id);
@@ -284,13 +419,15 @@ export async function render(view, session, params) {
     const editRight = can(u.parent_id === null ? 'furniture.edit' : 'storage.edit');
     const hidden = scene?.hidden.has(u.id) ?? false;
 
-    const actions = h('div', { class: 'detail-actions' },
+    const buttons = h('div', { class: 'detail-actions' },
       editRight && h('button', { class: 'btn btn-small', type: 'button', onclick: () => editUnit(u, parent) }, icon('edit'), 'Modifier'),
       u.shape === 'drawer' && h('button', { class: 'btn btn-small', type: 'button', onclick: () => { if (scene?.isDrawerOpen(u.id)) scene.setDrawerOpen(u.id, false); else scene?.focus(u.id); setTimeout(renderDetails, 300); } },
         icon('drawer'), scene?.isDrawerOpen(u.id) ? 'Fermer le tiroir' : 'Ouvrir et regarder dedans'),
       h('button', { class: 'icon-btn icon-btn-small', type: 'button', title: 'Centrer la vue', 'aria-label': 'Centrer la vue sur ce rangement', onclick: () => scene?.focus(u.id) }, icon('focus')),
       h('button', { class: 'icon-btn icon-btn-small', type: 'button', title: hidden ? 'Afficher' : 'Masquer temporairement', 'aria-label': hidden ? 'Afficher ce rangement' : 'Masquer ce rangement', onclick: () => { scene?.setHidden(u.id, !hidden); renderTree(); renderDetails(); } }, icon(hidden ? 'eyeOff' : 'eye')),
-      editRight && h('button', { class: 'icon-btn icon-btn-small btn-danger-ghost', type: 'button', title: 'Supprimer', 'aria-label': `Supprimer ${u.name}`, onclick: () => remove(u) }, icon('trash')),
+      editRight && h('button', { class: 'icon-btn icon-btn-small', type: 'button', title: `Copier (${MOD}+C)`, 'aria-label': `Copier ${u.name}`, onclick: () => copyUnit(u) }, icon('copy')),
+      editRight && h('button', { class: 'icon-btn icon-btn-small', type: 'button', title: `Enregistrer comme modèle (${MOD}+S)`, 'aria-label': `Enregistrer ${u.name} comme modèle`, onclick: () => saveTemplate(u) }, icon('save')),
+      editRight && h('button', { class: 'icon-btn icon-btn-small btn-danger-ghost', type: 'button', title: 'Supprimer (Suppr)', 'aria-label': `Supprimer ${u.name}`, onclick: () => remove(u) }, icon('trash')),
     );
     const addInside = can('storage.edit') && u.can_contain_units && inside && h('div', { class: 'detail-actions' },
       h('button', { class: 'btn btn-small', type: 'button', onclick: () => editUnit(null, u) }, icon('plus'), 'Rangement dedans'),
@@ -304,7 +441,7 @@ export async function render(view, session, params) {
         h('span', { class: 'badge' }, u.type_name), u.label && h('span', { class: 'badge badge-accent' }, u.label)),
       locationLabel(u.path),
       u.description && h('p', { class: 'muted small' }, u.description),
-      actions,
+      buttons,
       u.can_hold_items && can('stock.view') && contentsSection(u),
       (u.can_contain_units || kids.length > 0) && [
         h('h3', { class: 'panel-subtitle' }, 'Rangements à l’intérieur', h('span', { class: 'count' }, String(kids.length))),
@@ -323,6 +460,300 @@ export async function render(view, session, params) {
         inside && [h('dt', {}, 'Intérieur utile'), h('dd', {}, `${formatLength(inside.width, unit)} × ${formatLength(inside.depth, unit)} × ${formatLength(inside.height, unit)}`)]),
       position,
     );
+    return undefined;
+  }
+
+  const openingName = (o) => o.name || { door: 'Porte', window: 'Fenêtre', opening: 'Passage' }[o.kind];
+  const OPENING_KINDS = { door: 'Porte', window: 'Fenêtre', opening: 'Passage' };
+
+  /** Propriétés d'une porte ou d'une fenêtre : chaque champ s'enregistre dès qu'on le quitte, avec annulation. */
+  function renderOpeningDetails(o) {
+    const unit = unitLabel();
+    const room = state.payload.room;
+    const editable = can('rooms.edit');
+    const isRef = o.id === 'ref';
+    const num = (key, text, min = 0) => {
+      const input = h('input', { type: 'number', step: UNITS[unit].step, min: toDisplay(min, unit), value: toDisplay(o[key], unit), disabled: !editable });
+      input.addEventListener('change', () => {
+        const mm = fromDisplay(input.value, unit);
+        if (Number.isFinite(mm)) commitOpening(o, { ...o, [key]: mm });
+      });
+      return field(`${text} (${unit})`, input);
+    };
+    const wall = h('select', { disabled: !editable || isRef, 'aria-label': 'Mur' }, room.outline.map((_, i) => h('option', { value: i, selected: i === o.wall_index }, `Mur ${i + 1}, ${formatLength(wallLength(room.outline, i), unit)}`)));
+    wall.addEventListener('change', () => commitOpening(o, { ...o, wall_index: Number(wall.value) }));
+    const kind = h('select', { disabled: !editable || isRef }, Object.entries(OPENING_KINDS).map(([v, t]) => h('option', { value: v, selected: v === o.kind }, t)));
+    kind.addEventListener('change', () => commitOpening(o, { ...o, kind: kind.value, sill_mm: kind.value === 'window' ? Math.max(o.sill_mm, 900) : 0 }));
+    const name = h('input', { maxlength: 80, value: isRef ? 'Porte principale' : o.name, disabled: !editable || isRef });
+    name.addEventListener('change', () => commitOpening(o, { ...o, name: name.value }));
+    clear(details,
+      h('div', { class: 'detail-header' }, h('h2', { class: 'panel-title' }, openingName(o)), h('span', { class: 'badge' }, OPENING_KINDS[o.kind])),
+      editable && h('p', { class: 'field-hint' }, isRef
+        ? 'Tirez le gizmo pour la faire glisser sur le mur 1. La porte principale reste sur ce mur : elle sert de repère à toute la salle.'
+        : 'Tirez le gizmo : la porte suit le mur le plus proche et perce le mur en direct.'),
+      h('div', { class: 'panel-form' },
+        field('Nom', name),
+        h('div', { class: 'form-grid' }, field('Type', kind), field('Mur', wall)),
+        h('div', { class: 'form-grid' }, num('offset_mm', 'Distance'), num('width_mm', 'Largeur', 50)),
+        h('div', { class: 'form-grid' }, num('height_mm', 'Hauteur', 50), !isRef && num('sill_mm', 'Allège'))),
+      editable && !isRef && h('div', { class: 'detail-actions' },
+        h('button', { class: 'btn btn-small btn-danger-ghost', type: 'button', onclick: () => deleteOpening(o) }, icon('trash'), 'Supprimer')));
+  }
+
+  /** Champs qui ont changé, écrits où il faut : la porte principale fait partie de la salle. */
+  async function writeOpening(id, values) {
+    if (id === 'ref') {
+      const { offset_mm: door_offset_mm, width_mm: door_width_mm, height_mm: door_height_mm } = values;
+      return api(`/rooms/${roomId}`, { method: 'PATCH', body: { door_offset_mm, door_width_mm, door_height_mm } });
+    }
+    return api(`/openings/${history.id(id)}`, { method: 'PATCH', body: values });
+  }
+
+  const openingFields = ({ kind, name, wall_index, offset_mm, width_mm, height_mm, sill_mm }) => ({ kind, name, wall_index, offset_mm, width_mm, height_mm, sill_mm });
+
+  async function commitOpening(original, next) {
+    const problem = openingProblem(state.payload.room, state.payload.openings, next);
+    if (problem) {
+      toast(`${problem} La porte revient à sa place.`, 'info');
+      scene?.clearOpeningOverride();
+      renderDetails();
+      return;
+    }
+    const previous = openingFields(original);
+    const values = openingFields(next);
+    if (JSON.stringify(previous) === JSON.stringify(values)) { scene?.clearOpeningOverride(); return; }
+    try {
+      await writeOpening(original.id, values);
+      history.push({
+        label: `Modifier « ${openingName(original)} »`,
+        undo: async () => { await writeOpening(original.id, previous); await reload(); },
+        redo: async () => { await writeOpening(original.id, values); await reload(); },
+      });
+      await reload();
+    } catch (error) {
+      showError(error);
+      scene?.clearOpeningOverride();
+      renderDetails();
+    }
+  }
+
+  function nudgeOpening(o, delta) {
+    const length = wallLength(state.payload.room.outline, o.wall_index);
+    commitOpening(o, { ...o, offset_mm: Math.max(0, Math.min(o.offset_mm + delta, Math.floor(length) - o.width_mm)) });
+  }
+
+  /** Ajoute une porte ou une fenêtre : sur le mur cliqué, sinon le premier mur où il reste de la place. */
+  async function addOpening(kind, at = null) {
+    const { room, openings } = state.payload;
+    const base = kind === 'window'
+      ? { kind, name: '', width_mm: 1200, height_mm: 1200, sill_mm: Math.min(900, room.height_mm - 1200) }
+      : { kind, name: '', width_mm: 900, height_mm: Math.min(2050, room.height_mm), sill_mm: 0 };
+    let wallIndex = at?.wallIndex ?? null;
+    let offset = null;
+    if (at) {
+      const wall = nearestWall(room.outline, at.x, at.z, wallIndex);
+      wallIndex = wall.index;
+      offset = Math.max(0, Math.min(Math.round((wall.along - base.width_mm / 2) / 10) * 10, Math.floor(wall.length) - base.width_mm));
+      if (openingProblem(room, openings, { ...base, id: -1, wall_index: wallIndex, offset_mm: offset })) offset = freeOffset(room, openings, wallIndex, { ...base, id: -1 });
+    } else {
+      for (let i = 1; i <= room.outline.length && offset === null; i++) {
+        wallIndex = i % room.outline.length;
+        offset = freeOffset(room, openings, wallIndex, { ...base, id: -1 });
+      }
+    }
+    if (offset === null) return toast('Plus de place libre sur ce mur. Essayez un autre mur.', 'info');
+    const body = { ...base, wall_index: wallIndex, offset_mm: offset };
+    try {
+      let created = await api(`/rooms/${roomId}/openings`, { method: 'POST', body });
+      const newest = () => created.openings.reduce((a, b) => (a.id > b.id ? a : b));
+      let id = newest().id;
+      history.push({
+        label: `Ajouter ${kind === 'window' ? 'une fenêtre' : 'une porte'}`,
+        undo: async () => { await api(`/openings/${history.id(id)}`, { method: 'DELETE' }); await reload(); },
+        redo: async () => {
+          created = await api(`/rooms/${roomId}/openings`, { method: 'POST', body });
+          const newId = newest().id;
+          history.remember(id, newId);
+          id = newId;
+          await reload();
+        },
+      });
+      apply(created);
+      setGizmoMode('translate');
+      selectOpening(id, { focus: true });
+      toast(`${kind === 'window' ? 'Fenêtre ajoutée' : 'Porte ajoutée'}. Tirez le gizmo pour la placer.`);
+    } catch (error) { showError(error); }
+    return undefined;
+  }
+
+  async function deleteOpening(o) {
+    if (o.id === 'ref') return;
+    const body = openingFields(o);
+    let id = o.id;
+    try {
+      const result = await api(`/openings/${history.id(id)}`, { method: 'DELETE' });
+      history.pushWithToast({
+        label: `Supprimer « ${openingName(o)} »`,
+        undo: async () => {
+          const restored = await api(`/rooms/${roomId}/openings`, { method: 'POST', body });
+          const newId = restored.openings.reduce((a, b) => (a.id > b.id ? a : b)).id;
+          history.remember(id, newId);
+          id = newId;
+          await reload();
+        },
+        redo: async () => { await api(`/openings/${history.id(id)}`, { method: 'DELETE' }); await reload(); },
+      }, `« ${openingName(o)} » supprimée.`);
+      state.selectedOpening = null;
+      apply(result);
+    } catch (error) { showError(error); }
+  }
+
+  function openingMenuItems(o) {
+    const edit = can('rooms.edit');
+    return [
+      { label: 'Sélectionner', icon: 'focus', onSelect: () => selectOpening(o.id) },
+      edit && { label: 'Déplacer avec le gizmo', icon: 'move', onSelect: () => { setGizmoMode('translate'); selectOpening(o.id); } },
+      edit && o.id !== 'ref' && { separator: true },
+      edit && o.id !== 'ref' && { label: 'Supprimer', icon: 'trash', danger: true, onSelect: () => deleteOpening(o) },
+    ];
+  }
+
+  // ===== Copier, couper, coller, modèles =====
+
+  const copyUnit = async (u, cut = false) => {
+    try { await actions.copy(u, { cut }); renderDetails(); } catch (error) { showError(error); }
+  };
+
+  /** Où coller : dans le rangement sélectionné s'il peut contenir cet arbre, sinon dans la salle. */
+  function pasteTarget(tree) {
+    const size = { width_mm: tree.width_mm, depth_mm: tree.depth_mm, height_mm: tree.height_mm };
+    const { room, units } = state.payload;
+    const selected = unitById(state.selectedId);
+    for (let parent = selected; parent; parent = unitById(parent.parent_id)) {
+      if (!parent.can_contain_units || !unitInterior(parent) || !can('storage.edit')) continue;
+      const spot = findFreeSpot(room, units, parent, size);
+      if (spot) return { target: { parent_id: parent.id }, position: { pos_x_mm: spot.pos_x_mm, pos_y_mm: spot.pos_y_mm, pos_z_mm: spot.pos_z_mm }, parent };
+    }
+    if (!can('furniture.edit')) return null;
+    const spot = findFreeSpot(room, units, null, size);
+    return spot ? { target: { room_id: room.id }, position: { pos_x_mm: spot.pos_x_mm, pos_y_mm: spot.pos_y_mm, pos_z_mm: spot.pos_z_mm, rotation_deg: 0 }, parent: null } : null;
+  }
+
+  /** « Armoire A » existe déjà : « Armoire A 2 ». Deux rangements de même nom se confondraient dans les listes. */
+  function freshName(name) {
+    const taken = new Set(state.payload.units.map((u) => u.name));
+    if (!taken.has(name)) return name;
+    const base = name.replace(/\s\d+$/, '');
+    for (let i = 2; ; i++) if (!taken.has(`${base} ${i}`)) return `${base} ${i}`;
+  }
+
+  async function placeTree(tree, label, run) {
+    const place = pasteTarget(tree);
+    if (!place) return toast(`Pas assez de place libre pour « ${tree.name} ». Libérez de la place ou agrandissez la salle.`, 'info');
+    try {
+      const unit = await run(place);
+      if (place.parent) state.expanded.add(place.parent.id);
+      await reload();
+      select(unit.id, { focus: true });
+      toast(`« ${unit.name} » ${label}. Déplacez-le avec le gizmo, ${MOD}+Z pour annuler.`);
+    } catch (error) { showError(error); }
+    return undefined;
+  }
+
+  async function pasteHere() {
+    const value = clipboard.get();
+    if (!value) return toast('Rien à coller : sélectionnez un rangement et faites d’abord ' + MOD + '+C.', 'info');
+    return placeTree(value.tree, value.cut ? 'déplacé' : 'collé', ({ target, position }) => actions.paste(target, value.cut ? position : { ...position, name: freshName(value.tree.name) }));
+  }
+
+  async function duplicateUnit(u) {
+    try {
+      const { tree } = await api(`/storage-units/${u.id}/tree`);
+      const clean = withoutIds(tree);
+      return placeTree(clean, 'dupliqué', ({ target, position }) => actions.createTree({ ...clean, ...position, name: freshName(u.name) }, target, `Dupliquer « ${u.name} »`));
+    } catch (error) { showError(error); return undefined; }
+  }
+
+  async function saveTemplate(u) {
+    const template = await actions.saveAsTemplate(u);
+    if (!template) return;
+    await loadTemplates();
+    state.leftTab = 'library';
+    renderTree();
+  }
+
+  async function loadTemplates() {
+    state.templates = (await api('/storage-templates')).templates;
+  }
+
+  const placeTemplate = (template) => placeTree(template.tree, 'posé', ({ target, position }) => actions.createTree({ ...withoutIds(template.tree), ...position, name: freshName(template.tree.name) }, target, `Poser « ${template.name} »`));
+
+  async function renameTemplate(template) {
+    const name = await openDialog('Renommer le modèle', (close) => {
+      const input = h('input', { name: 'name', required: true, maxlength: 120, value: template.name });
+      const form = h('form', { class: 'dialog-body', novalidate: true }, field('Nom', input),
+        h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => close(undefined) }, 'Annuler'), h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, 'Renommer'))));
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        busy(event.submitter, async () => {
+          try {
+            await api(`/storage-templates/${template.id}`, { method: 'PATCH', body: { name: input.value } });
+            close(input.value);
+          } catch (error) { showError(error, form); }
+        });
+      });
+      return form;
+    });
+    if (name) { await loadTemplates(); renderTree(); }
+  }
+
+  async function deleteTemplate(template) {
+    if (!await confirmDialog({ title: 'Supprimer le modèle', message: `Le modèle « ${template.name} » sera supprimé. Les rangements déjà posés restent en place.`, confirmLabel: 'Supprimer', danger: true })) return;
+    try {
+      await api(`/storage-templates/${template.id}`, { method: 'DELETE' });
+      await loadTemplates();
+      renderTree();
+    } catch (error) { showError(error); }
+  }
+
+  /** Bibliothèque : modèles enregistrés et types de base, à poser d'un clic. */
+  function libraryPanel() {
+    const editable = can('furniture.edit') || can('storage.edit');
+    const card = (template) => {
+      const element = h('li', { class: 'library-card' },
+        h('button', { class: 'library-main', type: 'button', disabled: !editable, title: editable ? 'Poser ce modèle dans la salle' : null, onclick: () => placeTemplate(template) },
+          templateThumb(template.tree),
+          h('span', { class: 'library-text' }, h('strong', {}, template.name), h('span', { class: 'sub' }, templateSummary(template, unitLabel())))));
+      if (editable) contextMenu(element, () => templateMenuItems(template), { label: `Actions pour ${template.name}` });
+      return element;
+    };
+    return h('div', { class: 'library' },
+      h('h2', { class: 'panel-subtitle' }, 'Mes modèles', h('span', { class: 'count' }, String(state.templates.length))),
+      state.templates.length
+        ? h('ul', { class: 'plain-list library-list' }, state.templates.map(card))
+        : h('p', { class: 'muted small' }, `Sélectionnez un meuble rempli de tiroirs puis ${MOD}+S : il apparaît ici, prêt à être reposé ailleurs, dans n'importe quelle salle.`),
+      can('furniture.edit') && [
+        h('h2', { class: 'panel-subtitle' }, 'Types de rangement'),
+        h('ul', { class: 'plain-list library-types' }, state.types.filter((t) => t.shape !== 'divider').map((t) => h('li', {},
+          h('button', { class: 'tree-label', type: 'button', onclick: () => editUnit(null, inTypeTarget(t), { typeId: t.id }) },
+            h('span', { class: 'tree-swatch', dataset: { color: t.default_color } }), t.name)))),
+      ]);
+  }
+
+  /** Un tiroir s'ajoute dans le meuble sélectionné s'il y a de la place ; un meuble dans la salle. */
+  function inTypeTarget(type) {
+    const selected = unitById(state.selectedId);
+    if (['cabinet'].includes(type.shape) || !selected?.can_contain_units || !unitInterior(selected) || !can('storage.edit')) return null;
+    return selected;
+  }
+
+  function templateMenuItems(template) {
+    return [
+      { label: 'Poser dans la salle', icon: 'plus', onSelect: () => placeTemplate(template) },
+      { label: 'Renommer…', icon: 'tag', onSelect: () => renameTemplate(template) },
+      { separator: true },
+      { label: 'Supprimer…', icon: 'trash', danger: true, onSelect: () => deleteTemplate(template) },
+    ];
   }
 
   function nudgePad(u) {
@@ -330,12 +761,12 @@ export async function render(view, session, params) {
     const stepSelect = h('select', { class: 'select-small', 'aria-label': 'Pas de déplacement' },
       [[1, '1 mm'], [10, '1 cm'], [100, '10 cm'], [500, '50 cm']].map(([v, t]) => h('option', { value: v, selected: v === 10 }, t)));
     const b = (text, key, sign, title) => h('button', { class: 'btn btn-small', type: 'button', title, 'aria-label': title, onclick: (e) => busy(e.currentTarget, () => nudge(u, key, sign * Number(stepSelect.value))) }, text);
-    return h('div', { class: 'nudge' },
-      h('h3', { class: 'panel-subtitle' }, 'Ajuster la position'),
+    return h('details', { class: 'nudge panel-more' },
+      h('summary', {}, 'Ajuster la position au millimètre'),
       h('div', { class: 'nudge-row' }, h('label', { class: 'small muted', for: stepSelect.id = `step-${u.id}` }, 'Pas'), stepSelect,
         u.parent_id === null && [
-          h('button', { class: 'icon-btn icon-btn-small icon-btn-bordered', type: 'button', title: 'Pivoter de 90° à gauche', 'aria-label': 'Pivoter de 90° à gauche', onclick: () => patchUnit(u, rotateAroundCenter(u, u.rotation_deg - 90)) }, icon('rotateLeft')),
-          h('button', { class: 'icon-btn icon-btn-small icon-btn-bordered', type: 'button', title: 'Pivoter de 90° à droite', 'aria-label': 'Pivoter de 90° à droite', onclick: () => patchUnit(u, rotateAroundCenter(u, u.rotation_deg + 90)) }, icon('rotateRight'))]),
+          h('button', { class: 'icon-btn icon-btn-small icon-btn-bordered', type: 'button', title: 'Pivoter de 90° à gauche', 'aria-label': 'Pivoter de 90° à gauche', onclick: () => patchUnit(u, rotateAroundCenter(u, u.rotation_deg - 90), `Pivoter « ${u.name} »`) }, icon('rotateLeft')),
+          h('button', { class: 'icon-btn icon-btn-small icon-btn-bordered', type: 'button', title: 'Pivoter de 90° à droite', 'aria-label': 'Pivoter de 90° à droite', onclick: () => patchUnit(u, rotateAroundCenter(u, u.rotation_deg + 90), `Pivoter « ${u.name} »`) }, icon('rotateRight'))]),
       h('div', { class: 'nudge-grid' },
         b('X −', 'pos_x_mm', -1, 'Vers la gauche'), b('X +', 'pos_x_mm', 1, 'Vers la droite'),
         b('Y −', 'pos_y_mm', -1, 'Plus bas'),
@@ -370,10 +801,9 @@ export async function render(view, session, params) {
       h('h3', { class: 'panel-subtitle contents-heading' }, 'Objets rangés ici', u.capacity && h('span', { class: 'count' }, `capacité ${formatQuantity(u.capacity)}`)),
       body,
       h('div', { class: 'detail-actions' },
-        can('stock.add') && h('button', { class: 'btn btn-small', type: 'button', onclick: async () => {
-          const item = await pickItem('Ajouter du stock ici : choisir l\'objet');
-          if (item && await addDialog(item, location)) await reload();
-        } }, icon('plus'), 'Ajouter du stock'),
+        can('stock.add') && h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: async () => {
+          if (await storeItemsDialog(location)) await reload();
+        } }, icon('plus'), 'Ranger des objets'),
         can('items.edit') && can('stock.add') && h('button', { class: 'btn btn-small', type: 'button', onclick: async () => {
           if (await itemDialog(null, { canAddStock: true, location: { id: u.id, path: u.path } })) await reload();
         } }, 'Nouvel objet')));
@@ -390,9 +820,14 @@ export async function render(view, session, params) {
   }
 
   /** Salle (clic droit dans le vide de la vue 3D). */
-  function roomMenuItems() {
+  function roomMenuItems(hit = null) {
+    const here = hit?.point ? { x: hit.point.x * 1000, z: hit.point.z * 1000, wallIndex: hit.wallIndex } : null;
     return [
       can('furniture.edit') && { label: 'Ajouter un meuble…', icon: 'plus', onSelect: () => editUnit(null, null) },
+      clipboard.get() && (can('furniture.edit') || can('storage.edit')) && { label: `Coller « ${clipboard.get().name} » (${MOD}+V)`, icon: 'paste', onSelect: pasteHere },
+      can('rooms.edit') && { label: here ? 'Ajouter une porte ici' : 'Ajouter une porte', icon: 'door', onSelect: () => addOpening('door', here) },
+      can('rooms.edit') && { label: here ? 'Ajouter une fenêtre ici' : 'Ajouter une fenêtre', icon: 'window', onSelect: () => addOpening('window', here) },
+      { separator: true },
       can('rooms.edit') && { label: 'Modifier les paramètres…', icon: 'sliders', onSelect: openSettings },
       can('rooms.edit') && { label: 'Gérer les ouvertures…', icon: 'door', onSelect: openOpenings },
       { separator: true },
@@ -434,9 +869,14 @@ export async function render(view, session, params) {
       canNest && furniture && { label: 'Ajouter une étagère…', icon: 'layers', onSelect: nest('shelf') },
       canNest && !furniture && { label: 'Ajouter un sous-rangement…', icon: 'plus', onSelect: nest('box') },
       { separator: true },
-      u.can_hold_items && can('stock.add') && { label: 'Ajouter des objets…', icon: 'plus', onSelect: async () => {
-        const item = await pickItem(`Ajouter dans « ${u.name} » : choisir l'objet`);
-        if (item && await addDialog(item, { unit_id: u.id, path: u.path })) { await reload(); select(u.id); }
+      editRight && { label: `Copier (${MOD}+C)`, icon: 'copy', onSelect: () => copyUnit(u) },
+      editRight && { label: `Couper (${MOD}+X)`, icon: 'cut', onSelect: () => copyUnit(u, true) },
+      clipboard.get() && canNest && { label: `Coller dedans (${MOD}+V)`, icon: 'paste', onSelect: pasteHere },
+      editRight && { label: `Dupliquer (${MOD}+D)`, icon: 'copy', onSelect: () => duplicateUnit(u) },
+      editRight && { label: `Enregistrer comme modèle (${MOD}+S)`, icon: 'save', onSelect: () => saveTemplate(u) },
+      { separator: true },
+      u.can_hold_items && can('stock.add') && { label: 'Ranger des objets…', icon: 'plus', onSelect: async () => {
+        if (await storeItemsDialog({ unit_id: u.id, path: u.path })) { await reload(); select(u.id); }
       } },
       u.can_hold_items && can('stock.move') && { label: 'Déplacer des objets…', icon: 'move', onSelect: () => moveContents(u) },
       { separator: true },
@@ -456,7 +896,7 @@ export async function render(view, session, params) {
         event.preventDefault();
         busy(event.submitter, async () => {
           try {
-            await api(`/storage-units/${u.id}`, { method: 'PATCH', body: { name: name.value } });
+            await actions.patch(u, { name: name.value }, `Renommer « ${u.name} »`);
             close(true);
           } catch (error) { showError(error, form); }
         });
@@ -491,20 +931,16 @@ export async function render(view, session, params) {
     await openOpeningsDialog(state.payload, (payload) => apply(payload));
   }
 
+  // Pas de confirmation : Annuler est proposé tout de suite, et le serveur refuse un rangement qui contient du stock
   async function remove(u) {
-    const count = state.payload.units.filter((x) => x.path.startsWith(`${u.path} › `)).length;
-    const ok = await confirmDialog({
-      title: 'Supprimer',
-      message: count ? `« ${u.name} » et ${plural(count, 'rangement')} à l'intérieur seront supprimés.` : `« ${u.name} » sera supprimé.`,
-      confirmLabel: 'Supprimer', danger: true,
-    });
-    if (!ok) return;
     try {
-      await api(`/storage-units/${u.id}`, { method: 'DELETE' });
-      toast(`« ${u.name} » supprimé.`);
       state.selectedId = u.parent_id;
-      await reload();
-    } catch (error) { showError(error); }
+      await actions.remove(u);
+    } catch (error) {
+      state.selectedId = u.id;
+      showError(error);
+      renderDetails();
+    }
   }
 
   /**
@@ -619,7 +1055,12 @@ export async function render(view, session, params) {
         busy(event.submitter, async () => {
           try {
             const r = await api(`/storage-units/${u.id}/generate`, { method: 'POST', body });
-            toast(`${plural(r.created, 'rangement créé', 'rangements créés')}.`);
+            let ids = r.ids;
+            history.pushWithToast({
+              label: `Remplir « ${u.name} »`,
+              undo: async () => { for (const id of ids) await api(`/storage-units/${id}`, { method: 'DELETE' }); await reload(); },
+              redo: async () => { ids = (await api(`/storage-units/${history.id(u.id)}/generate`, { method: 'POST', body })).ids; await reload(); },
+            }, `${plural(r.created, 'rangement créé', 'rangements créés')}.`);
             close(true);
           } catch (error) { showError(error, form); }
         });
@@ -637,7 +1078,7 @@ export async function render(view, session, params) {
    * Création (u null) ou modification d'un meuble (parent null) ou d'un rangement, avec aperçu en direct :
    * le formulaire et le gizmo agissent sur le même brouillon, visible dans la vue 3D.
    */
-  async function editUnit(u, parent, { shape = null } = {}) {
+  async function editUnit(u, parent, { shape = null, typeId = null } = {}) {
     const room = state.payload.room;
     const isFurniture = parent === null;
     const types = state.types;
@@ -645,7 +1086,7 @@ export async function render(view, session, params) {
     if (u) select(u.id);
     const saved = await openPanel(u ? `Modifier « ${u.name} »` : isFurniture ? 'Nouveau meuble' : `Dans « ${parent.name} »`, (close, panel) => {
       const inside = parent ? unitInterior(parent) : null;
-      const typeSelect = h('select', { name: 'type_id' }, types.map((t) => h('option', { value: t.id, selected: t.id === (u?.type_id ?? types.find((x) => x.shape === (shape ?? (isFurniture ? 'cabinet' : 'drawer')))?.id) }, `${t.name} (${SHAPE_LABELS[t.shape]})`)));
+      const typeSelect = h('select', { name: 'type_id' }, types.map((t) => h('option', { value: t.id, selected: t.id === (u?.type_id ?? typeId ?? types.find((x) => x.shape === (shape ?? (isFurniture ? 'cabinet' : 'drawer')))?.id) }, `${t.name} (${SHAPE_LABELS[t.shape]})`)));
       const len = (name, mm) => h('input', { name, type: 'number', inputmode: 'decimal', step: UNITS[unit].step, value: toDisplay(mm, unit), required: true, dataset: { mm: mm } });
       const name = h('input', { name: 'name', required: true, maxlength: 120, value: u?.name ?? '' });
       const labelInput = h('input', { name: 'label', maxlength: 50, value: u?.label ?? '' });
@@ -769,9 +1210,19 @@ export async function render(view, session, params) {
         }
         busy(event.submitter, async () => {
           try {
-            const result = await api(u ? `/storage-units/${u.id}` : '/storage-units', { method: u ? 'PATCH' : 'POST', body });
-            toast(u ? 'Modifications enregistrées.' : `« ${name.value} » ajouté.`);
-            close(result.unit.id);
+            let id;
+            if (u) {
+              await actions.patch(u, body, `Modifier « ${u.name} »`);
+              id = u.id;
+            } else {
+              const result = await api('/storage-units', { method: 'POST', body });
+              id = result.unit.id;
+              const { tree: created } = await api(`/storage-units/${id}/tree`);
+              const { parent_id: parentId, room_id: bodyRoom } = body;
+              actions.recordCreated(id, withoutIds(created), parentId ? { parent_id: parentId } : { room_id: bodyRoom }, `Ajouter « ${name.value} »`);
+            }
+            toast(u ? 'Modifications enregistrées.' : `« ${name.value} » ajouté. ${MOD}+Z pour annuler.`);
+            close(id);
           } catch (error) { showError(error, form); }
         });
       });
@@ -788,7 +1239,7 @@ export async function render(view, session, params) {
   // ===== Chargement =====
 
   try {
-    const [payload, types] = await Promise.all([api(`/rooms/${roomId}`), api('/storage-types')]);
+    const [payload, types] = await Promise.all([api(`/rooms/${roomId}`), api('/storage-types'), loadTemplates()]);
     state.types = types.types;
     apply(payload);
     const highlight = Number(new URLSearchParams(location.search).get('unit'));
@@ -801,7 +1252,7 @@ export async function render(view, session, params) {
     const action = query.get('action');
     if (action) {
       query.delete('action');
-      history.replaceState(null, '', `${location.pathname}${query.size ? `?${query}` : ''}`);
+      history_replace(`${location.pathname}${query.size ? `?${query}` : ''}`);
       if (action === 'add-furniture' && can('furniture.edit')) editUnit(null, null);
       if (action === 'openings' && can('rooms.edit')) openOpenings();
     }

@@ -8,12 +8,14 @@ use App\Controller\CatalogController;
 use App\Controller\DashboardController;
 use App\Controller\HealthController;
 use App\Controller\ItemController;
+use App\Controller\PlanController;
 use App\Controller\RoleController;
 use App\Controller\RoomController;
 use App\Controller\SettingsController;
 use App\Controller\StockController;
 use App\Controller\StorageTypeController;
 use App\Controller\StorageUnitController;
+use App\Controller\TemplateController;
 use App\Controller\UserController;
 use App\Http\Router;
 
@@ -55,6 +57,19 @@ $router->add('POST', '/storage-units', [StorageUnitController::class, 'create'])
 $router->add('PATCH', '/storage-units/{id:\d+}', [StorageUnitController::class, 'update']);
 $router->add('DELETE', '/storage-units/{id:\d+}', [StorageUnitController::class, 'delete']);
 $router->add('POST', '/storage-units/{id:\d+}/generate', [StorageUnitController::class, 'generate']);
+$router->add('GET', '/storage-units/{id:\d+}/tree', [StorageUnitController::class, 'tree']);
+$router->add('POST', '/storage-units/{id:\d+}/move', [StorageUnitController::class, 'move']);
+$router->add('POST', '/storage-units/tree', [StorageUnitController::class, 'createTree']);
+
+$router->add('GET', '/storage-templates', [TemplateController::class, 'index']);
+$router->add('POST', '/storage-templates', [TemplateController::class, 'create']);
+$router->add('PATCH', '/storage-templates/{id:\d+}', [TemplateController::class, 'update']);
+$router->add('DELETE', '/storage-templates/{id:\d+}', [TemplateController::class, 'delete']);
+
+$router->add('GET', '/plan', [PlanController::class, 'show']);
+$router->add('POST', '/floors', [PlanController::class, 'createFloor']);
+$router->add('PATCH', '/floors/{id:\d+}', [PlanController::class, 'updateFloor']);
+$router->add('DELETE', '/floors/{id:\d+}', [PlanController::class, 'deleteFloor']);
 
 $router->add('GET', '/storage-types', [StorageTypeController::class, 'index']);
 $router->add('POST', '/storage-types', [StorageTypeController::class, 'create']);

@@ -4,7 +4,7 @@ import { api } from '../api.js';
 import { h } from '../dom.js';
 import { busy, confirmDialog, emptyState, field, openDialog, showError, toast } from '../ui.js';
 import { icon } from '../icons.js';
-import { formatLength, fromDisplay, toDisplay, UNITS, wallLength } from '../spatial.js';
+import { formatLength, fromDisplay, isRectangle, toDisplay, UNITS, wallLength } from '../spatial.js';
 import { roomPreview } from '../three/preview.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -22,12 +22,6 @@ function lengthInput(name, mm, unit) {
     name, type: 'number', inputmode: 'decimal', step: UNITS[unit].step, min: 0, required: true,
     value: mm === null || mm === undefined ? '' : toDisplay(mm, unit), dataset: { length: '' },
   });
-}
-
-function isRectangle(outline) {
-  if (outline.length !== 4) return false;
-  const [[a, b], [c, d], [e, f], [g, k]] = outline;
-  return a === 0 && b === 0 && d === 0 && c === e && f === k && g === 0 && c > 0 && f > 0;
 }
 
 /** Aperçu du plan : contour, numéros de murs, porte de référence et repère. */

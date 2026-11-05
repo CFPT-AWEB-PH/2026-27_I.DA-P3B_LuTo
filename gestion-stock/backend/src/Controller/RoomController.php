@@ -50,6 +50,8 @@ final class RoomController
 
         $id = Database::transaction(static function (PDO $pdo) use ($room, $auth): int {
             self::assertNameFree($pdo, $room['name'], null);
+            self::assertFloorExists($pdo, $room['floor_id']);
+            $room['floor_id'] ??= (int) $pdo->query('SELECT id FROM floors ORDER BY level_no = 0 DESC, level_no LIMIT 1')->fetchColumn() ?: null;
             $columns = array_keys($room);
             $pdo->prepare('INSERT INTO rooms (' . implode(', ', $columns) . ', created_by) VALUES ('
                 . implode(', ', array_fill(0, count($columns) + 1, '?')) . ')')
@@ -74,6 +76,7 @@ final class RoomController
             SpaceValidator::openingsStillValid($room + ['id' => $id], Repo::openings($pdo, $id));
             SpaceValidator::furnitureFitsRoom($pdo, $room + ['id' => $id]);
             self::assertNameFree($pdo, $room['name'], $id);
+            self::assertFloorExists($pdo, $room['floor_id']);
 
             $changes = array_filter($room, static fn ($value, $key) => $value !== $current[$key], ARRAY_FILTER_USE_BOTH);
             if ($changes !== []) {
@@ -124,6 +127,9 @@ final class RoomController
             $name = self::copyName($pdo, $source['name']);
             $room = array_intersect_key($source, array_flip(self::COLUMNS));
             $room['name'] = $name;
+            // Même étage et même orientation ; le plan la range à la suite tant qu'elle n'est pas déplacée
+            $room['floor_id'] = $source['floor_id'];
+            $room['plan_rotation_deg'] = (int) $source['plan_rotation_deg'];
             $columns = array_keys($room);
             $pdo->prepare('INSERT INTO rooms (' . implode(', ', $columns) . ', created_by) VALUES ('
                 . implode(', ', array_fill(0, count($columns) + 1, '?')) . ')')
@@ -254,7 +260,24 @@ final class RoomController
                 default => $read(),
             };
         }
+        // Place sur le plan : facultative. Une nouvelle salle arrive sur le premier étage, le plan la range lui-même
+        $room['floor_id'] = $in->has('floor_id') ? $in->optionalInt('floor_id', null, 1) : ($current['floor_id'] ?? null);
+        $room['plan_x_mm'] = $in->has('plan_x_mm') ? $in->optionalInt('plan_x_mm', null, -2_000_000, 2_000_000) : ($current['plan_x_mm'] ?? null);
+        $room['plan_z_mm'] = $in->has('plan_z_mm') ? $in->optionalInt('plan_z_mm', null, -2_000_000, 2_000_000) : ($current['plan_z_mm'] ?? null);
+        $room['plan_rotation_deg'] = $in->has('plan_rotation_deg') ? $in->int('plan_rotation_deg', 0, 359) : ($current['plan_rotation_deg'] ?? 0);
         return $room;
+    }
+
+    private static function assertFloorExists(PDO $pdo, ?int $floorId): void
+    {
+        if ($floorId === null) {
+            return;
+        }
+        $stmt = $pdo->prepare('SELECT 1 FROM floors WHERE id = ?');
+        $stmt->execute([$floorId]);
+        if ($stmt->fetchColumn() === false) {
+            Input::fail('floor_id', 'Étage introuvable.');
+        }
     }
 
     /** @param array<string, mixed>|null $current @return array<string, mixed> */

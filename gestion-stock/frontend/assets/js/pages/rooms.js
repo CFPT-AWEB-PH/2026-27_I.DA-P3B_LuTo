@@ -42,7 +42,10 @@ export function render(view, session) {
     pageHeader({
       title: 'Salles',
       description: 'Ouvrez une salle pour la parcourir en 3D et retrouver chaque meuble, tiroir et boîte.',
-      actions: canEdit && h('button', { class: 'btn btn-primary', type: 'button', onclick: create }, icon('plus'), 'Nouvelle salle'),
+      actions: [
+        h('a', { class: 'btn', href: '/plan' }, icon('plan'), 'Voir le plan'),
+        canEdit && h('button', { class: 'btn btn-primary', type: 'button', onclick: create }, icon('plus'), 'Nouvelle salle'),
+      ],
     }),
     grid,
   );

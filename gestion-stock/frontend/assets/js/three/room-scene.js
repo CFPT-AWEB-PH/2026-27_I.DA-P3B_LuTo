@@ -6,8 +6,11 @@ import * as THREE from '/vendor/three/three.module.min.js';
 import { OrbitControls } from '/vendor/three/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from '/vendor/three/CSS2DRenderer.js';
 import { TransformControls } from '/vendor/three/TransformControls.js';
-import { containsPoint, formatLength, interior, snapToEdges, unitFootprint, unitProblem, wallLength } from '../spatial.js';
+import {
+  clampToParent, clampToRoom, containsPoint, formatLength, freeFloorArea, interior, openingProblem, referenceDoor, rotation, slideOpening, snapToEdges, unitFootprint, unitProblem, wallFrame, wallLength,
+} from '../spatial.js';
 import { buildObjects } from './item-models.js';
+import { buildShell } from './room-shell.js';
 
 const S = 0.001;
 const SELECT_COLOR = 0xffa31a;
@@ -18,6 +21,7 @@ const VALID_COLOR = 0x2fb56f;
 const SNAP_DISTANCE = 12; // mm : distance d'aimantation aux bords voisins
 const STRIP_COLOR = 0xd9dbd6; // bandeau métallique des tiroirs
 const OPEN_TOP = new Set(['drawer', 'box', 'bin']);
+const MIN_LOOSE_AREA = 40; // mm : plus étroit, la place libre d'un rangement divisé ne montre pas d'objets
 
 export class RoomScene {
   /**
@@ -43,6 +47,8 @@ export class RoomScene {
     this.walls = [];
     this.animations = [];
     this.renderQueued = false;
+    this.selectedOpening = null;
+    this.openingOverride = null;
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -104,6 +110,8 @@ export class RoomScene {
     if (this.selectedId !== null && !ids.has(this.selectedId)) this.selectedId = null;
 
     this.detachGizmo();
+    this.openingOverride = null;
+    if (this.selectedOpening !== null && !this.opening(this.selectedOpening)) this.selectedOpening = null;
     this.clearGroup(this.roomGroup);
     this.clearGroup(this.unitsGroup);
     if (!this.minimal) this.buildRoom();
@@ -143,93 +151,18 @@ export class RoomScene {
   // ===== Construction de la salle =====
 
   buildRoom() {
-    const room = this.room;
+    let room = this.room;
     const outline = room.outline;
 
-    // Sol
-    const shape = new THREE.Shape(outline.map(([x, z]) => new THREE.Vector2(x * S, -z * S)));
-    const floorGeometry = new THREE.ShapeGeometry(shape);
-    floorGeometry.rotateX(-Math.PI / 2);
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: room.floor_color, roughness: 0.9 });
-    const texture = floorTexture(room.floor_material);
-    if (texture) {
-      floorMaterial.map = texture.map;
-      floorMaterial.color = new THREE.Color(room.floor_color).lerp(new THREE.Color('#ffffff'), 0.25);
-      texture.map.repeat.set(1 / texture.size, 1 / texture.size);
-    }
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-    floor.userData.isFloor = true;
-    this.roomGroup.add(floor);
-
-    // Murs : épaisseur côté extérieur, découpés autour des ouvertures
-    const height = room.height_mm;
-    const thickness = Math.max(room.wall_thickness_mm, 20);
-    const wallMaterial = new THREE.MeshStandardMaterial({ color: room.wall_color, roughness: 0.95, transparent: true, opacity: 1 });
-    this.wallMaterial = wallMaterial;
-    const holes = [
-      { wall_index: 0, offset_mm: room.door_offset_mm, width_mm: room.door_width_mm, sill_mm: 0, height_mm: room.door_height_mm, kind: 'reference' },
-      ...this.openings,
-    ];
-    this.walls = [];
-
-    outline.forEach(([x1, z1], i) => {
-      const [x2, z2] = outline[(i + 1) % outline.length];
-      const length = wallLength(outline, i);
-      if (length === 0) return;
-      const ux = (x2 - x1) / length;
-      const uz = (z2 - z1) / length;
-      let nx = -uz; let nz = ux; // normale candidate
-      const mx = (x1 + x2) / 2; const mz = (z1 + z2) / 2;
-      if (containsPoint(outline, mx + nx * 5, mz + nz * 5)) { nx = -nx; nz = -nz; } // vers l'extérieur
-
-      const wall = new THREE.Group();
-      wall.userData = { outward: new THREE.Vector3(nx, 0, nz), center: new THREE.Vector3(mx * S, height * S / 2, mz * S) };
-      const wallHoles = holes.filter((h) => h.wall_index === i);
-      const cuts = [...new Set([0, length, ...wallHoles.flatMap((h) => [h.offset_mm, h.offset_mm + h.width_mm])])].sort((a, b) => a - b);
-
-      for (let k = 0; k < cuts.length - 1; k++) {
-        const u0 = cuts[k]; const u1 = cuts[k + 1];
-        if (u1 - u0 < 1) continue;
-        let solid = [[0, height]];
-        for (const h of wallHoles) {
-          if (h.offset_mm < u1 - 0.5 && h.offset_mm + h.width_mm > u0 + 0.5) {
-            solid = solid.flatMap(([a, b]) => {
-              const parts = [];
-              if (h.sill_mm > a) parts.push([a, Math.min(b, h.sill_mm)]);
-              if (h.sill_mm + h.height_mm < b) parts.push([Math.max(a, h.sill_mm + h.height_mm), b]);
-              return parts.filter(([p, q]) => q - p > 0.5);
-            });
-          }
-        }
-        for (const [v0, v1] of solid) {
-          const piece = new THREE.Mesh(new THREE.BoxGeometry((u1 - u0) * S, (v1 - v0) * S, thickness * S), wallMaterial);
-          const uc = (u0 + u1) / 2;
-          piece.position.set((x1 + ux * uc + nx * thickness / 2) * S, ((v0 + v1) / 2) * S, (z1 + uz * uc + nz * thickness / 2) * S);
-          piece.rotation.y = -Math.atan2(uz, ux);
-          wall.add(piece);
-        }
-      }
-      // Poteau d'angle extérieur, pour fermer la jonction avec le mur suivant
-      const post = new THREE.Mesh(new THREE.BoxGeometry(thickness * S, height * S, thickness * S), wallMaterial);
-      const [px, pz] = outline[(i + 1) % outline.length];
-      post.position.set((px + nx * thickness / 2 + ux * thickness / 2) * S, height * S / 2, (pz + nz * thickness / 2 + uz * thickness / 2) * S);
-      post.rotation.y = -Math.atan2(uz, ux);
-      wall.add(post);
-
-      // Vitrage des fenêtres
-      for (const h of wallHoles.filter((o) => o.kind === 'window')) {
-        const glass = new THREE.Mesh(
-          new THREE.PlaneGeometry(h.width_mm * S, h.height_mm * S),
-          new THREE.MeshStandardMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }),
-        );
-        const uc = h.offset_mm + h.width_mm / 2;
-        glass.position.set((x1 + ux * uc + nx * thickness / 2) * S, (h.sill_mm + h.height_mm / 2) * S, (z1 + uz * uc + nz * thickness / 2) * S);
-        glass.rotation.y = -Math.atan2(uz, ux);
-        wall.add(glass);
-      }
-      this.walls.push(wall);
-      this.roomGroup.add(wall);
-    });
+    // Pendant un glisser, l'ouverture suit le pointeur : les murs sont recalculés avec sa position provisoire
+    const override = this.openingOverride;
+    if (override?.id === 'ref') room = { ...room, door_offset_mm: override.offset_mm };
+    const openings = override && override.id !== 'ref' ? [...this.openings.filter((o) => o.id !== override.id), override] : this.openings;
+    const shell = buildShell(room, openings);
+    this.wallMaterial = shell.wallMaterial;
+    this.walls = shell.walls;
+    this.openingGroups = shell.openingGroups;
+    this.roomGroup.add(shell.group);
 
     // Porte de référence : marquage au sol et étiquette
     const door = new THREE.Mesh(
@@ -239,7 +172,7 @@ export class RoomScene {
     door.rotation.x = -Math.PI / 2;
     door.position.set((room.door_offset_mm + room.door_width_mm / 2) * S, 0.002, Math.min(room.door_width_mm, 900) * S / 2);
     this.roomGroup.add(door);
-    this.roomGroup.add(label('Porte (référence)', (room.door_offset_mm + room.door_width_mm / 2) * S, room.door_height_mm * S + 0.08, 0, 'scene-label scene-label-door'));
+    this.roomGroup.add(label('Porte principale', (room.door_offset_mm + room.door_width_mm / 2) * S, room.door_height_mm * S + 0.08, 0, 'scene-label scene-label-door'));
 
     // Origine et axes
     const axes = new THREE.AxesHelper(0.5);
@@ -324,11 +257,14 @@ export class RoomScene {
     for (const child of kids) this.buildUnit(child, content, u);
     const entries = this.contentsOf.get(u.id);
     const inside = interior(u.shape, u.width_mm, u.depth_mm, u.height_mm, u.panel_mm);
-    // Un rangement divisé montre ses subdivisions : ses objets directs restent dans le panneau de propriétés
-    if (entries && inside && kids.length === 0) {
-      const objects = buildObjects(u.id, inside, entries);
-      objects.position.set(inside.x * S, inside.y * S, inside.z * S);
-      content.add(objects);
+    // Un rangement divisé montre ses objets directs dans la place restée libre entre ses subdivisions
+    if (entries && inside) {
+      const free = freeFloorArea(inside, kids);
+      if (free.width >= MIN_LOOSE_AREA && free.depth >= MIN_LOOSE_AREA) {
+        const objects = buildObjects(u.id, { ...inside, ...free }, entries);
+        objects.position.set((inside.x + free.x) * S, inside.y * S, (inside.z + free.z) * S);
+        content.add(objects);
+      }
     }
   }
 
@@ -483,9 +419,24 @@ export class RoomScene {
 
   select(id) {
     this.selectedId = id;
+    this.selectedOpening = null;
     this.refreshOverlay();
     this.refreshGizmo();
     this.requestRender();
+  }
+
+  /** Sélectionne une ouverture ('ref' : la porte principale) à la place d'un rangement. */
+  selectOpening(id) {
+    this.selectedId = null;
+    this.selectedOpening = id;
+    this.refreshOverlay();
+    this.refreshGizmo();
+    this.requestRender();
+  }
+
+  opening(id) {
+    if (id === 'ref') return referenceDoor(this.room);
+    return this.openings?.find((o) => o.id === id) ?? null;
   }
 
   /** Met un rangement en évidence : rend visibles ses parents, ouvre les tiroirs, centre la vue. */
@@ -511,6 +462,12 @@ export class RoomScene {
         g.remove(o);
         disposeObject(o);
       }
+    }
+    this.clearGroup(this.overlayGroup);
+    const selectedOpening = this.selectedOpening === null ? null : (this.openingOverride ?? this.opening(this.selectedOpening));
+    if (selectedOpening) {
+      this.openingBox = openingOutline(this.room, selectedOpening, SELECT_COLOR);
+      this.overlayGroup.add(this.openingBox);
     }
     for (const [id, color] of [[this.highlightId, HIGHLIGHT_COLOR], [this.selectedId, SELECT_COLOR]]) {
       const u = this.unit(id);
@@ -590,6 +547,8 @@ export class RoomScene {
     this.animate(280, (t) => {
       g.position.z += (target - g.position.z) * t;
       if (t >= 1 && !this.openDrawers.has(id)) g.userData.content.visible = false;
+      // Le gizmo rejoint le tiroir une fois celui-ci arrivé à sa place
+      if (t >= 1) this.refreshGizmo();
     });
   }
 
@@ -625,7 +584,10 @@ export class RoomScene {
     this.gizmo.setRotationSnap(THREE.MathUtils.degToRad(5));
     this.scene.add(this.gizmo.getHelper());
     this.gizmo.addEventListener('change', () => this.requestRender());
-    this.gizmo.addEventListener('dragging-changed', (event) => { this.controls.enabled = !event.value; });
+    this.gizmo.addEventListener('dragging-changed', (event) => {
+      this.controls.enabled = !event.value;
+      this.dragging = event.value;
+    });
     this.gizmo.addEventListener('mouseDown', () => this.gizmoStart());
     this.gizmo.addEventListener('objectChange', () => this.gizmoMove());
     this.gizmo.addEventListener('mouseUp', () => this.gizmoEnd());
@@ -657,6 +619,8 @@ export class RoomScene {
   refreshGizmo() {
     if (!this.gizmo || this.gizmo.dragging) return;
     this.detachGizmo();
+    const opening = this.gizmoMode === 'none' || this.selectedOpening === null ? null : this.opening(this.selectedOpening);
+    if (opening) return this.attachOpeningGizmo(opening);
     const target = this.gizmoMode === 'none' ? null : this.gizmoTarget();
     if (!target?.group.parent) return;
     const { unit, group, parent } = target;
@@ -676,17 +640,34 @@ export class RoomScene {
     this.gizmoContext = { unit, group, parent };
   }
 
+  /** Une ouverture se déplace sur le sol : elle suit le mur le plus proche ; une fenêtre monte et descend aussi. */
+  attachOpeningGizmo(opening) {
+    if (!this.callbacks.canEditRoom?.()) return;
+    const frame = wallFrame(this.room.outline, opening.wall_index, opening.offset_mm + opening.width_mm / 2);
+    this.scene.add(this.proxy);
+    this.proxy.position.set(frame.x * S, (opening.sill_mm + opening.height_mm / 2) * S, frame.z * S);
+    this.proxy.rotation.set(0, 0, 0);
+    this.proxy.scale.set(1, 1, 1);
+    this.gizmo.attach(this.proxy);
+    this.gizmo.setMode('translate');
+    this.gizmo.setSpace('world');
+    this.gizmo.showX = true;
+    this.gizmo.showZ = true;
+    this.gizmo.showY = opening.kind === 'window';
+    this.gizmoContext = { opening };
+  }
+
   /** Vecteur du coin arrière-gauche-bas vers le centre, après rotation (en mm). */
   halfVector(u, rotationDeg) {
-    const a = (rotationDeg * Math.PI) / 180;
+    const { cos, sin } = rotation(rotationDeg);
     const hx = u.width_mm / 2; const hz = u.depth_mm / 2;
-    return { x: hx * Math.cos(a) + hz * Math.sin(a), y: u.height_mm / 2, z: -hx * Math.sin(a) + hz * Math.cos(a) };
+    return { x: hx * cos + hz * sin, y: u.height_mm / 2, z: -hx * sin + hz * cos };
   }
 
   gizmoStart() {
     if (!this.gizmoContext) return;
     this.gizmoContext.candidate = null;
-    this.gizmoContext.start = { ...this.gizmoContext.unit };
+    this.gizmoContext.start = this.gizmoContext.opening ?? { ...this.gizmoContext.unit };
   }
 
   /** Repères d'aimantation sur X et Z : bords des voisins et de ce qui contient le rangement. */
@@ -718,6 +699,7 @@ export class RoomScene {
   gizmoMove() {
     const context = this.gizmoContext;
     if (!context?.start) return;
+    if (context.opening) return this.gizmoMoveOpening(context);
     const { group, parent, start } = context;
     const inside = parent ? interior(parent.shape, parent.width_mm, parent.depth_mm, parent.height_mm, parent.panel_mm) ?? { x: 0, y: 0, z: 0 } : { x: 0, y: 0, z: 0 };
     const openOffset = start.shape === 'drawer' && this.openDrawers.has(start.id) ? start.depth_mm * DRAWER_OPEN_RATIO : 0;
@@ -753,8 +735,11 @@ export class RoomScene {
       }
       c.pos_y_mm = snapToEdges(c.pos_y_mm, c.height_mm, edges.ys, SNAP_DISTANCE);
     }
-    // Rien ne descend sous le sol ou le fond du parent
-    c.pos_y_mm = Math.max(0, c.pos_y_mm);
+    // Butée : on ne sort jamais de ce qui contient le rangement. Sans cela, le moindre glissement d'un tiroir
+    // aussi profond que son armoire était refusé par le serveur au relâchement.
+    Object.assign(c, parent ? clampToParent(c, parent) : clampToRoom(c, this.room));
+    for (const key of ['pos_x_mm', 'pos_y_mm', 'pos_z_mm']) c[key] = Math.round(c[key]);
+    if (mode === 'scale') group.scale.set(c.width_mm / start.width_mm, c.height_mm / start.height_mm, c.depth_mm / start.depth_mm);
 
     group.position.set((inside.x + c.pos_x_mm) * S, (inside.y + c.pos_y_mm) * S, (inside.z + c.pos_z_mm + openOffset) * S);
     if (!parent) group.rotation.y = (c.rotation_deg * Math.PI) / 180;
@@ -767,12 +752,47 @@ export class RoomScene {
     this.requestRender();
   }
 
+  /** L'ouverture glisse le long du mur le plus proche ; les murs se recalculent en direct. */
+  gizmoMoveOpening(context) {
+    const o = slideOpening(this.room, context.start, this.proxy.position.x / S, this.proxy.position.y / S, this.proxy.position.z / S);
+    context.candidate = o;
+    this.openingOverride = o;
+    this.clearGroup(this.roomGroup);
+    this.buildRoom();
+    this.updateWallVisibility();
+    this.refreshOverlay();
+    const problem = openingProblem(this.room, this.openings, o);
+    this.openingBox?.material.color.setHex(problem ? INVALID_COLOR : SELECT_COLOR);
+    this.callbacks.onOpeningChange?.(o, problem);
+    this.requestRender();
+  }
+
   gizmoEnd() {
     const context = this.gizmoContext;
     const candidate = context?.candidate;
     if (context) { context.candidate = null; context.start = null; }
     if (!candidate) return;
-    this.callbacks.onGizmoEnd?.(context.unit, candidate, Boolean(this.draft));
+    // Après la fin du traitement du relâchement par le gizmo : il peut alors être rattaché
+    const isDraft = Boolean(this.draft);
+    queueMicrotask(() => {
+      if (context.opening) {
+        this.callbacks.onOpeningEnd?.(context.opening, candidate);
+        return;
+      }
+      this.callbacks.onGizmoEnd?.(context.unit, candidate, isDraft);
+    });
+  }
+
+  /** Fin de l'aperçu d'une ouverture : les murs reprennent les données réelles. */
+  clearOpeningOverride() {
+    if (!this.openingOverride) return;
+    this.openingOverride = null;
+    this.clearGroup(this.roomGroup);
+    if (!this.minimal) this.buildRoom();
+    this.updateWallVisibility();
+    this.refreshOverlay();
+    this.refreshGizmo();
+    this.requestRender();
   }
 
   // ===== Brouillon : aperçu en direct d'un rangement en cours de création ou de modification =====
@@ -903,6 +923,18 @@ export class RoomScene {
     this.moveCamera(center.clone().add(direction.multiplyScalar(distance)), center);
   }
 
+  /** Regarde une ouverture depuis l'intérieur de la salle. */
+  focusOpening(id) {
+    const o = this.opening(id);
+    if (!o) return;
+    const frame = wallFrame(this.room.outline, o.wall_index, o.offset_mm + o.width_mm / 2);
+    const inward = containsPoint(this.room.outline, frame.x - frame.uz * 100, frame.z + frame.ux * 100) ? 1 : -1;
+    const center = new THREE.Vector3(frame.x * S, (o.sill_mm + o.height_mm / 2) * S, frame.z * S);
+    const distance = Math.max(3, (o.width_mm / 1000) * 3.5);
+    const position = center.clone().add(new THREE.Vector3(-frame.uz * inward * distance, 1.2, frame.ux * inward * distance));
+    this.moveCamera(position, center);
+  }
+
   /** Vue plongeante : comme penché au-dessus du tiroir ouvert, avec sa façade en bas de l'écran. */
   lookInto(id) {
     const g = this.unitGroups.get(id);
@@ -951,7 +983,7 @@ export class RoomScene {
     let longPress = null;
     let longPressFired = false;
     const cancelLongPress = () => { clearTimeout(longPress?.timer); longPress = null; };
-    const openMenu = (point) => this.callbacks.onContextMenu?.(this.pick(point), point);
+    const openMenu = (point) => this.handleMenu(point);
 
     this.onPointerDown = (event) => {
       down = { x: event.clientX, y: event.clientY };
@@ -988,19 +1020,24 @@ export class RoomScene {
         if (pendingMenu && !rightMoved) openMenu(pendingMenu);
         pendingMenu = null;
       }
-      if (wasClick && !gizmoPressed && event.button === 0) {
-        const hit = this.pick(event);
-        this.callbacks.onSelect?.(hit?.id ?? null);
-      }
+      if (wasClick && !gizmoPressed && event.button === 0) this.handleClick(event);
     };
 
-    this.onDoubleClick = (event) => {
-      const hit = this.pick(event);
-      if (!hit) return;
-      // Double-clic sur un tiroir : il s'ouvre et on regarde dedans ; ouvert, il se referme
-      if (hit.shape === 'drawer' && this.isDrawerOpen(hit.id)) this.setDrawerOpen(hit.id, false);
-      else this.focus(hit.id);
+    this.onDoubleClick = (event) => this.handleDoubleClick(event);
+
+    // Survol : le nom de ce qui est sous le pointeur, et un curseur qui indique qu'on peut cliquer
+    this.onHover = (event) => {
+      if (event.pointerType !== 'mouse' || event.buttons !== 0 || this.minimal || !this.callbacks.onSelect) return;
+      this.hoverEvent = { clientX: event.clientX, clientY: event.clientY };
+      if (this.hoverQueued) return;
+      this.hoverQueued = true;
+      requestAnimationFrame(() => {
+        this.hoverQueued = false;
+        if (!this.disposed && this.hoverEvent && !this.dragging && !this.gizmo?.axis) this.showHover(this.hoverEvent);
+        else this.hideHover();
+      });
     };
+    this.onLeave = () => { this.hoverEvent = null; this.hideHover(); };
 
     this.onContextMenu = (event) => {
       if (!this.callbacks.onContextMenu || event.shiftKey) return;
@@ -1014,6 +1051,13 @@ export class RoomScene {
       openMenu(point);
     };
 
+    canvas.addEventListener('pointermove', this.onHover);
+    canvas.addEventListener('pointerleave', this.onLeave);
+    // Cliquer dans la vue termine une saisie en cours : sa valeur s'enregistre et les raccourcis redeviennent actifs
+    canvas.addEventListener('pointerdown', () => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) active.blur();
+    });
     canvas.addEventListener('pointerdown', this.onPointerDown);
     canvas.addEventListener('pointercancel', cancelLongPress);
     canvas.addEventListener('pointermove', this.onPointerMove);
@@ -1030,12 +1074,90 @@ export class RoomScene {
 
   /** Rangement visible le plus proche sous le pointeur. */
   pick(event) {
+    return this.pickAny(event).unit;
+  }
+
+  /**
+   * Ce qui se trouve sous le pointeur : rangement, ouverture ou mur, le plus proche d'abord.
+   * @returns {{ unit, opening, wallIndex, point, itemName }}
+   */
+  pickAny(event) {
     this.setPointer(event);
-    for (const hit of this.raycaster.intersectObject(this.unitsGroup, true)) {
-      if (!isVisible(hit.object) || hit.object.userData.unitId === undefined) continue;
-      return this.unit(hit.object.userData.unitId);
+    const hits = this.raycaster.intersectObjects([this.unitsGroup, this.roomGroup], true);
+    const result = { unit: null, opening: null, wallIndex: null, point: null, itemName: null };
+    for (const hit of hits) {
+      const data = hit.object.userData;
+      if (!isVisible(hit.object) || hit.object.isCSS2DObject || hit.object.isLine) continue;
+      if (data.unitId !== undefined) {
+        result.unit = this.unit(data.unitId);
+        result.itemName = data.itemName ?? null;
+        result.point = hit.point;
+        return result;
+      }
+      if (data.openingId !== undefined) {
+        result.opening = this.opening(data.openingId);
+        result.point = hit.point;
+        return result;
+      }
+      if (data.wallIndex !== undefined) {
+        result.wallIndex = data.wallIndex;
+        result.point = hit.point;
+        return result;
+      }
+      if (data.isFloor) {
+        result.point = hit.point;
+        return result;
+      }
     }
+    return result;
+  }
+
+  handleClick(event) {
+    const hit = this.pickAny(event);
+    if (hit.opening && this.callbacks.onSelectOpening) return this.callbacks.onSelectOpening(hit.opening.id);
+    return this.callbacks.onSelect?.(hit.unit?.id ?? null);
+  }
+
+  handleDoubleClick(event) {
+    const hit = this.pick(event);
+    if (!hit) return;
+    // Double-clic sur un tiroir : il s'ouvre et on regarde dedans ; ouvert, il se referme
+    if (hit.shape === 'drawer' && this.isDrawerOpen(hit.id)) this.setDrawerOpen(hit.id, false);
+    else this.focus(hit.id);
+  }
+
+  handleMenu(point) {
+    const hit = this.pickAny(point);
+    this.callbacks.onContextMenu?.(hit.unit, point, hit);
+  }
+
+  /** Texte de l'infobulle pour ce qui est sous le pointeur (null : rien à signaler). */
+  hoverText(event) {
+    const hit = this.pickAny(event);
+    if (hit.itemName) return hit.itemName;
+    if (hit.unit) return hit.unit.label ? `${hit.unit.name} (${hit.unit.label})` : hit.unit.name;
+    if (hit.opening) return hit.opening.name || { door: 'Porte', window: 'Fenêtre', opening: 'Passage' }[hit.opening.kind];
     return null;
+  }
+
+  showHover(event) {
+    const text = this.hoverText(event);
+    this.renderer.domElement.style.cursor = text ? 'pointer' : '';
+    if (!text) return this.hideHover(false);
+    if (!this.hoverChip) {
+      this.hoverChip = document.createElement('div');
+      this.hoverChip.className = 'scene-hover';
+      this.container.append(this.hoverChip);
+    }
+    const rect = this.container.getBoundingClientRect();
+    this.hoverChip.textContent = text;
+    this.hoverChip.hidden = false;
+    this.hoverChip.style.transform = `translate(${event.clientX - rect.left + 14}px, ${event.clientY - rect.top + 14}px)`;
+  }
+
+  hideHover(resetCursor = true) {
+    if (this.hoverChip) this.hoverChip.hidden = true;
+    if (resetCursor) this.renderer.domElement.style.cursor = '';
   }
 
   // ===== Rendu =====
@@ -1088,6 +1210,8 @@ export class RoomScene {
     this.gizmo?.dispose();
     this.controls.dispose();
     const canvas = this.renderer.domElement;
+    canvas.removeEventListener('pointermove', this.onHover);
+    canvas.removeEventListener('pointerleave', this.onLeave);
     canvas.removeEventListener('pointerdown', this.onPointerDown);
     canvas.removeEventListener('pointermove', this.onPointerMove);
     canvas.removeEventListener('pointerup', this.onPointerUp);
@@ -1095,6 +1219,7 @@ export class RoomScene {
     canvas.removeEventListener('contextmenu', this.onContextMenu);
     this.clearGroup(this.roomGroup);
     this.clearGroup(this.unitsGroup);
+    this.hoverChip?.remove();
     for (const m of this.materials.values()) { m.map?.dispose(); m.dispose(); }
     this.renderer.dispose();
     canvas.remove();
@@ -1124,6 +1249,18 @@ function selectionBox(u, color) {
   return lines;
 }
 
+/** Contour d'une ouverture, dans le repère de la salle. */
+function openingOutline(room, o, color) {
+  const t = Math.max(room.wall_thickness_mm, 20);
+  const geometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(o.width_mm * S, o.height_mm * S, (t + 40) * S));
+  const lines = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true }));
+  const frame = wallFrame(room.outline, o.wall_index, o.offset_mm + o.width_mm / 2);
+  lines.position.set(frame.x * S, (o.sill_mm + o.height_mm / 2) * S, frame.z * S);
+  lines.rotation.y = -Math.atan2(frame.uz, frame.ux);
+  lines.renderOrder = 999;
+  return lines;
+}
+
 /** Libère géométries et matériaux ; les matériaux du cache (userData.shared) sont libérés dans dispose(). */
 function disposeObject(object) {
   object.traverse((o) => {
@@ -1135,41 +1272,4 @@ function disposeObject(object) {
     }
     if (o.isCSS2DObject) o.element.remove();
   });
-}
-
-/** Textures de sol générées (pas de fichier image à télécharger). */
-function floorTexture(kind) {
-  if (kind === 'plain') return null;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 256;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#d8d8d8';
-  ctx.fillRect(0, 0, 256, 256);
-  let size = 1.2;
-  if (kind === 'wood') {
-    for (let row = 0; row < 8; row++) {
-      ctx.fillStyle = `rgb(${200 + (row * 37) % 40}, ${200 + (row * 37) % 40}, ${200 + (row * 37) % 40})`;
-      ctx.fillRect(0, row * 32, 256, 31);
-      ctx.fillStyle = '#9a9a9a';
-      ctx.fillRect(((row * 97) % 256), row * 32, 2, 31);
-      ctx.fillRect(0, row * 32 + 31, 256, 1);
-    }
-  } else if (kind === 'tiles') {
-    ctx.fillStyle = '#9e9e9e';
-    for (let i = 0; i <= 4; i++) {
-      ctx.fillRect(i * 64 - 1, 0, 2, 256);
-      ctx.fillRect(0, i * 64 - 1, 256, 2);
-    }
-  } else {
-    size = 2;
-    for (let i = 0; i < 3000; i++) {
-      const v = 180 + Math.floor(((i * 7919) % 60));
-      ctx.fillStyle = `rgb(${v}, ${v}, ${v})`;
-      ctx.fillRect((i * 131) % 256, (i * 197) % 256, 2, 2);
-    }
-  }
-  const map = new THREE.CanvasTexture(canvas);
-  map.wrapS = map.wrapT = THREE.RepeatWrapping;
-  map.colorSpace = THREE.SRGBColorSpace;
-  return { map, size };
 }

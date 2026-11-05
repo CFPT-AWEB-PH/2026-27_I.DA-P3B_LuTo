@@ -20,7 +20,17 @@ use PDO;
 final class ItemController
 {
     /** Modèles 3D disponibles (voir frontend/assets/js/visuals.js). */
-    public const VISUALS = ['auto', 'screw', 'nut', 'washer', 'resistor', 'capacitor', 'chip', 'wire', 'screwdriver', 'pliers', 'wrench', 'hammer', 'beam', 'wheel', 'box'];
+    public const VISUALS = [
+        'auto', 'screw', 'nut', 'washer', 'standoff', 'hex_spacer', 'insert', 'rivet', 'rubber_foot', 'grommet', 'bracket', 'shaft', 'coupler', 'caster',
+        'resistor', 'resistor_strip', 'capacitor', 'film_cap', 'trimmer', 'potentiometer', 'led', 'chip', 'ic_socket', 'pin_header', 'heatsink', 'relay',
+        'toggle', 'rocker', 'push_button', 'rotary_switch', 'knob', 'fuse_holder',
+        'wire', 'jumper', 'grove_cable', 'ribbon', 'ethernet', 'rj45', 'rj45_boot', 'idc', 'terminal_block', 'crimp', 'banana', 'alligator', 'probe', 'binding_post', 'dc_jack', 'dsub',
+        'raspberry_pi', 'pi_case', 'sense_hat', 'sd_card', 'sensor', 'grove_module', 'ultrasonic', 'lcd', 'breadboard', 'perfboard', 'red_board',
+        'motor', 'stepper', 'servo', 'wheel', 'robot_wheel', 'tyre', 'pulley', 'beam', 'plate',
+        'battery', 'battery_9v', 'battery_holder',
+        'screwdriver', 'precision_driver', 'driver_set', 'pliers', 'cutter', 'wrench', 'hex_key', 'hammer', 'tweezers', 'ruler', 'knife', 'brush', 'punch', 'pouch', 'desolder',
+        'box', 'case', 'bag', 'foam',
+    ];
 
     private const PHOTO_DIR = '/app/storage/uploads/items';
     private const PHOTO_MAX_BYTES = 5 * 1024 * 1024;

@@ -60,10 +60,163 @@ export function unitInterior(unit) {
 
 /** Coins de l'emprise au sol d'un meuble (rotation autour du coin arrière-gauche, sens Three.js). */
 export function footprint(x, z, width, depth, rotationDeg) {
-  const a = (rotationDeg * Math.PI) / 180;
-  const cos = Math.cos(a);
-  const sin = Math.sin(a);
+  const { cos, sin } = rotation(rotationDeg);
   return [[0, 0], [width, 0], [width, depth], [0, depth]].map(([lx, lz]) => [x + lx * cos + lz * sin, z - lx * sin + lz * cos]);
+}
+
+/**
+ * Cosinus et sinus d'un angle en degrés, exacts aux angles droits : cos(90°) vaut 6e-17 en virgule
+ * flottante, ce qui rendait décimales des positions que le serveur n'accepte qu'entières.
+ */
+export function rotation(degrees) {
+  const a = (degrees * Math.PI) / 180;
+  return { cos: Math.round(Math.cos(a) * 1e9) / 1e9, sin: Math.round(Math.sin(a) * 1e9) / 1e9 };
+}
+
+/** Garde un rangement dans le volume intérieur de son parent, en le ramenant à la butée. */
+export function clampToParent(c, parent) {
+  const inside = unitInterior(parent);
+  if (!inside) return c;
+  const out = { ...c };
+  for (const [size, pos, room] of [['width_mm', 'pos_x_mm', 'width'], ['height_mm', 'pos_y_mm', 'height'], ['depth_mm', 'pos_z_mm', 'depth']]) {
+    out[size] = Math.min(out[size], inside[room]);
+    out[pos] = Math.max(0, Math.min(out[pos], inside[room] - out[size]));
+  }
+  return out;
+}
+
+/** Garde un meuble dans l'enveloppe de la salle et sous son plafond. */
+export function clampToRoom(c, room) {
+  const out = { ...c };
+  const corners = unitFootprint(out);
+  const xs = corners.map((p) => p[0]); const zs = corners.map((p) => p[1]);
+  const oxs = room.outline.map((p) => p[0]); const ozs = room.outline.map((p) => p[1]);
+  const shift = (min, max, lo, hi) => (max - min > hi - lo ? 0 : min < lo ? lo - min : max > hi ? hi - max : 0);
+  out.pos_x_mm = Math.round(out.pos_x_mm + shift(Math.min(...xs), Math.max(...xs), Math.min(...oxs), Math.max(...oxs)));
+  out.pos_z_mm = Math.round(out.pos_z_mm + shift(Math.min(...zs), Math.max(...zs), Math.min(...ozs), Math.max(...ozs)));
+  out.pos_y_mm = Math.max(0, Math.min(out.pos_y_mm, room.height_mm - out.height_mm));
+  return out;
+}
+
+// ===== Ouvertures et position sur le plan =====
+
+export function isRectangle(outline) {
+  if (outline.length !== 4) return false;
+  const [[a, b], [c, d], [e, f], [g, k]] = outline;
+  return a === 0 && b === 0 && d === 0 && c === e && f === k && g === 0 && c > 0 && f > 0;
+}
+
+export function outlineSize(outline) {
+  const xs = outline.map((p) => p[0]); const zs = outline.map((p) => p[1]);
+  return { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs), width: Math.max(...xs) - Math.min(...xs), depth: Math.max(...zs) - Math.min(...zs) };
+}
+
+/** Mur le plus proche d'un point du repère de la salle : indice et distance depuis son début. */
+export function nearestWall(outline, x, z, onlyWall = null) {
+  let best = null;
+  outline.forEach(([x1, z1], i) => {
+    if (onlyWall !== null && i !== onlyWall) return;
+    const [x2, z2] = outline[(i + 1) % outline.length];
+    const dx = x2 - x1; const dz = z2 - z1;
+    const lengthSq = dx * dx + dz * dz;
+    if (lengthSq === 0) return;
+    const t = Math.max(0, Math.min(1, ((x - x1) * dx + (z - z1) * dz) / lengthSq));
+    const distance = Math.hypot(x - (x1 + t * dx), z - (z1 + t * dz));
+    if (!best || distance < best.distance) best = { index: i, along: t * Math.sqrt(lengthSq), distance, length: Math.sqrt(lengthSq) };
+  });
+  return best;
+}
+
+/** Point d'un mur et direction du mur, dans le repère de la salle. */
+export function wallFrame(outline, index, along) {
+  const [x1, z1] = outline[index];
+  const [x2, z2] = outline[(index + 1) % outline.length];
+  const length = Math.hypot(x2 - x1, z2 - z1) || 1;
+  const ux = (x2 - x1) / length; const uz = (z2 - z1) / length;
+  return { x: x1 + ux * along, z: z1 + uz * along, ux, uz, length };
+}
+
+/** La porte de référence, présentée comme une ouverture : elle est sur le mur 1 (repère de la salle). */
+export function referenceDoor(room) {
+  return { id: 'ref', room_id: room.id, kind: 'door', name: 'Porte principale', wall_index: 0, offset_mm: room.door_offset_mm, width_mm: room.door_width_mm, height_mm: room.door_height_mm, sill_mm: 0 };
+}
+
+/** Pourquoi cette ouverture ne convient pas (mêmes règles que SpaceValidator::opening), ou null. */
+export function openingProblem(room, openings, o) {
+  const fmt = (mm) => formatLength(mm, room.display_unit);
+  if (o.wall_index >= room.outline.length) return "Ce mur n'existe pas.";
+  const length = wallLength(room.outline, o.wall_index);
+  if (o.offset_mm < 0 || o.offset_mm + o.width_mm > length) return `Dépasse du mur (longueur : ${fmt(length)}).`;
+  if (o.sill_mm < 0 || o.sill_mm + o.height_mm > room.height_mm) return "Dépasse la hauteur de la salle.";
+  const all = [referenceDoor(room), ...openings];
+  const other = all.find((x) => x.id !== o.id && x.wall_index === o.wall_index
+    && rangesOverlap(o.offset_mm, o.offset_mm + o.width_mm, x.offset_mm, x.offset_mm + x.width_mm)
+    && rangesOverlap(o.sill_mm, o.sill_mm + o.height_mm, x.sill_mm, x.sill_mm + x.height_mm));
+  return other ? `Chevauche « ${other.name || 'une ouverture'} ».` : null;
+}
+
+/** Première place libre sur un mur pour une ouverture de cette largeur (null : mur plein). */
+export function freeOffset(room, openings, wallIndex, opening) {
+  const length = wallLength(room.outline, wallIndex);
+  for (let offset = 200; offset + opening.width_mm <= length - 100; offset += 100) {
+    if (!openingProblem(room, openings, { ...opening, wall_index: wallIndex, offset_mm: offset })) return offset;
+  }
+  return null;
+}
+
+/** Nouvelle position d'une ouverture tirée vers ce point : mur le plus proche, centrée sur le point, par pas de 1 cm. */
+export function slideOpening(room, o, x, y, z) {
+  // La porte principale reste sur le mur 1 : c'est elle qui définit le repère de la salle
+  const wall = nearestWall(room.outline, x, z, o.id === 'ref' ? 0 : null);
+  const step = (v) => Math.round(v / 10) * 10;
+  const offset = Math.max(0, Math.min(step(wall.along - o.width_mm / 2), Math.floor(wall.length) - o.width_mm));
+  const sill = o.kind === 'window' ? Math.max(0, Math.min(step(y - o.height_mm / 2), room.height_mm - o.height_mm)) : o.sill_mm;
+  return { ...o, wall_index: wall.index, offset_mm: offset, sill_mm: sill };
+}
+
+/**
+ * Plus grande zone libre au fond d'un rangement entre ses subdivisions : c'est là que les objets rangés
+ * directement dedans sont montrés, comme un marteau posé à côté des bacs d'un tiroir.
+ */
+export function freeFloorArea(inside, kids) {
+  const floor = kids.filter((k) => k.pos_y_mm < inside.height);
+  if (floor.length === 0) return { x: 0, z: 0, width: inside.width, depth: inside.depth };
+  const xs = [...new Set([0, inside.width, ...floor.flatMap((k) => [k.pos_x_mm, k.pos_x_mm + k.width_mm])])].sort((a, b) => a - b);
+  const zs = [...new Set([0, inside.depth, ...floor.flatMap((k) => [k.pos_z_mm, k.pos_z_mm + k.depth_mm])])].sort((a, b) => a - b);
+  let best = { x: 0, z: 0, width: 0, depth: 0 };
+  for (let a = 0; a < xs.length - 1; a++) {
+    for (let b = a + 1; b < xs.length; b++) {
+      for (let c = 0; c < zs.length - 1; c++) {
+        for (let d = c + 1; d < zs.length; d++) {
+          const area = (xs[b] - xs[a]) * (zs[d] - zs[c]);
+          if (area <= best.width * best.depth) continue;
+          const blocked = floor.some((k) => k.pos_x_mm < xs[b] && k.pos_x_mm + k.width_mm > xs[a] && k.pos_z_mm < zs[d] && k.pos_z_mm + k.depth_mm > zs[c]);
+          if (!blocked) best = { x: xs[a], z: zs[c], width: xs[b] - xs[a], depth: zs[d] - zs[c] };
+        }
+      }
+    }
+  }
+  return best;
+}
+
+/** Repère de la salle → plan de l'étage. */
+export function roomToPlan(room, x, z) {
+  const { cos, sin } = rotation(room.plan_rotation_deg ?? 0);
+  return [(room.plan_x_mm ?? 0) + x * cos + z * sin, (room.plan_z_mm ?? 0) - x * sin + z * cos];
+}
+
+/** Plan de l'étage → repère de la salle. */
+export function planToRoom(room, x, z) {
+  const { cos, sin } = rotation(room.plan_rotation_deg ?? 0);
+  const dx = x - (room.plan_x_mm ?? 0); const dz = z - (room.plan_z_mm ?? 0);
+  return [dx * cos - dz * sin, dx * sin + dz * cos];
+}
+
+/** Enveloppe d'une salle sur le plan. */
+export function planBounds(room) {
+  const points = room.outline.map(([x, z]) => roomToPlan(room, x, z));
+  const xs = points.map((p) => p[0]); const zs = points.map((p) => p[1]);
+  return { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) };
 }
 
 export function unitFootprint(u) {

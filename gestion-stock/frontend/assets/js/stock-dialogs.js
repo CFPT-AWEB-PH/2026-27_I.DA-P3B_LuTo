@@ -2,7 +2,7 @@
 // création ou modification d'un objet. Toutes les vérifications sont refaites par le serveur.
 
 import { api } from './api.js';
-import { resolveVisual, VISUALS } from './visuals.js';
+import { resolveVisual, VISUAL_GROUPS, VISUALS } from './visuals.js';
 import { itemPreview } from './three/preview.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
@@ -88,6 +88,92 @@ export function pickItem(title = 'Choisir un objet') {
     return h('div', { class: 'dialog-body' }, input, list,
       h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => close(undefined) }, 'Annuler')));
   });
+}
+
+/**
+ * Range plusieurs objets d'un coup dans un rangement : recherche, coche, quantité de chacun.
+ * Chaque objet passe par l'opération d'ajout habituelle, donc par l'historique des mouvements.
+ * Résout avec le nombre d'objets rangés.
+ */
+export function storeItemsDialog(location) {
+  return openDialog(`Ranger dans « ${location.path.split(' › ').at(-1)} »`, (close) => {
+    const chosen = new Map(); // id de l'objet → { item, input }
+    const input = h('input', { type: 'search', placeholder: 'Rechercher un objet : nom ou référence…', autocomplete: 'off', 'aria-label': 'Rechercher un objet' });
+    const results = h('ul', { class: 'plain-list pick-list store-results', 'aria-live': 'polite' });
+    const basket = h('ul', { class: 'plain-list store-basket' });
+    const submit = h('button', { class: 'btn btn-primary', type: 'submit', disabled: true }, h('span', {}, 'Ranger'));
+    const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'Commande, fournisseur… (facultatif)' });
+    const form = h('form', { class: 'dialog-body', novalidate: true });
+
+    const renderBasket = () => {
+      basket.replaceChildren(...[...chosen.values()].map(({ item, qty }) => h('li', { class: 'store-line' },
+        h('span', { class: 'store-line-name' }, h('strong', {}, item.name), h('span', { class: 'sub' }, item.reference)),
+        stepper(qty),
+        h('span', { class: 'store-line-unit' }, item.unit),
+        h('button', { class: 'icon-btn icon-btn-small', type: 'button', 'aria-label': `Retirer ${item.name}`, title: 'Retirer de la liste', onclick: () => { chosen.delete(item.id); renderBasket(); search(); } }, icon('x')))));
+      submit.disabled = chosen.size === 0;
+      submit.firstChild.textContent = chosen.size > 1 ? `Ranger ces ${chosen.size} objets` : 'Ranger';
+    };
+    const pick = (item) => {
+      if (chosen.has(item.id)) return;
+      chosen.set(item.id, { item, qty: quantityInput(`qty_${item.id}`, 1) });
+      input.value = '';
+      renderBasket();
+      search();
+      input.focus();
+    };
+
+    let timer;
+    const search = async () => {
+      try {
+        const q = input.value.trim();
+        const { items } = await api(`/items?q=${encodeURIComponent(q)}&per_page=12`);
+        const rest = items.filter((i) => !chosen.has(i.id));
+        results.replaceChildren(...(rest.length
+          ? rest.map((i) => h('li', {}, h('button', { class: 'tree-label', type: 'button', onclick: () => pick(i) },
+            icon('plus'),
+            h('span', { class: 'list-row-main' }, h('strong', {}, i.name), h('span', { class: 'sub' }, `${i.reference}, ${formatQuantity(i.total_quantity, i.unit)} en stock`)))))
+          : [h('li', {}, emptyState(q ? `Aucun objet ne correspond à « ${q} ».` : 'Plus aucun objet à proposer.', { iconName: 'search' }))]));
+      } catch (error) { showError(error); }
+    };
+    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 200); });
+    // Entrée dans la recherche : prend le premier résultat, sans envoyer le formulaire
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      results.querySelector('button')?.click();
+    });
+    search();
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const lines = [...chosen.values()];
+      if (lines.some(({ qty }) => !(parseQuantity(qty) > 0))) return showError(new Error('Indiquez une quantité supérieure à zéro pour chaque objet.'), form);
+      busy(event.submitter, async () => {
+        let done = 0;
+        for (const { item, qty } of lines) {
+          try {
+            await api('/stock/add', { method: 'POST', body: { item_id: item.id, unit_id: location.unit_id, quantity: parseQuantity(qty), comment: comment.value } });
+            done++;
+            chosen.delete(item.id);
+          } catch (error) {
+            renderBasket();
+            showError(Object.assign(error, { message: `« ${item.name} » : ${error.message} ${done ? `(${done} déjà rangé${done > 1 ? 's' : ''}.)` : ''}` }), form);
+            return;
+          }
+        }
+        toast(done > 1 ? `${done} objets rangés.` : 'Objet rangé.');
+        close(done);
+      });
+    });
+
+    form.append(input, results,
+      h('h3', { class: 'panel-subtitle' }, 'À ranger ici'),
+      basket,
+      field('Commentaire', comment),
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => close(0) }, 'Annuler'), submit));
+    return form;
+  }, { wide: true });
 }
 
 /** Bouton qui ouvre le sélecteur d'emplacement et mémorise le choix. */
@@ -272,7 +358,10 @@ export async function itemDialog(item = null, { canAddStock = false, location = 
     const min = h('input', { name: 'min_quantity', type: 'number', step: 'any', min: 0, value: item?.min_quantity ?? '' });
     const consumable = h('input', { type: 'checkbox', checked: item?.is_consumable ?? false });
     const custom = h('div', { class: 'custom-fields' });
-    const visual = h('select', { name: 'visual' }, Object.entries(VISUALS).map(([v, t]) => h('option', { value: v, selected: v === (item?.visual ?? 'auto') }, t)));
+    const currentVisual = item?.visual ?? 'auto';
+    const visual = h('select', { name: 'visual' },
+      h('option', { value: 'auto', selected: currentVisual === 'auto' }, VISUALS.auto),
+      VISUAL_GROUPS.map(([label, models]) => h('optgroup', { label }, Object.entries(models).map(([v, t]) => h('option', { value: v, selected: v === currentVisual }, t)))));
     const useColor = h('input', { type: 'checkbox', checked: Boolean(item?.visual_color) });
     const visualColor = h('input', { name: 'visual_color', type: 'color', value: item?.visual_color ?? '#8b909a' });
     const live = itemPreview();

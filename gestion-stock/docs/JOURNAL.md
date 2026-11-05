@@ -233,3 +233,33 @@ Demande de l'utilisateur, après avoir tapé `100` dans une salle réglée en m�
 - La taille s'applique des deux côtés du centre (comportement du gizmo). Rien ne descend sous le sol, mais un côté peut dépasser : le contour passe alors au rouge.
 - Pendant un glisser en taille, le contenu s'étire jusqu'au relâchement.
 - Vérifié sur le banc local avec de vrais glissers à la souris, sans CSP (non servie par le banc) ; sur le serveur, tests d'API et PWA. Gizmo tactile non essayé sur un vrai téléphone.
+
+## Plan du bâtiment, raccourcis clavier, modèles et objets de l'atelier (2026-11-05)
+
+Demande de l'utilisateur : Ctrl+Z, C, X ; tous les objets des photos en 3D ; plusieurs objets dans un rangement ; navigation très intuitive ; un plan avec étages façon logiciel d'aménagement, plusieurs portes déplaçables au gizmo, rangements enregistrés et réutilisables.
+
+**Erreur 422 signalée (`PATCH /storage-units/446`)**
+- Cause : le tiroir 446 fait toute la profondeur de son armoire (731 mm sur 731). Le moindre glissement en Z le faisait sortir ; le gizmo envoyait quand même la requête, le serveur la refusait à raison.
+- Le gizmo s'arrête maintenant à la butée, et un emplacement impossible (chevauchement) n'est plus envoyé : le rangement revient à sa place avec la raison affichée.
+- Second défaut trouvé en lisant le même code : `cos(90°)` vaut `6e-17`, donc un meuble tourné de 90° partait avec des positions décimales, refusées par le serveur. `spatial.js` : `rotation()` exact aux angles droits, positions arrondies.
+
+**Fait**
+- Migration `0006_plan_templates` : étages, place des salles sur le plan, modèles, deux types de rangement (boîte plastique, plateau à outils). Purement additive.
+- Page **Plan** (`pages/plan.js`, `three/plan-scene.js`) : étages en onglets (et vue « Tous » empilée), 2D ou 3D, salles déplaçables, pivotables et redimensionnables au gizmo, aimantation mur contre mur, contour de l'étage du dessous en pointillés, double-clic pour entrer dans une salle. Un meuble tiré dans une autre salle y part avec tout son contenu.
+- Portes et fenêtres : `three/room-shell.js` (murs percés et modèles partagés entre la salle et le plan). Sélection au clic, gizmo : l'ouverture suit le mur le plus proche et le mur se recalcule en direct. La porte principale reste sur le mur 1, car elle définit le repère de la salle.
+- Raccourcis (`history.js`, `?` affiche l'aide-mémoire) : Ctrl+Z, Y, Maj+Z, C, X, V, D, S, Suppr, F, H, Q W E R, flèches. Annuler concerne les rangements, portes, salles ; **jamais le stock**, qui a son propre historique. Couper-coller déplace le rangement avec son contenu ; copier-coller reprend la structure sans le stock.
+- Modèles : `POST /storage-units/tree` (arbre fourni ou `template_id`, chaque niveau passe par `SpaceValidator`, tout ou rien), `GET /storage-units/{id}/tree`, `POST /storage-units/{id}/move`, `/storage-templates`. Bibliothèque dans la salle et sur le plan, dessin de face pour reconnaître chaque modèle.
+- Plusieurs objets dans un rangement : fenêtre « Ranger des objets » (recherche, liste, quantité de chacun ; chaque ajout reste un mouvement de stock). 3D : une case par objet en grille, au lieu de bandes de plus en plus fines. Un rangement divisé montre ses objets directs dans la plus grande zone restée libre, comme un marteau à côté des bacs d'un tiroir.
+- 89 modèles d'objets au total, dressés d'après les 29 photos de l'atelier (`three/item-models.js`, `visuals.js`), reconnus d'après le nom ; dimensions réelles des piles d'après le nom.
+- Ergonomie : infobulle et curseur au survol, notifications avec bouton Annuler, suppression d'un rangement sans fenêtre de confirmation puisqu'elle s'annule (celle d'une salle garde sa confirmation), nom libre proposé à la copie (« Armoire A 2 »), « Plan » dans les onglets mobiles à la place d'« Historique », qui reste dans le menu.
+
+**Tests**
+- `plan_test.php` : étages, place des salles, portes, arbres (refus tout ou rien, enfant qui dépasse), modèles, suppression annulée, déplacement entre salles avec le stock, permissions.
+- Banc local avec une fausse API appliquant les règles de `spatial.js`, **CSP réelle servie** : vrais clics et glissers sur le scénario du 422, copie, annulation, portes, modèles, changement de salle, profil Élève, 375 px.
+
+**Limites**
+- Annuler une suppression de salle : impossible, d'où la confirmation. L'historique est celui de la page : il se vide en la quittant.
+- Pas d'escaliers ; une porte principale ne quitte pas le mur 1. Le redimensionnement au gizmo ne concerne que les salles rectangulaires ; un meuble se redimensionne depuis sa salle.
+- Le chevauchement de deux salles est signalé, pas interdit : deux plans peuvent se recouvrir le temps de les placer.
+- Les modèles d'objets sont des représentations simplifiées, pas des copies fidèles. Rien n'a été ajouté au catalogue : les objets des photos restent à saisir avec leurs vraies quantités.
+

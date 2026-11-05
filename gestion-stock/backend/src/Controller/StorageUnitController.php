@@ -14,6 +14,7 @@ use App\Http\Response;
 use App\Space\Geometry;
 use App\Space\SpaceRepository as Repo;
 use App\Space\SpaceValidator;
+use App\Stock\Quantity;
 use PDO;
 
 /**
@@ -135,6 +136,195 @@ final class StorageUnitController
         return Response::noContent();
     }
 
+    /** Arbre d'un rangement et de ses sous-rangements (sans le stock), pour le copier ou en faire un modèle. */
+    public static function tree(Request $request, array $params): Response
+    {
+        $request->requirePermission('rooms.view');
+        return Response::json(['tree' => self::treeOf(Database::connection(), (int) $params['id'])]);
+    }
+
+    /**
+     * Crée d'un coup un rangement et ses sous-rangements : collage, modèle ou annulation d'une suppression.
+     * Source : tree (arbre fourni) ou template_id. Cible : parent_id ou room_id. Les positions données
+     * remplacent celles de la racine. Chaque niveau passe par les règles habituelles (SpaceValidator).
+     * ids : correspondance entre les identifiants de l'arbre source et ceux créés, s'ils étaient fournis.
+     */
+    public static function createTree(Request $request): Response
+    {
+        $auth = $request->user();
+        $input = $request->input();
+        $parentId = $input->optionalInt('parent_id', null, 1);
+        self::requireEditRight($auth, $parentId);
+
+        $result = Database::transaction(static function (PDO $pdo) use ($input, $parentId, $auth, $request): array {
+            $tree = $input->has('template_id')
+                ? TemplateController::tree($pdo, $input->int('template_id', 1))
+                : ($request->json()['tree'] ?? null);
+            if (!is_array($tree)) {
+                Input::fail('tree', 'Rangement à créer manquant.');
+            }
+            $count = self::countNodes($tree);
+            if ($count > self::MAX_TREE_NODES) {
+                Input::fail('tree', 'Trop de rangements d\'un coup (' . self::MAX_TREE_NODES . ' au maximum).');
+            }
+            if ($count > 1) {
+                $auth->require('storage.edit');
+            }
+            $parent = $parentId === null ? null : Repo::unit($pdo, $parentId);
+            $roomId = $parent === null ? $input->int('room_id', 1) : (int) $parent['room_id'];
+            $room = Repo::room($pdo, $roomId, true);
+
+            foreach (['pos_x_mm', 'pos_y_mm', 'pos_z_mm', 'rotation_deg', 'name'] as $key) {
+                if ($input->has($key)) {
+                    $tree[$key] = $request->json()[$key];
+                }
+            }
+            $ids = [];
+            $rootId = self::insertNode($pdo, $room, $tree, $parent, 0, $ids);
+            Repo::rebuildPaths($pdo, $roomId);
+            return ['id' => $rootId, 'room_id' => $roomId, 'ids' => $ids, 'count' => $count];
+        });
+
+        Audit::log($auth->userId, 'unit.tree_created', 'storage_unit', $result['id'], ['room_id' => $result['room_id'], 'parent_id' => $parentId, 'count' => $result['count']], $request->ip);
+        return Response::json(['unit' => Repo::formatUnit(Repo::unit(Database::connection(), $result['id'])), 'ids' => (object) $result['ids'], 'created' => $result['count']], 201);
+    }
+
+    /**
+     * Déplace un rangement et tout ce qu'il contient (stock compris), éventuellement vers une autre salle.
+     * Le stock reste attaché aux mêmes rangements : rien n'est perdu ni dupliqué.
+     */
+    public static function move(Request $request, array $params): Response
+    {
+        $auth = $request->user();
+        $id = (int) $params['id'];
+        $input = $request->input();
+
+        $roomIds = Database::transaction(static function (PDO $pdo) use ($id, $input, $auth): array {
+            $current = Repo::unit($pdo, $id);
+            $fromRoomId = (int) $current['room_id'];
+            self::requireEditRight($auth, $current['parent_id'] === null ? null : (int) $current['parent_id']);
+
+            $parentId = $input->has('parent_id') ? $input->optionalInt('parent_id', null, 1) : ($current['parent_id'] === null ? null : (int) $current['parent_id']);
+            self::requireEditRight($auth, $parentId);
+            $parent = $parentId === null ? null : Repo::unit($pdo, $parentId);
+            $toRoomId = $parent !== null ? (int) $parent['room_id'] : ($input->has('room_id') ? $input->int('room_id', 1) : $fromRoomId);
+
+            // Toujours dans le même ordre : deux déplacements croisés ne peuvent pas se bloquer
+            foreach (array_unique([min($fromRoomId, $toRoomId), max($fromRoomId, $toRoomId)]) as $lockId) {
+                Repo::room($pdo, $lockId, true);
+            }
+            $room = Repo::room($pdo, $toRoomId);
+            if ($parent !== null) {
+                self::assertNotDescendant($pdo, $id, $parentId);
+            }
+
+            $type = Repo::type($pdo, (int) $current['type_id']);
+            $unit = self::read($input, $current, $type) + ['id' => $id, 'name' => $current['name']];
+            if ($parent !== null) {
+                $unit['rotation_deg'] = 0;
+            }
+            SpaceValidator::unit($pdo, $room, $unit, $type, $parent);
+
+            $pdo->prepare('UPDATE storage_units SET parent_id = ?, pos_x_mm = ?, pos_y_mm = ?, pos_z_mm = ?, rotation_deg = ? WHERE id = ?')
+                ->execute([$parentId, $unit['pos_x_mm'], $unit['pos_y_mm'], $unit['pos_z_mm'], $unit['rotation_deg'], $id]);
+            if ($toRoomId !== $fromRoomId) {
+                $subtree = [$id, ...self::descendantIds($pdo, $id)];
+                $pdo->prepare('UPDATE storage_units SET room_id = ? WHERE id IN (' . implode(',', array_fill(0, count($subtree), '?')) . ')')
+                    ->execute([$toRoomId, ...$subtree]);
+                Repo::rebuildPaths($pdo, $fromRoomId);
+            }
+            Repo::rebuildPaths($pdo, $toRoomId);
+            return [$fromRoomId, $toRoomId];
+        });
+
+        Audit::log($auth->userId, 'unit.moved', 'storage_unit', $id, ['from_room' => $roomIds[0], 'to_room' => $roomIds[1]], $request->ip);
+        return Response::json(['unit' => Repo::formatUnit(Repo::unit(Database::connection(), $id))]);
+    }
+
+    private const MAX_TREE_NODES = 3000;
+    private const MAX_TREE_DEPTH = 12;
+    private const TREE_FIELDS = ['type_id', 'name', 'label', 'description', 'width_mm', 'depth_mm', 'height_mm', 'pos_x_mm', 'pos_y_mm', 'pos_z_mm', 'rotation_deg', 'panel_mm', 'capacity', 'color', 'sort_order'];
+
+    /** @param array<string, mixed> $tree */
+    public static function countNodes(array $tree, int $depth = 0): int
+    {
+        if ($depth > self::MAX_TREE_DEPTH) {
+            Input::fail('tree', 'Trop de niveaux imbriqués.');
+        }
+        $children = $tree['children'] ?? [];
+        if (!is_array($children) || !array_is_list($children)) {
+            Input::fail('tree', 'Liste de sous-rangements invalide.');
+        }
+        $count = 1;
+        foreach ($children as $child) {
+            if (!is_array($child)) {
+                Input::fail('tree', 'Sous-rangement invalide.');
+            }
+            $count += self::countNodes($child, $depth + 1);
+        }
+        return $count;
+    }
+
+    /**
+     * @param array<string, mixed> $room
+     * @param array<string, mixed> $node
+     * @param array<string, mixed>|null $parent
+     * @param array<string, int> $ids
+     */
+    private static function insertNode(PDO $pdo, array $room, array $node, ?array $parent, int $order, array &$ids): int
+    {
+        $values = array_intersect_key($node, array_flip(self::TREE_FIELDS));
+        $in = new Input($values);
+        $type = Repo::type($pdo, $in->int('type_id', 1));
+        $unit = self::read($in, null, $type) + ['id' => null];
+        if ($parent !== null) {
+            $unit['rotation_deg'] = 0;
+        }
+        SpaceValidator::unit($pdo, $room, $unit, $type, $parent);
+
+        unset($unit['id']);
+        $columns = array_keys($unit);
+        $pdo->prepare('INSERT INTO storage_units (room_id, parent_id, ' . implode(', ', $columns) . ') VALUES ('
+            . implode(', ', array_fill(0, count($columns) + 2, '?')) . ')')
+            ->execute([$room['id'], $parent === null ? null : (int) $parent['id'], ...array_values($unit)]);
+        $id = (int) $pdo->lastInsertId();
+        if (isset($node['id']) && is_int($node['id'])) {
+            $ids[(string) $node['id']] = $id;
+        }
+        $children = $node['children'] ?? [];
+        if ($children !== []) {
+            $self = Repo::unit($pdo, $id);
+            foreach ($children as $i => $child) {
+                self::insertNode($pdo, $room, $child, $self, $i, $ids);
+            }
+        }
+        return $id;
+    }
+
+    /** @return array<string, mixed> */
+    public static function treeOf(PDO $pdo, int $id): array
+    {
+        $root = Repo::unit($pdo, $id);
+        $units = Repo::units($pdo, (int) $root['room_id']);
+        $byParent = [];
+        foreach ($units as $u) {
+            $byParent[(int) $u['parent_id']][] = $u;
+        }
+        $build = static function (array $u) use (&$build, $byParent): array {
+            $node = ['id' => (int) $u['id'], 'shape' => $u['shape']];
+            foreach (self::TREE_FIELDS as $key) {
+                $node[$key] = match ($key) {
+                    'name', 'label', 'description', 'color' => $u[$key],
+                    'capacity' => Quantity::out($u[$key]),
+                    default => (int) $u[$key],
+                };
+            }
+            $node['children'] = array_map($build, $byParent[(int) $u['id']] ?? []);
+            return $node;
+        };
+        return $build($root);
+    }
+
     /**
      * Remplit un rangement vide, de deux façons :
      * - grille régulière (rows × columns) : posée au fond pour un rangement ouvert par le dessus (tiroir,
@@ -214,7 +404,7 @@ final class StorageUnitController
         });
 
         Audit::log($auth->userId, 'unit.generated', 'storage_unit', $id, ['rows' => $rows, 'columns' => $columns, 'stack' => $stack !== null, 'created' => count($created)], $request->ip);
-        return Response::json(['created' => count($created)], 201);
+        return Response::json(['created' => count($created), 'ids' => $created], 201);
     }
 
     /** @return list<array{name: string, label: string, height_mm: int}> */

@@ -98,6 +98,11 @@ final class SpaceRepository
                      'created_at', 'updated_at'] as $key) {
             $out[$key] = in_array($key, $ints, true) ? (int) $room[$key] : $room[$key];
         }
+        // Place sur le plan du bâtiment (null : pas encore placée)
+        foreach (['floor_id', 'plan_x_mm', 'plan_z_mm'] as $key) {
+            $out[$key] = $room[$key] === null ? null : (int) $room[$key];
+        }
+        $out['plan_rotation_deg'] = (int) $room['plan_rotation_deg'];
         return $out;
     }
 
