@@ -74,9 +74,14 @@ export async function render(view, session, params) {
             h('span', { class: 'location-row-qty' }, formatQuantity(l.quantity, item.unit)),
             h('div', { class: 'location-row-actions' },
               can('stock.take') && item.is_active && h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: async () => { if (await takeDialog(item, l)) after(); } }, icon('take'), 'Prendre'),
-              can('stock.move') && h('button', { class: 'icon-btn icon-btn-small', type: 'button', title: 'Déplacer', 'aria-label': `Déplacer depuis ${l.path}`, onclick: async () => { if (await moveDialog(item, l)) after(); } }, icon('move')),
-              can('stock.adjust') && h('button', { class: 'icon-btn icon-btn-small', type: 'button', title: 'Corriger la quantité', 'aria-label': `Corriger la quantité à ${l.path}`, onclick: async () => { if (await adjustDialog(item, l)) after(); } }, icon('edit')),
-              h('a', { class: 'icon-btn icon-btn-small', href: `/rooms/${l.room_id}?unit=${l.unit_id}`, title: 'Voir en 3D', 'aria-label': `Voir ${l.path} en 3D` }, icon('cube')),
+              // Actions moins fréquentes, nommées plutôt que figurées par des icônes ambiguës
+              (can('stock.move') || can('stock.adjust')) && menuButton({
+                label: `Autres actions pour ${l.path}`,
+                items: [
+                  can('stock.move') && { label: 'Déplacer…', icon: 'move', onSelect: async () => { if (await moveDialog(item, l)) after(); } },
+                  can('stock.adjust') && { label: 'Corriger la quantité…', icon: 'edit', onSelect: async () => { if (await adjustDialog(item, l)) after(); } },
+                ],
+              }),
             ))))
           : emptyState(can('stock.add') ? 'Aucun stock enregistré. Ajoutez-en pour indiquer où il se trouve.' : 'Aucun stock enregistré pour cet objet.', {
             iconName: 'pin',
@@ -113,8 +118,8 @@ export async function render(view, session, params) {
     const menu = menuButton({
       label: 'Autres actions sur l’objet',
       items: [
-        { label: item.photo_url ? 'Changer la photo' : 'Ajouter une photo', icon: 'image', onSelect: () => input.click() },
-        item.is_active && { label: 'Supprimer l’objet', icon: 'trash', danger: true, onSelect: () => remove(item) },
+        { label: item.photo_url ? 'Changer la photo…' : 'Ajouter une photo…', icon: 'image', onSelect: () => input.click() },
+        item.is_active && { label: 'Supprimer l’objet…', icon: 'trash', danger: true, onSelect: () => remove(item) },
       ],
     });
     const trigger = menu.querySelector('button');

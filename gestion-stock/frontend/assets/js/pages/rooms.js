@@ -70,7 +70,7 @@ function card(room, canEdit, reload) {
   const more = canEdit && menuButton({
     label: `Autres actions pour ${room.name}`,
     items: [
-      { label: 'Modifier les dimensions', icon: 'edit', onSelect: async () => { if (await openRoomDialog(room)) reload(); } },
+      { label: 'Modifier les dimensions…', icon: 'edit', onSelect: async () => { if (await openRoomDialog(room)) reload(); } },
       { label: 'Dupliquer', icon: 'copy', onSelect: async () => {
         try {
           const result = await api(`/rooms/${room.id}/duplicate`, { method: 'POST' });
@@ -78,7 +78,7 @@ function card(room, canEdit, reload) {
           reload();
         } catch (error) { showError(error); }
       } },
-      { label: 'Supprimer', icon: 'trash', danger: true, onSelect: async () => {
+      { label: 'Supprimer la salle…', icon: 'trash', danger: true, onSelect: async () => {
         const ok = await confirmDialog({
           title: 'Supprimer la salle',
           message: `« ${room.name} » et ses ${plural(room.unit_count, 'rangement')} seront supprimés définitivement. Cette action est irréversible.`,

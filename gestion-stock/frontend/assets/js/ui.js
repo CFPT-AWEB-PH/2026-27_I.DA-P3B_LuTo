@@ -40,7 +40,9 @@ export function toast(message, type = 'success', { action = null } = {}) {
   );
   container.append(el);
   placeToasts(container);
-  const schedule = () => { timer = setTimeout(dismiss, type === 'error' ? 8000 : 4000); };
+  // Peu d'éléments minutés : une erreur reste jusqu'à sa fermeture, une notification annulable laisse 10 s
+  const delay = type === 'error' ? null : action ? 10000 : 4000;
+  const schedule = () => { if (delay) timer = setTimeout(dismiss, delay); };
   // Pas de disparition pendant que l'on survole ou que l'on lit au clavier
   el.addEventListener('pointerenter', () => clearTimeout(timer));
   el.addEventListener('pointerleave', schedule);
@@ -107,6 +109,27 @@ export function openDialog(title, build, { wide = false } = {}) {
       ),
       build(close),
     );
+    // Mobile : la poignée promet un geste, le panneau suit le doigt depuis son en-tête et se ferme vers le bas
+    const header = dialog.querySelector('.dialog-header');
+    header.addEventListener('pointerdown', (event) => {
+      if (!window.matchMedia('(max-width: 767px)').matches || event.button !== 0 || event.target.closest('button')) return;
+      const startY = event.clientY;
+      const startTime = performance.now();
+      let dy = 0;
+      try { header.setPointerCapture(event.pointerId); } catch { /* pointeur déjà relâché */ }
+      dialog.classList.add('is-dragging');
+      const move = (e) => { dy = Math.max(0, e.clientY - startY); dialog.style.transform = `translateY(${dy}px)`; };
+      const end = () => {
+        header.removeEventListener('pointermove', move);
+        dialog.classList.remove('is-dragging');
+        const fast = dy / (performance.now() - startTime) > 0.5;
+        if (dy > 96 || (fast && dy > 24)) close(undefined);
+        else dialog.style.transform = '';
+      };
+      header.addEventListener('pointermove', move);
+      header.addEventListener('pointerup', end, { once: true });
+      header.addEventListener('pointercancel', end, { once: true });
+    });
     // Échap : même sortie animée que le bouton Fermer
     dialog.addEventListener('cancel', (event) => { event.preventDefault(); close(undefined); });
     dialog.addEventListener('close', () => {
@@ -118,8 +141,9 @@ export function openDialog(title, build, { wide = false } = {}) {
     document.body.append(dialog);
     dialog.showModal();
     placeToasts();
-    // Le premier champ reçoit le focus plutôt que le bouton Fermer
-    dialog.querySelector('.dialog-body input:not([type=hidden]):not([readonly]), .dialog-body select, .dialog-body textarea')?.focus();
+    // Le premier champ reçoit le focus plutôt que le bouton Fermer ; au toucher, on évite d'ouvrir le clavier
+    // virtuel par-dessus le bouton de validation (le pas à pas − / + suffit souvent)
+    if (finePointer()) dialog.querySelector('.dialog-body input:not([type=hidden]):not([readonly]), .dialog-body select, .dialog-body textarea')?.focus();
   });
 }
 

@@ -40,7 +40,7 @@ export function render(view) {
                 await api(`/allowlist/${entry.id}`, { method: 'DELETE' });
               } catch (error) { return showError(error); }
               toast(`« ${entry.value} » ne pourra plus se connecter.`, 'success', {
-                action: { label: 'Annuler', run: async () => {
+                action: { label: 'Rétablir l’accès', run: async () => {
                   try {
                     await api('/allowlist', { method: 'POST', body: { value: entry.value, note: entry.note ?? '' } });
                     toast(`Accès rétabli pour « ${entry.value} ».`);

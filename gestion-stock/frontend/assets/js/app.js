@@ -30,7 +30,7 @@ const routes = [
   { path: '/rooms', label: 'Salles', icon: 'room', page: roomsPage, permission: 'rooms.view', group: 'stock', tab: true },
   { path: '/rooms/:id', label: 'Salle', page: roomEditorPage, permission: 'rooms.view', nav: false, menu: '/rooms' },
   { path: '/loans', label: 'Emprunts', icon: 'loans', page: loansPage, permission: 'stock.view', group: 'stock', tab: true },
-  { path: '/movements', label: 'Historique', icon: 'history', page: movementsPage, permission: 'history.view', group: 'stock' },
+  { path: '/movements', label: 'Historique', icon: 'history', page: movementsPage, permission: 'history.view', group: 'stock', tab: true },
   { path: '/admin/catalog', label: 'Catégories et champs', icon: 'tag', page: catalogAdminPage, permission: 'items.edit', group: 'admin' },
   { path: '/admin/storage-types', label: 'Types de rangement', icon: 'layers', page: storageTypesPage, permission: 'storage.edit', group: 'admin' },
   { path: '/admin/users', label: 'Utilisateurs', icon: 'users', page: usersPage, permission: 'users.manage', group: 'admin' },
@@ -213,12 +213,12 @@ function renderShell() {
     }),
   );
 
-  // Mobile : quatre destinations du quotidien, le reste dans « Plus »
+  // Mobile : jusqu'à cinq destinations du quotidien, sans onglet « Plus » (les onglets naviguent, ils n'agissent pas) ;
+  // l'administration, rare sur téléphone, reste dans le menu ouvert depuis la barre supérieure
   const tabbar = h('nav', { class: 'tabbar', 'aria-label': 'Navigation rapide' },
     visible.filter((r) => r.tab).map((r) => h('a', { class: 'tab', href: r.path },
-      h('span', { class: 'tab-pill' }, icon(r.icon)), r.label)),
-    visible.some((r) => !r.tab) && h('button', { class: 'tab', type: 'button', 'aria-controls': 'sidebar', onclick: () => setNavOpen(true) },
-      h('span', { class: 'tab-pill' }, icon('menu')), 'Plus'));
+      h('span', { class: 'tab-pill' }, icon(r.icon)), r.label)));
+  document.body.classList.toggle('has-admin-nav', visible.some((r) => !r.tab));
 
   const offline = h('div', { class: 'offline-banner', role: 'status', hidden: navigator.onLine },
     icon('wifiOff'), 'Hors connexion : consultation seulement, les modifications reprendront au retour du réseau.');

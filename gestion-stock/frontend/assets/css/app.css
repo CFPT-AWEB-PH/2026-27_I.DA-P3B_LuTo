@@ -272,7 +272,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 
 .view { grid-area: main; min-width: 0; padding: var(--s8) var(--s8) var(--s12); outline: none; }
 .view > * { max-width: var(--content-max); }
-.view-enter { animation: view-in var(--dur-2) var(--ease-out); }
+.view-enter { animation: fade-in var(--dur-1) var(--ease-out); } /* fondu court : la navigation est fréquente */
 
 /* Menu utilisateur */
 .user-button { display: inline-flex; align-items: center; gap: var(--s2); min-height: 40px; padding: 0 var(--s2) 0 var(--s1); border: 0; border-radius: 999px; background: transparent; color: var(--ink); font: inherit; cursor: pointer; transition: background-color var(--dur-1); }
@@ -771,7 +771,9 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 .location-row:last-child { border-bottom: 0; }
 .location-row-main { flex: 1 1 18rem; min-width: 0; }
 .location-row-qty { font-family: var(--font-display); font-size: var(--text-md); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 5rem; text-align: right; }
-.location-row-actions { display: flex; gap: var(--s1); align-items: center; }
+.location-row-actions { display: flex; gap: var(--s2); align-items: center; }
+.location-row-actions .icon-btn { width: 34px; height: 34px; }
+.card-flush:has(.popover-anchor) { overflow: visible; }
 .card-flush > .section-header { padding: var(--s5) var(--s6) 0; }
 .card-flush > .empty-state { padding: var(--s6); }
 
@@ -779,12 +781,13 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 .props dt { color: var(--ink-2); }
 .props dd { margin: 0; font-variant-numeric: tabular-nums; }
 
-.movement-take, .movement-consume { background: var(--danger-soft); color: var(--danger); }
+/* Sortie de stock : neutre (le signe « − » porte l'information) ; le rouge reste réservé aux erreurs et suppressions */
+.movement-take, .movement-consume { background: var(--surface-2); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
 .movement-return, .movement-add { background: var(--success-soft); color: var(--success); }
 .movement-adjust { background: var(--warning-soft); color: var(--warning); }
 .movement-move { background: var(--info-soft); color: var(--info); }
 .qty-delta { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.qty-minus { color: var(--danger); }
+.qty-minus { color: var(--ink); }
 .qty-plus { color: var(--success); }
 .move-arrow { color: var(--ink-3); margin: 0 4px; }
 .movement-places { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); }
@@ -1008,7 +1011,6 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes fade-out { to { opacity: 0; } }
-@keyframes view-in { from { opacity: 0; transform: translateY(4px); } }
 @keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
 @keyframes slide-down { from { transform: translateY(-100%); } }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
@@ -1090,11 +1092,15 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
   /* 16 px minimum dans les champs : évite le zoom automatique d'iOS */
   input, select, textarea { font-size: 1rem; min-height: var(--tap); }
   .btn { min-height: var(--tap); }
-  .btn-small { min-height: 38px; }
+  .btn-small { min-height: var(--tap); }
+  .tree-row { min-height: var(--tap); }
+  .tree-toggle, .tree-eye { width: 36px; height: var(--tap); }
+  .tree-eye { opacity: 1; }  /* pas de survol au toucher : l'œil reste visible */
   .icon-btn { width: var(--tap); height: var(--tap); }
 
   .app { grid-template-rows: var(--topbar-h) 1fr; padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); }
   .topbar .nav-toggle { display: none; }
+  .has-admin-nav .topbar .nav-toggle { display: inline-grid; }  /* administration : pas d'onglet « Plus » */
   .topbar .search-toggle { display: inline-grid; }
   .topbar { gap: var(--s2); }
   .global-search { display: none; }
@@ -1128,7 +1134,7 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
     background: none;
     color: var(--ink-3);
     font: inherit;
-    font-size: 11px;
+    font-size: .6875rem;  /* 11 px, minimum lisible, mais proportionnel au réglage de taille du texte */
     font-weight: var(--fw-medium);
     text-decoration: none;
     cursor: pointer;
@@ -1223,6 +1229,9 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
   }
   .dialog[open] { animation: sheet-in var(--dur-4) var(--ease-out); }
   .dialog.is-closing { animation: sheet-out var(--dur-2) var(--ease-in) forwards; }
+  .dialog { transition: transform var(--dur-2) var(--ease-out); }
+  .dialog.is-dragging { transition: none; }
+  .dialog-header { touch-action: none; cursor: grab; }
   .dialog-header { padding: var(--s3) var(--s2) var(--s3) var(--s5); }
   .dialog-header::before { content: ""; position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--line-strong); }
   .dialog-body { padding: var(--s5); }
@@ -1286,4 +1295,18 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 @media (min-width: 768px) {
   .toolbar > select, .filter-panel > select { flex: 0 1 12rem; min-width: 8rem; }
   .toolbar-search { flex: 1 1 14rem; }
+}
+
+/* ===== Préférences d'affichage du système ===== */
+/* Contraste accru : textes secondaires et contours renforcés */
+@media (prefers-contrast: more) {
+  :root { --ink-2: #2f3934; --ink-3: #3f4943; --line: #9aa29c; --line-strong: #6f7871; --line-control: #4f5852; }
+  .loc { box-shadow: inset 3px 0 0 var(--primary), inset 0 0 0 1px var(--line-strong); }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root { --ink-2: #c9d2cd; --ink-3: #b3bdb7; --line: #4a5751; --line-strong: #6f7d76; --line-control: #8d9a93; }
+}
+/* Transparence réduite : barres opaques, sans flou */
+@media (prefers-reduced-transparency: reduce) {
+  .topbar, .tabbar { background: var(--surface); backdrop-filter: none; }
 }

@@ -151,3 +151,25 @@ La première refonte (commit c31bb0b) avait posé un socle solide. Cet audit a �
 4. **Annulation des mouvements de stock** (prise, ajout) : nécessite une opération inverse côté serveur.
 5. **Vignettes des salles** : dessiner les meubles sur le plan miniature (l'API de liste ne renvoie pas encore les emprises).
 6. **Tests d'interface** automatisés (Playwright) sur les parcours prendre / rendre / ajouter, aux trois points de rupture.
+
+## 7. Revue selon les Human Interface Guidelines (skill apple-design)
+
+Revue menée avec le skill [dickwu/apple-design-skill](https://github.com/dickwu/apple-design-skill) (pages HIG d'Apple). L'application est une PWA web : les principes et fondamentaux s'appliquent (accessibilité, couleur, typographie, mise en page, rédaction), les conventions iOS comme principes pour l'usage sur téléphone. Les majuscules suivent l'usage français (casse de phrase), appliqué partout : c'est un choix assumé, pas un écart.
+
+**Résumé** : Bien. Thèse : retrouver un objet et son emplacement exact en quelques secondes. Élément signature : l'étiquette d'emplacement à filet vert. Aucun point critique après correction.
+
+| Constat | Référence HIG | Correction | Priorité |
+|---|---|---|---|
+| Notifications minutées : l'« Annuler » disparaissait après 4 s, les erreurs après 8 s | `accessibility.md › Cognitive` : « Minimize use of time-boxed interface elements » | Erreurs affichées jusqu'à fermeture ; notification annulable 10 s ; pause au survol et au focus | Haute |
+| Onglet « Plus » sur mobile | `tab-bars.md` : « Avoid overflow tabs », « Use a tab bar to support navigation, not to provide actions » | Cinq onglets (Historique ajouté) ; l'administration, rare sur téléphone, passe par le menu de la barre supérieure | Haute |
+| Panneau glissant avec poignée mais sans geste | `sheets.md` : « Support swiping to dismiss a sheet » | Le panneau suit le doigt depuis l'en-tête et se ferme vers le bas (> 96 px ou geste rapide) | Haute |
+| Rouge utilisé à la fois pour les erreurs, la suppression et les sorties de stock | `color.md › Best practices` : « Avoid using the same color to mean different things » | Sorties de stock en neutre (6,4:1), le signe « − » porte l'information ; le rouge ne signifie plus que erreur ou destruction | Moyenne |
+| Trois icônes ambiguës par emplacement (déplacer, crayon pour « corriger », cube en doublon du lien de l'étiquette) | `buttons.md` : « Consider using text when a short label communicates more clearly than an icon » | Menu « … » avec « Déplacer… » et « Corriger la quantité… » ; bouton 3D supprimé (l'étiquette y mène déjà) | Moyenne |
+| Éléments de menu qui ouvrent une fenêtre sans le signaler | `menus.md` : « Append an ellipsis to a menu item's label when the action requires more information » | Points de suspension sur ces éléments | Basse |
+| Libellé « Annuler » ambigu (annuler une saisie ou défaire une action) | `undo-and-redo.md` : « Briefly and precisely describe the operation to be undone » | « Rétablir l'accès », « Annuler le changement » | Basse |
+| Pas de réponse au contraste accru ni à la transparence réduite | `accessibility.md › Vision`, `color.md` : variantes « increased contrast » | `prefers-contrast: more` (textes et contours renforcés) ; `prefers-reduced-transparency` (barres opaques) | Moyenne |
+| Animation de translation à chaque changement de page | `motion.md` : « generally avoid adding motion to UI interactions that occur frequently » | Simple fondu de 120 ms | Basse |
+| Petits boutons à 38 px et contrôles d'arbre à 24 × 32 px sur mobile ; libellés d'onglet en px fixes | `accessibility.md › Mobility` (44 × 44 par défaut) ; `typography.md › Supporting Dynamic Type` | 44 px sur mobile ; libellés en rem (suivent la taille de texte choisie) | Moyenne |
+| Clavier virtuel ouvert d'office à l'ouverture d'un panneau | Jugement (portée du pouce, `designing-for-ios.md`) | Focus automatique dans les fenêtres seulement à la souris | Basse |
+
+**Ce qui fonctionne (à conserver)** : apparences claire et sombre suivant le système sans réglage propre à l'application (`dark-mode.md`) ; recherche immédiate avec suggestions (`search-fields.md`) ; avertissement réservé aux suppressions irréversibles, annulation pour le reste (`feedback.md`) ; bouton principal unique, jamais destructif (`buttons.md`) ; contrastes AA calculés sur les valeurs réelles.

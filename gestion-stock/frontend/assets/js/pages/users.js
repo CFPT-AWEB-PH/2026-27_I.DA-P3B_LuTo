@@ -84,7 +84,7 @@ function row(user, roles, session, reload) {
     if (!ok) return;
     user.role = role;
     toast(`${user.display_name || user.email} a maintenant le rôle « ${role.name} ».`, 'success', {
-      action: { label: 'Annuler', run: async () => { if (await setRole(previous, role)) { toast('Rôle précédent rétabli.'); reload(); } } },
+      action: { label: 'Annuler le changement', run: async () => { if (await setRole(previous, role)) { toast('Rôle précédent rétabli.'); reload(); } } },
     });
   });
 
