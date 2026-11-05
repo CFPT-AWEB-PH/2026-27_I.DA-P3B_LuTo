@@ -306,6 +306,24 @@ function scaleFor(visual, name) {
   return new THREE.Vector3(1, 1, 1);
 }
 
+/**
+ * Modèle d'un objet pour une vignette : un exemplaire, ou un petit tas pour les pièces en vrac, trop fines seules
+ * (une résistance et ses longues pattes). La géométrie reste partagée : ne pas la libérer.
+ */
+export function thumbModel(entry) {
+  const visual = resolveVisual(entry);
+  const geometry = modelGeometry(visual, entry.visual_color ?? DEFAULT_TINT[visual]);
+  const scale = scaleFor(visual, entry.name);
+  if (LOOSE.has(visual) && visual !== 'box') {
+    const size = geometry.userData.size.clone().multiply(scale);
+    const side = Math.max(size.x, size.z) * 1.3;
+    return buildObjects(1, { width: side, depth: side, height: size.y * 4 }, [{ ...entry, item_id: 1, quantity: 7 }]);
+  }
+  const mesh = new THREE.Mesh(geometry, material());
+  mesh.scale.copy(scale);
+  return mesh;
+}
+
 const measured = new Set(['m', 'cm', 'mm', 'km', 'kg', 'g', 'l', 'ml']);
 
 function visibleCount(entry) {

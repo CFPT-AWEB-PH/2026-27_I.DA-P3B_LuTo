@@ -118,7 +118,7 @@ export async function render(view, session) {
     const element = h('article', { class: ['item-card', item.is_low && 'is-low', empty && 'is-empty'] },
       item.photo_url
         ? h('img', { class: 'item-thumb', src: item.photo_url, alt: '', loading: 'lazy', decoding: 'async' })
-        : h('div', { class: 'item-thumb item-thumb-empty', 'aria-hidden': 'true' }, icon('box')),
+        : modelThumb(item),
       h('div', { class: 'item-main' },
         h('h2', { class: 'item-name' }, h('a', { href: `/items/${item.id}` }, item.name)),
         h('div', { class: 'item-meta' },
@@ -146,6 +146,16 @@ export async function render(view, session) {
     contextMenu(element, menuItems, { label: `Actions pour ${item.name}` });
     return element;
   }
+}
+
+/** Sans photo : aperçu du modèle 3D de l'objet. L'icône reste affichée pendant le rendu, ou si WebGL manque. */
+function modelThumb(item) {
+  const thumb = h('div', { class: 'item-thumb item-thumb-empty', 'aria-hidden': 'true' }, icon('box'));
+  import('../three/item-thumb.js')
+    .then(({ itemThumbUrl }) => itemThumbUrl(item))
+    .then((url) => { if (url) thumb.replaceChildren(h('img', { class: 'item-thumb-model', src: url, alt: '', decoding: 'async' })); })
+    .catch((error) => console.warn('Vignette 3D indisponible', error));
+  return thumb;
 }
 
 /** Pastille de catégorie : la couleur passe par le CSSOM (la CSP interdit les attributs style). */

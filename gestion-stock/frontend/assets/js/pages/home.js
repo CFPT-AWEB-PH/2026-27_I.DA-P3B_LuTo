@@ -9,7 +9,7 @@ import { formatQuantity, returnDialog } from '../stock-dialogs.js';
 import { navigate } from '../app.js';
 import { searchBox } from '../search-box.js';
 import { movementRow } from './movements.js';
-import { planThumb, roomMenuItems } from './rooms.js';
+import { planThumb, roomMenuItems } from '../room-actions.js';
 import { contextMenu } from '../context-menu.js';
 
 function greeting() {
@@ -56,7 +56,7 @@ export function render(view, session) {
     can('rooms.view') && h('section', { class: 'card card-muted', 'aria-labelledby': 'home-rooms' },
       h('div', { class: 'section-header' },
         h('h2', { id: 'home-rooms' }, 'Salles'),
-        h('a', { class: 'section-link', href: '/rooms' }, 'Toutes les salles', icon('chevronRight'))),
+        h('a', { class: 'section-link', href: '/plan' }, 'Voir le plan', icon('chevronRight'))),
       rooms),
   );
   if (can('stock.view')) {
@@ -87,7 +87,7 @@ export function render(view, session) {
         ? tile(`Emprunts en cours (${plural(data.activity.borrowers, 'personne')})`, data.activity.open_loans, '/loans')
         : data.stock && tile('Mes emprunts en cours', data.stock.my_open_loans, '/loans'),
       data.activity && tile('Mouvements aujourd’hui', data.activity.movements_today, '/movements'),
-      data.spaces && tile(`Salles (${plural(data.spaces.units, 'rangement')})`, data.spaces.rooms, '/rooms'));
+      data.spaces && tile(`Salles (${plural(data.spaces.units, 'rangement')})`, data.spaces.rooms, '/plan'));
   }
 
   async function loadActivity() {
@@ -149,7 +149,7 @@ export function render(view, session) {
           contextMenu(link, () => roomMenuItems(room, session, loadRooms), { label: `Actions pour ${room.name}` });
           return link;
         })
-        : h('p', { class: 'muted' }, can('rooms.edit') ? h('a', { href: '/rooms' }, 'Créer la première salle') : 'Aucune salle pour le moment.'));
+        : h('p', { class: 'muted' }, can('rooms.edit') ? h('a', { href: '/plan' }, 'Créer la première salle sur le plan') : 'Aucune salle pour le moment.'));
     } catch (error) {
       clear(rooms, errorState(error, loadRooms));
     }

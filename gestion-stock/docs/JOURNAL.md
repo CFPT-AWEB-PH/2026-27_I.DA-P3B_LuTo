@@ -306,3 +306,19 @@ Avec Inter, contrôle automatique à 375 px : 14 pages en Administrateur et 7 en
 **Corrigé au passage** : à 375 px en Administrateur, la page de l'éditeur 3D débordait (470 px), car les libellés masqués des boutons segmentés échappaient à la barre défilante. Ce bug existait avant le changement de style et n'était pas visible avec le profil Élève. Les filtres des emprunts, plus larges avec Inter, sont désormais empilés sur mobile.
 
 **Limites** : pas vérifié sur le serveur réel ni sur un vrai téléphone. Le précache de la police par le service worker a été déduit de la commande du `Dockerfile`, pas essayé sur un déploiement. Catégories, Types de rangement, Accès autorisés et Paramètres n'ont fait l'objet que du contrôle de débordement, sans relecture visuelle.
+
+## Ajout un par un, fiches au choix, pages retirées, vignettes 3D (2026-11-05)
+
+Demandes de l'utilisateur : ajouter un compte à la fois, ne pas devoir tout imprimer, retirer les pages Accès autorisés et Salles (le plan du bâtiment suffit), avoir un aperçu sur les images du catalogue.
+
+**Fait**
+- Utilisateurs : « Ajouter une personne » (nom, prénom, groupe, rôle). Passe par `POST /users/import` avec une seule personne : mêmes règles, donc pas de doublon ni de compte administrateur, et aucun changement côté serveur.
+- Fiches : cases à cocher dans le tableau (nouvelles fiches pour les comptes cochés, plus pour toute la liste) et dans la fenêtre d'impression. Fermer avertit s'il reste des fiches jamais imprimées. Le mot de passe n'étant pas conservé, réimprimer une fiche en génère toujours un nouveau : c'est dit à l'écran.
+- La sélection se limite aux lignes affichées : on ne change jamais le mot de passe d'un compte que l'écran ne montre pas.
+- Page Accès autorisés retirée. **Seule la page disparaît** : la table et l'API restent, car `login-link.php`, la connexion Google prévue et les tests en dépendent. Plus d'interface pour autoriser une adresse e-mail : à revoir quand la connexion Google sera activée.
+- Page Salles retirée : le plan propose déjà créer, dupliquer, supprimer et entrer dans une salle. L'éditeur `/rooms/{id}` reste, et l'accueil garde ses raccourcis de salles (`room-actions.js`). Les anciennes adresses redirigent vers le plan et vers Utilisateurs.
+- Catalogue : sans photo, la vignette montre le modèle 3D de l'objet ; une vraie photo reste prioritaire. Un seul moteur de rendu chargé à la demande dessine chaque modèle une fois en image, puis se libère : un contexte WebGL par carte dépasserait la limite des navigateurs. Les petites pièces fines s'affichent en petit tas. Sans WebGL, l'icône reste.
+
+**Tests** : banc local avec fausse API et CSP réelle : parcours complet d'ajout, doublon, champs vides, sélection partielle (seuls les comptes cochés reçoivent un nouveau mot de passe), impression partielle avec `window.print` simulé, avertissement à la fermeture, redirections, profil Élève, thème sombre, 375 px sans débordement. Corrigés en testant : boutons sur le titre à 375 px, bouton réactivé sans sélection, vignette de résistance presque vide.
+
+**Limites** : pas vérifié sur le serveur réel, ni sur une vraie imprimante pour la sélection. Un objet dont le nom n'est reconnu par aucune règle (ex. « Multimètre ») a la vignette générique d'un boîtier : choisir un modèle sur sa fiche ou y mettre une photo.

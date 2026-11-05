@@ -15,12 +15,16 @@ export async function render(view, session) {
   );
   const groupFilter = h('select', { 'aria-label': 'Filtrer par groupe' }, h('option', { value: '' }, 'Tous les groupes'));
   const list = h('div', { class: 'list-container' }, skeleton('row', 4));
+  let knownGroups = [];
 
-  append(view, 
+  append(view,
     pageHeader({
       title: 'Utilisateurs',
-      description: 'Importez une liste de classe : chaque personne reçoit un identifiant et un mot de passe, sur une fiche à imprimer. Les comptes par adresse e-mail se règlent dans Accès autorisés.',
-      actions: h('button', { class: 'btn btn-primary', type: 'button', onclick: () => importDialog(roles, load) }, icon('take'), 'Importer une liste Excel'),
+      description: 'Ajoutez une personne ou importez une liste de classe : chacune reçoit un identifiant et un mot de passe, sur une fiche à imprimer.',
+      actions: [
+        h('button', { class: 'btn', type: 'button', onclick: () => importDialog(roles, load) }, icon('take'), 'Importer une liste'),
+        h('button', { class: 'btn btn-primary', type: 'button', onclick: () => addDialog(roles, knownGroups, load) }, icon('plus'), 'Ajouter une personne'),
+      ],
     }),
     h('div', { class: 'toolbar' }, h('div', { class: 'toolbar-search' }, icon('search'), search), roleFilter, groupFilter, activeFilter),
     list,
@@ -34,6 +38,9 @@ export async function render(view, session) {
   }
   roleFilter.append(...roles.map((r) => h('option', { value: r.id }, r.name)));
 
+  // Comptes cochés pour de nouvelles fiches. Limité aux lignes affichées : on ne change jamais un mot de passe que l'écran ne montre pas.
+  const selection = new Set();
+
   let timer;
   const load = async () => {
     const params = new URLSearchParams();
@@ -44,13 +51,53 @@ export async function render(view, session) {
     try {
       const { users, groups } = await api(`/users?${params}`);
       const selected = groupFilter.value;
+      knownGroups = groups;
       clear(groupFilter, h('option', { value: '' }, 'Tous les groupes'), groups.map((g) => h('option', { value: g, selected: g === selected }, g)));
       groupFilter.hidden = groups.length === 0;
+
       const withPassword = users.filter((u) => u.username && u.is_active);
+      for (const id of [...selection]) if (!withPassword.some((u) => u.id === id)) selection.delete(id);
+
+      const all = h('input', { type: 'checkbox', 'aria-label': 'Sélectionner tous les comptes affichés' });
+      const boxes = new Map();
+      const regenerateLabel = h('span', {});
+      const regenerateButton = h('button', { class: 'btn btn-small', type: 'button', onclick: async (e) => {
+        await busy(e.currentTarget, async () => {
+          if (await regenerate(withPassword.filter((u) => selection.has(u.id)))) selection.clear();
+        });
+        sync(); // après busy, qui réactive le bouton même si plus rien n'est coché
+      } }, icon('refresh'), regenerateLabel);
+      function sync() {
+        const count = selection.size;
+        regenerateLabel.textContent = count ? `Nouvelles fiches pour ${plural(count, 'compte')}` : 'Nouvelles fiches';
+        regenerateButton.disabled = count === 0;
+        all.checked = count > 0 && count === withPassword.length;
+        all.indeterminate = count > 0 && count < withPassword.length;
+        for (const [id, box] of boxes) box.checked = selection.has(id);
+      }
+      all.addEventListener('change', () => {
+        for (const u of withPassword) { if (all.checked) selection.add(u.id); else selection.delete(u.id); }
+        sync();
+      });
+      const selectBox = (user) => {
+        const who = user.display_name || user.username;
+        const box = h('input', { type: 'checkbox', 'aria-label': `Sélectionner ${who}`, onchange: () => {
+          if (box.checked) selection.add(user.id); else selection.delete(user.id);
+          sync();
+        } });
+        boxes.set(user.id, box);
+        return box;
+      };
+
+      const body = users.length
+        ? h('div', { class: 'card card-flush' }, table(users, roles, session, load, { all: withPassword.length > 0 ? all : null, selectBox }))
+        : h('div', { class: 'card' }, emptyState('Aucun utilisateur ne correspond à ces critères.', { iconName: 'users' }));
+      sync();
       clear(list,
         withPassword.length > 0 && h('div', { class: 'list-actions' },
-          h('button', { class: 'btn btn-small', type: 'button', onclick: (e) => busy(e.currentTarget, () => regenerate(withPassword, groupFilter.value)) }, icon('refresh'), `Nouvelles fiches pour ${withPassword.length > 1 ? `ces ${withPassword.length} comptes` : 'ce compte'}`)),
-        users.length ? h('div', { class: 'card card-flush' }, table(users, roles, session, load)) : h('div', { class: 'card' }, emptyState('Aucun utilisateur ne correspond à ces critères.', { iconName: 'users' })));
+          h('p', { class: 'field-hint' }, 'Les mots de passe ne sont pas conservés : cochez les comptes à réimprimer, ils recevront un nouveau mot de passe.'),
+          regenerateButton),
+        body);
     } catch (error) {
       clear(list, errorState(error, load));
     }
@@ -63,6 +110,45 @@ export async function render(view, session) {
   groupFilter.addEventListener('change', load);
   activeFilter.addEventListener('change', load);
   load();
+}
+
+/** Ajoute une seule personne : même création que l'import, donc mêmes règles (identifiant unique, pas de doublon, pas d'administrateur). */
+function addDialog(roles, groups, reload) {
+  const assignable = roles.filter((r) => !r.is_protected);
+  return openDialog('Ajouter une personne', (close) => {
+    const lastName = h('input', { name: 'last_name', required: true, maxlength: 70, autocomplete: 'off' });
+    const firstName = h('input', { name: 'first_name', required: true, maxlength: 70, autocomplete: 'off' });
+    const group = h('input', { name: 'group', maxlength: 60, autocomplete: 'off', list: 'user-groups', placeholder: 'Facultatif' });
+    const role = h('select', { name: 'role_id' }, assignable.map((r) => h('option', { value: r.id, selected: r.is_default }, r.name)));
+    const form = h('form', { class: 'dialog-body', novalidate: true },
+      h('div', { class: 'form-grid' }, field('Nom', lastName), field('Prénom', firstName)),
+      h('div', { class: 'form-grid' }, field('Groupe', group), field('Rôle', role)),
+      h('datalist', { id: 'user-groups' }, groups.map((g) => h('option', { value: g }))),
+      h('p', { class: 'field-hint' }, 'L’identifiant et le mot de passe sont générés à l’enregistrement, avec une fiche à imprimer.'),
+      h('div', { class: 'dialog-actions' },
+        h('button', { class: 'btn', type: 'button', onclick: () => close() }, 'Annuler'),
+        h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, 'Créer le compte'))));
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      busy(event.submitter, async () => {
+        try {
+          const person = { last_name: lastName.value.trim(), first_name: firstName.value.trim(), group: group.value.trim() };
+          const missing = {};
+          if (!person.last_name) missing.last_name = 'Indiquez le nom.';
+          if (!person.first_name) missing.first_name = 'Indiquez le prénom.';
+          if (Object.keys(missing).length) return showError(Object.assign(new Error('Complétez les champs indiqués.'), { fields: missing }), form);
+          const { created, skipped } = await api('/users/import', { method: 'POST', body: { role_id: Number(role.value), people: [person] } });
+          if (skipped.length) {
+            return showError(new Error(`Ce compte existe déjà (identifiant ${skipped[0].username}). Pour une nouvelle fiche, utilisez le bouton « Mot de passe » de sa ligne.`), form);
+          }
+          close();
+          await reload();
+          await credentialsDialog(created, { title: 'Compte créé' });
+        } catch (error) { showError(error, form); }
+      });
+    });
+    return form;
+  });
 }
 
 /** Lit le fichier, montre ce qui sera créé, puis crée les comptes par petits lots avec leur fiche. */
@@ -148,32 +234,33 @@ function passwordDialog(user) {
   });
 }
 
-/** Nouvelles fiches pour toute une liste : l'ancien mot de passe de chacun cesse de fonctionner. */
-async function regenerate(users, group) {
+/** Nouvelles fiches pour les comptes choisis : l'ancien mot de passe de chacun cesse de fonctionner. */
+async function regenerate(users) {
   const ok = await confirmDialog({
     title: 'Générer de nouveaux mots de passe',
-    message: `${plural(users.length, 'compte')}${group ? ` du groupe ${group}` : ''} : les mots de passe actuels cesseront aussitôt de fonctionner, et il faudra redistribuer les fiches.`,
+    message: `${plural(users.length, 'compte')} : ${users.length > 1 ? 'les mots de passe actuels cesseront' : 'le mot de passe actuel cessera'} aussitôt de fonctionner, et il faudra redistribuer ${users.length > 1 ? 'les fiches' : 'la fiche'}.`,
     confirmLabel: 'Générer et imprimer', danger: true,
   });
-  if (!ok) return;
+  if (!ok) return false;
   const rows = [];
   try {
     for (const user of users) rows.push(await api(`/users/${user.id}/password`, { method: 'POST', body: {} }));
   } catch (error) { showError(error); }
   if (rows.length) await credentialsDialog(rows, { title: 'Nouvelles fiches de connexion' });
+  return rows.length > 0;
 }
 
-function table(users, roles, session, reload) {
+function table(users, roles, session, reload, { all, selectBox }) {
   return h('table', { class: 'data-table' },
     h('thead', {}, h('tr', {},
-      h('th', {}, 'Utilisateur'), h('th', {}, 'Rôle'), h('th', {}, 'Statut'),
+      h('th', { class: 'cell-check' }, all), h('th', {}, 'Utilisateur'), h('th', {}, 'Rôle'), h('th', {}, 'Statut'),
       h('th', {}, 'Dernière connexion'), h('th', {}, h('span', { class: 'sr-only' }, 'Actions')),
     )),
-    h('tbody', {}, users.map((user) => row(user, roles, session, reload))),
+    h('tbody', {}, users.map((user) => row(user, roles, session, reload, selectBox))),
   );
 }
 
-function row(user, roles, session, reload) {
+function row(user, roles, session, reload, selectBox) {
   const isSelf = user.id === session.me.user.id;
   const who = user.display_name || user.username || user.email;
   const roleSelect = h('select', { 'aria-label': `Rôle de ${who}` },
@@ -232,6 +319,7 @@ function row(user, roles, session, reload) {
   const passwordButton = user.username && h('button', { class: 'btn btn-small', type: 'button', title: 'Choisir ou générer un nouveau mot de passe', onclick: () => passwordDialog(user) }, 'Mot de passe');
 
   return h('tr', { class: !user.is_active && 'is-inactive' },
+    h('td', { class: 'cell-check' }, user.username && user.is_active && selectBox(user)),
     h('td', { 'data-label': 'Utilisateur' },
       h('div', { class: 'cell-title' }, user.display_name || user.email, isSelf && h('span', { class: 'badge badge-accent' }, 'Vous')),
       user.display_name && h('span', { class: 'sub' }, [user.username ?? user.email, user.group].filter(Boolean).join(' · '))),
