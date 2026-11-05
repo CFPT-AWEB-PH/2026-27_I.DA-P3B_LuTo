@@ -50,6 +50,28 @@ final class AuthController
         return Response::redirect('/');
     }
 
+    /** Connexion par identifiant et mot de passe (fiche remise à la personne). */
+    public static function login(Request $request): Response
+    {
+        $input = $request->input();
+        $username = mb_strtolower($input->string('username', 60));
+        $password = $input->string('password', 200);
+        // 30 échecs par adresse (une classe entière partage souvent la même) et 10 par compte, sur 10 minutes
+        $ipBucket = 'password-ip:' . $request->ip;
+        $userBucket = 'password-user:' . hash('sha256', $username);
+        RateLimiter::assertAllowed($ipBucket, 30, 600);
+        RateLimiter::assertAllowed($userBucket, 10, 600);
+        try {
+            $userId = LoginService::loginWithPassword($username, $password, $request->ip);
+        } catch (HttpException $e) {
+            RateLimiter::hit($ipBucket, 600);
+            RateLimiter::hit($userBucket, 600);
+            throw $e;
+        }
+        SessionManager::create($userId, $request);
+        return Response::json(['ok' => true]);
+    }
+
     public static function logout(Request $request): Response
     {
         $auth = $request->user();

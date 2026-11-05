@@ -71,6 +71,36 @@ final class LoginService
     }
 
     /**
+     * Connexion par identifiant et mot de passe. Ces comptes sont créés par un gestionnaire :
+     * la liste d'autorisation, faite pour les adresses e-mail, ne les concerne pas.
+     * Même réponse et même durée de calcul qu'un compte existe ou non.
+     *
+     * @return int identifiant de l'utilisateur connecté
+     */
+    public static function loginWithPassword(string $username, string $password, string $ip): int
+    {
+        $pdo = Database::connection();
+        $stmt = $pdo->prepare('SELECT id, is_active, password_hash FROM users WHERE username = ?');
+        $stmt->execute([$username]);
+        $user = $stmt->fetch();
+        $hash = $user['password_hash'] ?? null;
+        // Compte inconnu : un calcul d'empreinte équivalent, pour que le temps de réponse ne le trahisse pas
+        $valid = $hash !== null ? password_verify($password, $hash) : password_hash($password, PASSWORD_DEFAULT) === '';
+        if ($user === false || $hash === null || !$valid) {
+            Audit::log($user === false ? null : (int) $user['id'], 'auth.denied', details: ['username' => $username, 'reason' => 'bad_password'], ip: $ip);
+            throw new HttpException(401, 'Identifiant ou mot de passe incorrect.', ['code' => 'bad_credentials']);
+        }
+        $userId = (int) $user['id'];
+        if (!(int) $user['is_active']) {
+            Audit::log($userId, 'auth.denied', 'user', $userId, ['reason' => 'disabled'], $ip);
+            throw new HttpException(403, 'Ce compte est désactivé. Adressez-vous à la personne qui gère les comptes.', ['code' => 'disabled']);
+        }
+        $pdo->prepare('UPDATE users SET last_login_at = UTC_TIMESTAMP() WHERE id = ?')->execute([$userId]);
+        Audit::log($userId, 'auth.login', 'user', $userId, ['via' => 'password'], $ip);
+        return $userId;
+    }
+
+    /**
      * L'adresse BOOTSTRAP_ADMIN_EMAIL devient administrateur uniquement si aucun administrateur
      * actif n'existe encore : une fois le système initialisé, la variable n'a plus d'effet.
      */

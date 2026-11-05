@@ -271,7 +271,7 @@ final class StorageUnitController
      * @param array<string, mixed>|null $parent
      * @param array<string, int> $ids
      */
-    private static function insertNode(PDO $pdo, array $room, array $node, ?array $parent, int $order, array &$ids): int
+    public static function insertNode(PDO $pdo, array $room, array $node, ?array $parent, int $order, array &$ids): int
     {
         $values = array_intersect_key($node, array_flip(self::TREE_FIELDS));
         $in = new Input($values);

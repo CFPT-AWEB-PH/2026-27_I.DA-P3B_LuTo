@@ -1,5 +1,6 @@
 import { api } from '../api.js';
-import { h } from '../dom.js';
+import { clear, h } from '../dom.js';
+import { field } from '../ui.js';
 import { icon } from '../icons.js';
 import { appName } from '../app.js';
 
@@ -11,6 +12,37 @@ const ERRORS = {
   disabled_method: 'La connexion par lien est désactivée.',
   error: 'La connexion a échoué. Réessayez.',
 };
+
+/** Identifiant et mot de passe, tels qu'imprimés sur la fiche remise à chaque personne. */
+function passwordForm() {
+  const username = h('input', { name: 'username', required: true, maxlength: 60, autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false' });
+  const password = h('input', { name: 'password', type: 'password', required: true, maxlength: 200, autocomplete: 'current-password' });
+  const status = h('p', { class: 'alert alert-error', role: 'alert', hidden: true });
+  const submit = h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'Se connecter');
+  const form = h('form', { class: 'login-form', novalidate: true }, status, field('Identifiant', username), field('Mot de passe', password), submit,
+    h('p', { class: 'login-note' }, 'Vos accès figurent sur la fiche qui vous a été remise.'));
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!username.value.trim() || !password.value) {
+      status.hidden = false;
+      status.textContent = 'Indiquez votre identifiant et votre mot de passe.';
+      return;
+    }
+    submit.disabled = true;
+    try {
+      await api('/auth/login', { method: 'POST', body: { username: username.value.trim(), password: password.value } });
+      location.assign('/');
+    } catch (error) {
+      status.hidden = false;
+      status.textContent = error.message;
+      password.value = '';
+      password.focus();
+      submit.disabled = false;
+    }
+  });
+  requestAnimationFrame(() => username.focus({ preventScroll: true }));
+  return form;
+}
 
 export async function render(container) {
   const error = new URLSearchParams(location.search).get('error');
@@ -38,10 +70,9 @@ export async function render(container) {
   }
 
   body.removeAttribute('aria-busy');
-  body.replaceChildren(
-    config.google
-      ? h('a', { class: 'btn btn-primary btn-block', href: '/api/auth/google/start' }, 'Continuer avec Google')
-      : h('p', { class: 'alert alert-info' }, icon('info'), h('span', {}, 'La connexion avec Google sera disponible une fois le site servi en HTTPS.')),
+  clear(body,
+    passwordForm(),
+    config.google && h('a', { class: 'btn btn-block', href: '/api/auth/google/start' }, 'Continuer avec Google'),
     config.login_links && h('p', { class: 'login-note' },
       'Pas de compte Google ? Un administrateur peut vous envoyer un lien de connexion à usage unique.'),
   );

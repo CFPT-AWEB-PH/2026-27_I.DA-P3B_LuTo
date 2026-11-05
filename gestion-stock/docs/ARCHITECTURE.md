@@ -62,6 +62,7 @@ Seul `caddy` publie des ports (80/443). MariaDB et PHP ne sont joignables que de
 
 - `users`, `roles`, `permissions`, `role_permissions`, `allowlist` (adresses et domaines autorisés), `sessions`, `audit_log`
 - `rooms`, `room_walls`, `room_openings` (porte de référence et autres ouvertures)
+- `users` : e-mail (connexion par lien ou Google) ou `username` + `password_hash` (comptes importés, mot de passe géré par `users.manage`, jamais conservé en clair)
 - `floors` (niveau, hauteur) ; chaque salle porte `floor_id`, `plan_x_mm`, `plan_z_mm`, `plan_rotation_deg` : sa place sur le plan de l'étage (`NULL` : pas encore placée, le plan la range à la suite sans rien enregistrer)
 - `storage_templates` : un rangement enregistré avec ses tiroirs et ses bacs (arbre JSON), sans le stock
 - `storage_types` (armoire, tiroir, étagère, boîte, bac, case, types personnalisés)

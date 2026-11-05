@@ -263,3 +263,23 @@ Demande de l'utilisateur : Ctrl+Z, C, X ; tous les objets des photos en 3D ; plu
 - Le chevauchement de deux salles est signalé, pas interdit : deux plans peuvent se recouvrir le temps de les placer.
 - Les modèles d'objets sont des représentations simplifiées, pas des copies fidèles. Rien n'a été ajouté au catalogue : les objets des photos restent à saisir avec leurs vraies quantités.
 
+## Comptes importés depuis Excel et salle Atelier (2026-11-05)
+
+Demande de l'utilisateur : importer une liste Excel dans les utilisateurs, avec un identifiant unique et un mot de passe pour chacun, imprimables par ceux qui ont accès à la page ; les personnes ne changent pas leur mot de passe, un gestionnaire le peut. Et une vraie salle avec ses rangements et des objets.
+
+**Décisions de sécurité**
+- **Le mot de passe n'est jamais conservé en clair** : seule son empreinte est stockée (`password_hash`). Il s'affiche à la création, le temps d'imprimer. Pour réimprimer une fiche, on en génère un nouveau, ce qui invalide l'ancien et ferme les sessions de la personne.
+- **Données limitées** : le fichier est lu dans le navigateur (`spreadsheet.js`, sans dépendance : .xls BIFF8, .xlsx, .csv). Seuls nom, prénom et groupe partent au serveur ; date de naissance et sexe ne sont ni envoyés ni conservés. Le fichier réel n'est pas dans le dépôt, et les tests utilisent des personnes fictives.
+- Pas de compte administrateur par import. Limitation à 30 échecs par adresse et 10 par compte sur 10 minutes. Même réponse et même temps de calcul qu'un compte existe ou non. Aucun mot de passe dans le journal.
+- **Tant que le site est en HTTP, les mots de passe circulent en clair sur le réseau** : l'étape HTTPS, déjà prévue, devient plus importante.
+
+**Fait**
+- Migration `0007` : `users.email` facultatif, `username`, `password_hash`, `password_set_at`, `user_group`, `import_key` (groupe + nom + prénom : réimporter ne crée pas de doublon) ; types « Établi » et « Rayonnage ».
+- `POST /auth/login`, `POST /users/import` (par lots de 25), `POST /users/{id}/password` (`users.manage` seulement : aucune route ne permet de changer le sien soi-même).
+- Page Utilisateurs : import avec aperçu, filtre par groupe, mot de passe généré ou choisi, nouvelles fiches pour toute une liste. Fiches à découper, 8 par page A4 (`credentials.js`).
+- `backend/bin/seed-atelier.php` : salle « Atelier », 4 armoires, 23 tiroirs, établis, rayonnage, objets d'après les 29 photos. **Quantités estimées**, signalées sur chaque objet et dans l'historique. Refuse de tourner si la salle existe déjà.
+
+**Tests** : `users_import_test.php` (identifiants uniques, doublons, empreinte, permissions, sessions fermées, limitation). Lecteur testé sur le vrai fichier sans afficher ses données ; impression vérifiée sur un vrai PDF avec des personnes fictives.
+
+**Limites** : les étiquettes illisibles sur les photos sont approchées ; les bacs sont en grille régulière, pas à la disposition exacte de chaque tiroir. Une personne perdant sa fiche doit en demander une nouvelle.
+

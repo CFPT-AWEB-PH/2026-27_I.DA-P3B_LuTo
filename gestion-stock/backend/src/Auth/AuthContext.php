@@ -12,7 +12,7 @@ final class AuthContext
     /** @param array<string, true> $permissions */
     public function __construct(
         public readonly int $userId,
-        public readonly string $email,
+        public readonly ?string $email,
         public readonly string $displayName,
         public readonly int $roleId,
         public readonly string $roleName,

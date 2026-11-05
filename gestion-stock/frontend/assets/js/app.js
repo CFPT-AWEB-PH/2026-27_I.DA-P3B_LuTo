@@ -187,7 +187,7 @@ function userMenu(user) {
       h('span', { class: 'user-button-name' }, user.display_name || user.email), icon('chevronDown')),
     header: h('div', { class: 'popover-header' },
       h('strong', {}, user.display_name || user.email),
-      user.display_name && h('span', {}, user.email),
+      user.display_name && user.email && h('span', {}, user.email),
       h('div', {}, h('span', { class: 'badge badge-accent' }, user.role.name))),
     items: [
       canInstall() && { label: "Installer l'application", icon: 'take', onSelect: promptInstall },

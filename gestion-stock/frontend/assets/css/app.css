@@ -1416,3 +1416,26 @@ kbd { display: inline-block; padding: 1px 6px; border: 1px solid var(--line); bo
   .store-line { grid-template-columns: minmax(0, 1fr) auto; }
   .floor-tabs { max-width: none; }
 }
+
+/* ===== Connexion par mot de passe, import, fiches à imprimer ===== */
+.login-form { display: grid; gap: var(--s2); text-align: left; }
+.login-form .field { margin-bottom: var(--s1); }
+.list-actions { display: flex; justify-content: flex-end; margin-bottom: var(--s2); }
+.import-preview { max-height: 34vh; overflow-y: auto; margin-bottom: var(--s2); }
+.table-scroll { overflow-x: auto; }
+.credential-value { font-family: ui-monospace, Consolas, monospace; font-size: 1.02em; }
+.credential-table { margin-bottom: var(--s3); }
+.credential-sheet { display: none; }
+@media print {
+  body.is-printing-credentials > *:not(.credential-sheet) { display: none !important; }
+  body.is-printing-credentials { background: #fff; }
+  .credential-sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 0; color: #000; font: 11pt/1.35 system-ui, sans-serif; }
+  .credential-slip { break-inside: avoid; padding: 7mm; border: 1px dashed #777; }
+  .credential-slip header { display: flex; justify-content: space-between; gap: 4mm; margin-bottom: 3mm; font-size: 13pt; }
+  .credential-slip header span { font-size: 10pt; }
+  .credential-slip dl { display: grid; grid-template-columns: auto 1fr; gap: 1mm 4mm; margin: 0 0 3mm; }
+  .credential-slip dt { color: #444; }
+  .credential-slip dd { margin: 0; }
+  .credential-slip .credential-value { font-size: 13pt; font-weight: 700; letter-spacing: .02em; }
+  .credential-slip p { margin: 0; font-size: 8.5pt; color: #444; }
+}

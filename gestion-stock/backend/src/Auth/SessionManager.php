@@ -45,7 +45,7 @@ final class SessionManager
         $pdo = Database::connection();
         $stmt = $pdo->prepare(
             'SELECT s.id, s.csrf_token, TIMESTAMPDIFF(SECOND, s.last_seen_at, UTC_TIMESTAMP()) AS idle,
-                    u.id AS user_id, u.email, u.display_name, r.id AS role_id, r.name AS role_name
+                    u.id AS user_id, COALESCE(u.email, u.username) AS email, u.display_name, r.id AS role_id, r.name AS role_name
              FROM sessions s
              JOIN users u ON u.id = s.user_id
              JOIN roles r ON r.id = u.role_id
