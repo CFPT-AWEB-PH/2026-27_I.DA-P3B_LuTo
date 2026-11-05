@@ -245,21 +245,26 @@ export function returnDialog(loan) {
   return operationDialog(`Rendre « ${loan.item?.name ?? 'objet'} »`, () => {
     const quantity = quantityInput('quantity', loan.remaining);
     quantity.max = loan.remaining;
-    const target = unitField('Rangé à', loan.origin.unit_id ? { id: loan.origin.unit_id, path: loan.origin.path } : null,
-      "Par défaut, l'emplacement d'où l'objet a été pris.");
+    // Le serveur impose l'emplacement d'origine ; on ne choisit que si ce rangement a été supprimé
+    const hasOrigin = Boolean(loan.origin.unit_id);
+    const target = hasOrigin ? null : unitField('Rangé à', null, `Le rangement d'origine n'existe plus (${loan.origin.path}).`);
     const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'État, remarque… (facultatif)' });
     return {
       label: 'Enregistrer le retour',
       body: [
         h('div', { class: 'dialog-lead' },
+          hasOrigin && locationLabel(loan.origin.path),
           h('div', { class: 'dialog-lead-row' }, 'Reste à rendre', h('strong', {}, formatQuantity(loan.remaining, unit)))),
         field(`Quantité rendue (${unit})`, stepper(quantity), 'Un retour partiel garde l’emprunt ouvert pour le reste.'),
-        target.element,
+        target?.element,
         field('Commentaire', comment),
       ],
       submit: async () => {
         const body = { quantity: parseQuantity(quantity), comment: comment.value };
-        if (target.value && target.value.id !== loan.origin.unit_id) body.unit_id = target.value.id;
+        if (target) {
+          if (!target.value) throw Object.assign(new Error('Choisissez où ranger cet objet.'), { fields: { unit_id: 'Choisissez un emplacement.' } });
+          body.unit_id = target.value.id;
+        }
         const r = await api(`/loans/${loan.id}/return`, { method: 'POST', body });
         toast(r.status === 'closed' ? 'Retour enregistré. Emprunt terminé.' : `Retour enregistré. Il reste ${formatQuantity(r.remaining_to_return, unit)} à rendre.`);
         return r;

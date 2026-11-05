@@ -349,3 +349,11 @@ Demande de l'utilisateur : audit complet et correction. Modèle de menace et ris
 **Déployé** sur le Pi (version 20261105-144243-800dfd6) : conteneurs sains, base à jour. `run-tests.sh` : toutes les suites passent, sauf 3 vérifications de `stock_test.php` qui supposent un catalogue vide : le vrai catalogue de l'atelier compte 101 objets avec « résistance » (1101 trouvés au lieu de 1000) et remplit les premiers résultats de « armoire A » et « ARM-A ». La recherche n'a pas été modifiée, et ces vérifications passent sur une base neuve. Sur le Pi : seuls 3 comptes ont des droits d'administration, tous attribués par le compte 1 ; le rôle par défaut n'en a aucun.
 
 **Limites** : HTTPS essayé seulement avec un certificat local ; le site reste en HTTP. Risques restants et décisions à prendre : `docs/SECURITE.md`.
+
+## Retour à l'emplacement d'origine (2026-11-05)
+
+Demande de l'utilisateur : un objet emprunté ne peut être rendu que là où il était.
+
+- Serveur (`StockService::giveBack`) : un autre emplacement est refusé (422), pour tous les rôles. Pour ranger un objet ailleurs, on le rend, puis on le déplace (`stock.move`).
+- Fenêtre de retour : l'emplacement d'origine est affiché, sans choix. Un choix n'apparaît que si le rangement d'origine a été supprimé.
+- Retours déjà enregistrés au mauvais endroit : non modifiés (ex. 3 Sense HAT dans « Visserie M2 à M5 », le 2026-11-05).

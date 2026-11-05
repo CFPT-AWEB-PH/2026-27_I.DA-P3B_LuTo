@@ -148,8 +148,15 @@ check('Retour partiel de 1,5', $r['status'] === 201 && ($r['body']['remaining_to
 $loans = $student->request('GET', '/api/loans')['body']['loans'] ?? [];
 check('Emprunt en cours : 2,5 à rendre', ($loans[0]['remaining'] ?? null) == 2.5 && $loans[0]['status'] === 'open');
 check('Stock après retour partiel : 7,5', $admin->request('GET', "/api/items/{$itemId}")['body']['item']['total_quantity'] == 7.5);
-$r = $student->request('POST', "/api/loans/{$loanId}/return", ['quantity' => 2.5, 'unit_id' => $shelfUnit]);
-check('Retour du reste dans un autre rangement', $r['status'] === 201 && $r['body']['status'] === 'closed');
+status('Retour dans un autre rangement refusé', $student->request('POST', "/api/loans/{$loanId}/return", ['quantity' => 2.5, 'unit_id' => $shelfUnit]), 422);
+status('Retour refusé aussi pour un gestionnaire', $admin->request('POST', "/api/loans/{$loanId}/return", ['quantity' => 2.5, 'unit_id' => $shelfUnit]), 422);
+$r = $student->request('POST', "/api/loans/{$loanId}/return", ['quantity' => 2.5]);
+check('Retour du reste à l\'emplacement d\'origine', $r['status'] === 201 && $r['body']['status'] === 'closed');
+$goneLoan = $admin->request('POST', '/api/stock/take', ['item_id' => $itemId, 'unit_id' => $compartment, 'quantity' => 1])['body']['loan_id'] ?? 0;
+Database::connection()->prepare('UPDATE loans SET origin_unit_id = NULL WHERE id = ?')->execute([$goneLoan]);
+status('Rangement d\'origine supprimé : emplacement à choisir', $admin->request('POST', "/api/loans/{$goneLoan}/return", ['quantity' => 1]), 422);
+status('Rangement d\'origine supprimé : autre emplacement accepté', $admin->request('POST', "/api/loans/{$goneLoan}/return", ['quantity' => 1, 'unit_id' => $compartment]), 201);
+status('Ranger ailleurs : par un déplacement', $admin->request('POST', '/api/stock/move', ['item_id' => $itemId, 'from_unit_id' => $compartment, 'to_unit_id' => $shelfUnit, 'quantity' => 2.5]), 201);
 status('Retour sur un emprunt clôturé', $student->request('POST', "/api/loans/{$loanId}/return", ['quantity' => 1]), 409);
 $item = $admin->request('GET', "/api/items/{$itemId}")['body']['item'];
 check('Stock final 10 réparti sur 2 emplacements', $item['total_quantity'] == 10 && count($item['locations']) === 2 && $item['on_loan'] == 0);

@@ -44,7 +44,8 @@ final class StockService
     }
 
     /**
-     * Retour (partiel ou total) d'un emprunt, dans son rangement d'origine ou un autre.
+     * Retour (partiel ou total) d'un emprunt, toujours dans son rangement d'origine : le stock reste là
+     * où on s'attend à le trouver. Un autre emplacement n'est choisi que si ce rangement n'existe plus.
      *
      * @return array{movement_id: int, remaining_to_return: string, status: string}
      */
@@ -64,7 +65,11 @@ final class StockService
             if ($loan['status'] !== 'open') {
                 throw new HttpException(409, 'Cet emprunt est déjà clôturé.');
             }
-            $targetId = $unitId ?? ($loan['origin_unit_id'] === null ? null : (int) $loan['origin_unit_id']);
+            $originId = $loan['origin_unit_id'] === null ? null : (int) $loan['origin_unit_id'];
+            if ($originId !== null && $unitId !== null && $unitId !== $originId) {
+                Input::fail('unit_id', "Cet objet se rend à l'emplacement d'où il a été pris : {$loan['origin_path']}.");
+            }
+            $targetId = $originId ?? $unitId;
             if ($targetId === null) {
                 Input::fail('unit_id', "Le rangement d'origine n'existe plus : choisissez un emplacement de retour.");
             }
