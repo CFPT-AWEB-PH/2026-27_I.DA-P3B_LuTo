@@ -215,3 +215,96 @@ export function findFreeSpot(room, units, parent, size) {
   }
   return null;
 }
+
+/**
+ * Pourquoi cet emplacement est impossible (texte pour l'utilisateur), ou null s'il convient.
+ * Mêmes règles que le serveur (SpaceValidator), pour réagir en direct ; le serveur reste seul juge.
+ */
+export function unitProblem(room, units, parent, c) {
+  const fmt = (mm) => formatLength(mm, room.display_unit);
+  if (![c.width_mm, c.depth_mm, c.height_mm].every((v) => Number.isFinite(v) && v >= 1)) return 'Indiquez les trois dimensions.';
+  if (![c.pos_x_mm, c.pos_y_mm, c.pos_z_mm].every(Number.isFinite)) return 'Indiquez la position.';
+  if (Math.max(c.width_mm, c.depth_mm, c.height_mm) > 50000) return `Dimension trop grande : 50 m au maximum (${fmt(Math.max(c.width_mm, c.depth_mm, c.height_mm))} indiqués).`;
+  if (c.shape !== 'divider' && !interior(c.shape, c.width_mm, c.depth_mm, c.height_mm, c.panel_mm)) return 'Parois trop épaisses : il ne reste aucun volume intérieur.';
+
+  if (!parent) {
+    const corners = unitFootprint(c);
+    if (!containsPolygon(room.outline, corners)) return 'Le meuble sort de la salle.';
+    if (c.pos_y_mm < 0) return 'Le meuble passe sous le sol.';
+    if (c.pos_y_mm + c.height_mm > room.height_mm) return `Plus haut que la salle (${fmt(room.height_mm)}).`;
+    const other = units.find((o) => o.parent_id === null && o.id !== c.id
+      && convexOverlap(corners, unitFootprint(o))
+      && rangesOverlap(c.pos_y_mm, c.pos_y_mm + c.height_mm, o.pos_y_mm, o.pos_y_mm + o.height_mm));
+    return other ? `Chevauche « ${other.name} ».` : null;
+  }
+
+  const inside = unitInterior(parent);
+  if (!inside) return `« ${parent.name} » n'a pas de volume intérieur.`;
+  if (c.pos_x_mm < 0 || c.pos_y_mm < 0 || c.pos_z_mm < 0) return `Sort de « ${parent.name} ».`;
+  for (const [size, pos, room2, word] of [['width_mm', 'pos_x_mm', 'width', 'en largeur'], ['height_mm', 'pos_y_mm', 'height', 'en hauteur'], ['depth_mm', 'pos_z_mm', 'depth', 'en profondeur']]) {
+    const excess = c[pos] + c[size] - inside[room2];
+    if (excess > 0) return `Dépasse de « ${parent.name} » ${word} de ${fmt(excess)} (${fmt(inside[room2])} disponibles).`;
+  }
+  const other = units.find((o) => o.parent_id === parent.id && o.id !== c.id
+    && rangesOverlap(c.pos_x_mm, c.pos_x_mm + c.width_mm, o.pos_x_mm, o.pos_x_mm + o.width_mm)
+    && rangesOverlap(c.pos_y_mm, c.pos_y_mm + c.height_mm, o.pos_y_mm, o.pos_y_mm + o.height_mm)
+    && rangesOverlap(c.pos_z_mm, c.pos_z_mm + c.depth_mm, o.pos_z_mm, o.pos_z_mm + o.depth_mm));
+  return other ? `Chevauche « ${other.name} ».` : null;
+}
+
+/** Aperçu de la grille que créera le serveur (StorageUnitController::generate). */
+export function gridLayout(parent, type, rows, columns, gap, labels = []) {
+  const inside = unitInterior(parent);
+  if (!inside) return [];
+  const flat = ['drawer', 'box', 'bin'].includes(parent.shape);
+  const width = Math.floor((inside.width - (columns - 1) * gap) / columns);
+  const depth = flat ? Math.floor((inside.depth - (rows - 1) * gap) / rows) : inside.depth;
+  const height = flat ? Math.min(type.default_height_mm, inside.height) : Math.floor((inside.height - (rows - 1) * gap) / rows);
+  if (width < 10 || height < 10 || depth < 10) return [];
+  const panel = Math.min(type.default_panel_mm, Math.floor(Math.min(width, depth, height) / 4));
+  const drafts = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < columns; c++) {
+      const number = columns === 1 ? r + 1 : rows === 1 ? c + 1 : `${r + 1}.${c + 1}`;
+      drafts.push({
+        id: -100 - drafts.length, parent_id: parent.id, shape: type.shape, name: `${type.name} ${number}`, label: (labels[drafts.length] ?? '').trim(),
+        width_mm: width, depth_mm: depth, height_mm: height, panel_mm: panel, color: type.default_color, rotation_deg: 0,
+        pos_x_mm: c * (width + gap), pos_y_mm: flat ? 0 : (rows - 1 - r) * (height + gap), pos_z_mm: flat ? r * (depth + gap) : 0,
+      });
+    }
+  }
+  return drafts;
+}
+
+/** Aperçu d'une pile de rangements nommés, de haut en bas. */
+export function stackLayout(parent, type, entries, gap) {
+  const inside = unitInterior(parent);
+  if (!inside) return [];
+  let top = inside.height;
+  return entries.map((entry, i) => {
+    top -= entry.height_mm;
+    const draft = {
+      id: -100 - i, parent_id: parent.id, shape: type.shape, name: entry.name, label: '',
+      width_mm: inside.width, depth_mm: inside.depth, height_mm: entry.height_mm, rotation_deg: 0,
+      panel_mm: Math.min(type.default_panel_mm, Math.floor(Math.min(inside.width, inside.depth, entry.height_mm) / 4)),
+      color: type.default_color, pos_x_mm: 0, pos_y_mm: top, pos_z_mm: 0,
+    };
+    top -= gap;
+    return draft;
+  });
+}
+
+/**
+ * Aimantation : ramène une position sur un bord voisin (mur, parent, autre rangement) si elle en est proche.
+ * Sur chaque axe, teste les deux faces du rangement contre les repères fournis.
+ */
+export function snapToEdges(position, size, edges, threshold) {
+  let best = null;
+  for (const edge of edges) {
+    for (const candidate of [edge, edge - size]) {
+      const distance = Math.abs(candidate - position);
+      if (distance <= threshold && (best === null || distance < Math.abs(best - position))) best = candidate;
+    }
+  }
+  return best ?? position;
+}

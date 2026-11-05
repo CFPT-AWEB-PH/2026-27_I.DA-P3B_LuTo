@@ -5,6 +5,7 @@ import { h } from '../dom.js';
 import { busy, confirmDialog, emptyState, field, openDialog, showError, toast } from '../ui.js';
 import { icon } from '../icons.js';
 import { formatLength, fromDisplay, toDisplay, UNITS, wallLength } from '../spatial.js';
+import { roomPreview } from '../three/preview.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -63,7 +64,7 @@ function drawPreview(target, outline, door) {
 }
 
 /** Création ou modification d'une salle. Résout avec la réponse de l'API, ou undefined si annulé. */
-export function openRoomDialog(room = null) {
+export function openRoomDialog(room = null, context = null) {
   return openDialog(room ? `Paramètres de « ${room.name} »` : 'Nouvelle salle', (close) => {
     let unit = room?.display_unit ?? 'cm';
     const outline = room?.outline ?? [[0, 0], [6000, 0], [6000, 8000], [0, 8000]];
@@ -91,6 +92,7 @@ export function openRoomDialog(room = null) {
     const outlineError = h('input', { type: 'hidden', name: 'outline' });
     const pointsBody = h('tbody');
     const preview = svg('svg', { class: 'plan-preview', role: 'img', 'aria-label': 'Aperçu du plan de la salle' });
+    const live = roomPreview();
 
     const pointRow = (x, z, index) => {
       const fixedX = index === 0;
@@ -151,6 +153,14 @@ export function openRoomDialog(room = null) {
       const pts = readOutline();
       const door = { offset: fromDisplay(doorOffset.value, unit), width: fromDisplay(doorWidth.value, unit) };
       drawPreview(preview, pts, door);
+      // Aperçu 3D : la salle telle qu'elle sera, avec ses ouvertures et meubles existants
+      const values = [height, wall, doorOffset, doorWidth, doorHeight].map((input) => fromDisplay(input.value, unit));
+      if (pts.flat().every(Number.isFinite) && values.every(Number.isFinite) && pts.length >= 3 && values[0] > 0) {
+        live.show({
+          ...(room ?? {}), outline: pts, height_mm: values[0], wall_thickness_mm: values[1], door_offset_mm: values[2], door_width_mm: values[3], door_height_mm: values[4],
+          display_unit: unit, floor_color: floorColor.value, floor_material: material.value, wall_color: wallColor.value,
+        }, context?.openings ?? [], context?.units ?? []);
+      }
       if (Number.isFinite(pts[1]?.[0])) {
         doorInfo.textContent = `Mur de la porte : ${formatLength(wallLength(pts, 0), unit)}. La porte est mesurée depuis l'origine (coin gauche, vu de l'intérieur).`;
       }
@@ -178,7 +188,8 @@ export function openRoomDialog(room = null) {
         h('legend', {}, 'Forme et dimensions intérieures'),
         modeSwitch,
         h('div', { class: 'field' }, outlineError),
-        h('div', { class: 'room-shape' }, h('div', {}, rectFields, customFields), preview)),
+        h('div', { class: 'room-shape' }, h('div', {}, rectFields, customFields), preview),
+        live.element),
       h('fieldset', { class: 'form-section' },
         h('legend', {}, 'Porte de référence (origine du repère)'),
         doorInfo,
@@ -223,6 +234,7 @@ const KIND_LABELS = { door: 'Porte', window: 'Fenêtre', opening: 'Passage' };
 /** Gestion des ouvertures supplémentaires. onChange reçoit la nouvelle charge utile de la salle. */
 export function openOpeningsDialog(payload, onChange) {
   const { room } = payload;
+  const live = roomPreview();
   let openings = payload.openings;
   const unit = room.display_unit;
 
@@ -230,7 +242,9 @@ export function openOpeningsDialog(payload, onChange) {
     const list = h('div', { class: 'openings-list' });
     const formSlot = h('div');
 
+    const show = (draft = null) => live.show(room, draft ? [...openings.filter((o) => o.id !== draft.id), draft] : openings, payload.units ?? []);
     const renderList = () => {
+      show();
       list.replaceChildren(
         h('p', { class: 'field-hint' }, `La porte de référence est sur le mur 1, à ${formatLength(room.door_offset_mm, unit)} de l'origine. Elle se règle dans les paramètres de la salle.`),
         openings.length === 0 ? emptyState('Ajoutez fenêtres, portes et passages pour un rendu fidèle.', { iconName: 'door' }) : h('ul', { class: 'plain-list' }, openings.map((o) => h('li', { class: 'list-row' },
@@ -271,6 +285,15 @@ export function openOpeningsDialog(payload, onChange) {
           h('button', { class: 'btn', type: 'button', onclick: () => formSlot.replaceChildren() }, 'Annuler'),
           h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, 'Enregistrer l’ouverture'))),
       );
+      const drawDraft = () => {
+        const d = {
+          id: o?.id ?? -1, room_id: room.id, kind: kind.value, name: oname.value, wall_index: Number(wallSelect.value),
+          offset_mm: fromDisplay(offset.value, unit), width_mm: fromDisplay(width.value, unit), height_mm: fromDisplay(oheight.value, unit), sill_mm: fromDisplay(sill.value, unit),
+        };
+        if ([d.offset_mm, d.width_mm, d.height_mm, d.sill_mm].every(Number.isFinite) && d.width_mm > 0 && d.height_mm > 0) show(d);
+      };
+      form.addEventListener('input', drawDraft);
+      drawDraft();
       form.addEventListener('submit', (event) => {
         event.preventDefault();
         const body = {
@@ -293,7 +316,7 @@ export function openOpeningsDialog(payload, onChange) {
     };
 
     renderList();
-    return h('div', { class: 'dialog-body' }, list, formSlot,
+    return h('div', { class: 'dialog-body' }, live.element, list, formSlot,
       h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => close() }, 'Fermer')));
   }, { wide: true });
 }

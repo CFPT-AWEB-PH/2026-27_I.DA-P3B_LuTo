@@ -3,6 +3,7 @@ import { append, clear, h } from '../dom.js';
 import { busy, checkbox, confirmDialog, errorState, field, openDialog, pageHeader, skeleton, showError, toast } from '../ui.js';
 import { icon } from '../icons.js';
 import { SHAPE_LABELS } from '../spatial.js';
+import { unitPreview } from '../three/preview.js';
 
 export function render(view) {
   const list = h('div', { class: 'list-container' }, skeleton('row', 4));
@@ -56,16 +57,24 @@ function edit(type) {
     const color = h('input', { name: 'default_color', type: 'color', value: type?.default_color ?? '#b08d5c' });
     const contain = h('input', { type: 'checkbox', checked: type?.can_contain_units ?? true });
     const hold = h('input', { type: 'checkbox', checked: type?.can_hold_items ?? true });
+    const live = unitPreview();
+    const drawPreview = () => {
+      const size = [w, d, hh].map((input) => Number(input.value));
+      if (size.every((v) => v > 0)) live.show({ shape: shape.value, width_mm: size[0], depth_mm: size[1], height_mm: size[2], panel_mm: Number(p.value) || 0, color: color.value, label: name.value });
+    };
 
     const form = h('form', { class: 'dialog-body', novalidate: true },
       h('div', { class: 'form-grid' }, field('Nom', name), field('Forme', shape)),
       h('div', { class: 'form-grid form-grid-4' }, field('Largeur (mm)', w), field('Profondeur (mm)', d), field('Hauteur (mm)', hh), field('Parois (mm)', p)),
       field('Couleur par défaut', color),
+      live.element,
       checkbox(contain, 'Peut contenir d’autres rangements', 'Ex. une armoire contient des tiroirs.'),
       checkbox(hold, 'Peut recevoir des objets', 'Décochez pour un meuble qui ne sert que de support.'),
       h('div', { class: 'dialog-actions' },
         h('button', { class: 'btn', type: 'button', onclick: () => close(false) }, 'Annuler'),
         h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, type ? 'Enregistrer le type' : 'Créer le type'))));
+    form.addEventListener('input', drawPreview);
+    drawPreview();
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const body = {

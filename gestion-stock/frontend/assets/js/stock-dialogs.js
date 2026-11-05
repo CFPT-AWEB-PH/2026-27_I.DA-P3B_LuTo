@@ -2,7 +2,8 @@
 // création ou modification d'un objet. Toutes les vérifications sont refaites par le serveur.
 
 import { api } from './api.js';
-import { VISUALS } from './visuals.js';
+import { resolveVisual, VISUALS } from './visuals.js';
+import { itemPreview } from './three/preview.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
 import { busy, checkbox, emptyState, field, locationLabel, openDialog, showError, skeleton, stepper, toast } from './ui.js';
@@ -274,6 +275,14 @@ export async function itemDialog(item = null, { canAddStock = false, location = 
     const visual = h('select', { name: 'visual' }, Object.entries(VISUALS).map(([v, t]) => h('option', { value: v, selected: v === (item?.visual ?? 'auto') }, t)));
     const useColor = h('input', { type: 'checkbox', checked: Boolean(item?.visual_color) });
     const visualColor = h('input', { name: 'visual_color', type: 'color', value: item?.visual_color ?? '#8b909a' });
+    const live = itemPreview();
+    const drawPreview = () => {
+      const entry = { name: name.value, visual: visual.value, category: category.selectedOptions[0]?.textContent ?? '' };
+      live.show({ ...entry, visual_color: useColor.checked ? visualColor.value : null, unit: unit.value, resolved: resolveVisual(entry) });
+    };
+    for (const input of [name, visual, category, unit, useColor, visualColor]) input.addEventListener(input === name ? 'input' : 'change', drawPreview);
+    visualColor.addEventListener('input', drawPreview);
+    drawPreview();
     const initialQuantity = h('input', { name: 'initial_stock', type: 'number', step: 'any', min: 0, placeholder: '0' });
     const initialUnit = !item && canAddStock ? unitField('Emplacement initial', location) : null;
 
@@ -305,6 +314,7 @@ export async function itemDialog(item = null, { canAddStock = false, location = 
         h('div', { class: 'form-grid' },
           field('Apparence en 3D', visual, 'Les cotes du nom sont utilisées : « Vis M3 x 12 ».'),
           field('Couleur en 3D', visualColor)),
+        live.element,
         checkbox(useColor, 'Utiliser cette couleur', 'Sinon, la couleur habituelle de ce type d’objet.'),
         custom,
         initialUnit && h('fieldset', { class: 'form-section' }, h('legend', {}, 'Stock de départ (facultatif)'),

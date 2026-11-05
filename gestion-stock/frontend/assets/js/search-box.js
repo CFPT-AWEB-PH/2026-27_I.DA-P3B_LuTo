@@ -105,7 +105,7 @@ export function searchBox(navigate, { id = 'global', variant = 'bar', placeholde
 // Raccourci : le champ de l'accueil s'il est affiché, sinon celui de la barre supérieure
 document.addEventListener('keydown', (event) => {
   const typing = event.target.closest?.('input, textarea, select, [contenteditable]');
-  if (!((event.key === '/' && !typing) || (event.key.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey)))) return;
+  if (!((event.key === '/' && !typing) || (event.key?.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey)))) return;
   if (document.querySelector('dialog[open]')) return;
   const target = document.querySelector('.home-search-input') ?? document.querySelector('.global-search-input');
   if (!target) return;

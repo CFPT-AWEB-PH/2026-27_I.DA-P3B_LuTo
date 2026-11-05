@@ -215,3 +215,21 @@ Demande de l'utilisateur, photos de l'atelier à l'appui : voir l'armoire, ses t
 **Tests** : `visual_test.php` (pile, grille, apparence, contenu selon les permissions). Rendu vérifié sur le banc local avec une armoire reprenant les intitulés des photos (données fictives, pas dans la base réelle).
 
 **Pas encore fait** : disposition libre des bacs à la souris dans un tiroir (bacs de tailles variées) ; panneau de propriétés seulement pour le contenu d'un bac, pas de clic sur un objet précis. Rendu non essayé sur un vrai téléphone.
+
+## Gizmo 3D et aperçu en direct (2026-11-05)
+
+Demande de l'utilisateur, après avoir tapé `100` dans une salle réglée en mètres (refus incompréhensible « Valeur entre 1 et 50000 ») : manipuler en 3D et voir ce qu'on ajoute.
+
+**Fait**
+- Gizmo (`TransformControls` de Three.js) sur le rangement sélectionné : déplacer (W), pivoter (E, meubles seulement), taille (R), sélection seule (Q). Enregistré au relâchement ; refus du serveur : retour à l'emplacement d'origine.
+- Aimantation à 12 mm aux murs, aux bords du parent et aux voisins ; pas de 5 mm, 5° en rotation. Contour rouge, cotes et message d'erreur en direct pendant le glisser. Le déplacement s'aimante seulement pour les meubles à angle droit.
+- Ajout et modification dans un **panneau latéral** au lieu d'une fenêtre : le rangement apparaît dans la scène, le formulaire et le gizmo restent synchronisés, le bouton est bloqué tant que l'emplacement est impossible, avec la raison (mêmes règles que le serveur, qui reste seul juge).
+- Unité modifiable dans le formulaire, messages dans cette unité, bouton « Ces cotes sont en cm » si les valeurs dépassent la salle.
+- « Remplir » un rangement : aperçu en direct des tiroirs ou de la grille de bacs.
+- Aperçus 3D dans les fenêtres : salle, ouvertures, objet, type de rangement.
+- Corrigé : erreur `toLowerCase` de la recherche sur un événement clavier sans touche (autoremplissage).
+
+**Limites**
+- La taille s'applique des deux côtés du centre (comportement du gizmo). Rien ne descend sous le sol, mais un côté peut dépasser : le contour passe alors au rouge.
+- Pendant un glisser en taille, le contenu s'étire jusqu'au relâchement.
+- Vérifié sur le banc local avec de vrais glissers à la souris, sans CSP (non servie par le banc) ; sur le serveur, tests d'API et PWA. Gizmo tactile non essayé sur un vrai téléphone.

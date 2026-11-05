@@ -6,7 +6,7 @@ import { busy, confirmDialog, emptyState, errorState, field, locationLabel, open
 import { icon } from '../icons.js';
 import { setTitle } from '../app.js';
 import {
-  findFreeSpot, formatLength, fromDisplay, rotateAroundCenter, SHAPE_LABELS, toDisplay, unitInterior, UNITS,
+  findFreeSpot, formatLength, fromDisplay, gridLayout, rotateAroundCenter, SHAPE_LABELS, stackLayout, toDisplay, unitInterior, unitProblem, UNITS,
 } from '../spatial.js';
 import { openOpeningsDialog, openRoomDialog } from './room-form.js';
 import { addDialog, formatQuantity, itemDialog, moveDialog, pickItem, takeDialog } from '../stock-dialogs.js';
@@ -23,7 +23,7 @@ export function dispose() {
 export async function render(view, session, params) {
   const roomId = Number(params.id);
   const can = (p) => session.can(p);
-  const state = { payload: null, types: [], selectedId: null, expanded: new Set(), busy: false };
+  const state = { payload: null, types: [], selectedId: null, expanded: new Set(), busy: false, panel: null };
 
   const title = h('h1', { class: 'editor-title' }, 'Chargement…');
   const tree = h('nav', { class: 'editor-tree', 'aria-label': 'Rangements de la salle' });
@@ -36,7 +36,19 @@ export async function render(view, session, params) {
   const pressed = (button, on) => button.setAttribute('aria-pressed', String(on));
   const label = (text) => h('span', { class: 'btn-label' }, text);
   const dimsButton = h('button', { class: 'btn btn-small', type: 'button', 'aria-pressed': 'false', title: 'Afficher les cotes' }, icon('ruler'), label('Cotes'));
-  const moveButton = can('furniture.edit') ? h('button', { class: 'btn btn-small', type: 'button', 'aria-pressed': 'false', title: 'Faire glisser le meuble sélectionné au sol (Maj : pas de 10 cm)' }, icon('move'), label('Déplacer')) : null;
+  // Modes du gizmo : W, E, R au clavier dans la vue, comme dans les logiciels de 3D
+  const canEditSomething = can('furniture.edit') || can('storage.edit');
+  const GIZMO_MODES = [['none', 'Sélection', 'eye', 'Sélection seule, sans poignées (Q)'], ['translate', 'Déplacer', 'move', 'Déplacer avec les flèches du gizmo (W)'], ['rotate', 'Pivoter', 'rotateRight', 'Pivoter autour du centre (E)'], ['scale', 'Taille', 'ruler', 'Changer les dimensions (R)']];
+  const gizmoButtons = GIZMO_MODES.map(([mode, text, iconName, tip]) => h('button', {
+    class: 'segmented-option', type: 'button', role: 'radio', title: tip, 'aria-checked': String(mode === 'translate'),
+    onclick: () => setGizmoMode(mode),
+  }, icon(iconName), label(text)));
+  const gizmoSwitch = canEditSomething ? h('div', { class: 'segmented gizmo-switch', role: 'radiogroup', 'aria-label': 'Mode du gizmo' }, gizmoButtons) : null;
+  function setGizmoMode(mode) {
+    GIZMO_MODES.forEach(([m], i) => gizmoButtons[i].setAttribute('aria-checked', String(m === mode)));
+    scene?.setGizmoMode(mode);
+  }
+  const hud = h('div', { class: 'gizmo-hud', hidden: true, role: 'status' });
   const colorSelect = can('stock.view') ? h('select', { class: 'select-small', 'aria-label': 'Couleurs des rangements' },
     h('option', { value: 'original' }, "Couleurs d'origine"), h('option', { value: 'fill' }, 'Couleurs de remplissage')) : null;
   const legend = h('div', { class: 'fill-legend', hidden: true });
@@ -54,14 +66,14 @@ export async function render(view, session, params) {
       h('div', { class: 'toolbar-group', role: 'group', 'aria-label': 'Points de vue' },
         h('div', { class: 'segmented' }, preset('iso', 'Vue 3D'), preset('top', 'Dessus'), preset('door', 'Porte'))),
       h('span', { class: 'toolbar-divider', 'aria-hidden': 'true' }),
-      h('div', { class: 'toolbar-group', role: 'group', 'aria-label': 'Affichage' }, dimsButton, wallSelect, colorSelect, moveButton,
+      h('div', { class: 'toolbar-group', role: 'group', 'aria-label': 'Affichage' }, gizmoSwitch, dimsButton, wallSelect, colorSelect,
         h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Réafficher les éléments masqués', onclick: () => { scene?.showAll(); renderTree(); renderDetails(); } }, icon('eye'), label('Tout afficher'))),
       h('div', { class: 'toolbar-group toolbar-end' },
         can('rooms.edit') && h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Fenêtres, portes et passages', onclick: () => openOpenings() }, icon('door'), label('Ouvertures')),
         can('rooms.edit') && h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Dimensions, porte et apparence', onclick: () => openSettings() }, icon('sliders'), label('Salle')),
         can('furniture.edit') && h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: () => editUnit(null, null) }, icon('plus'), 'Meuble'))),
     ),
-    tree, h('div', { class: 'editor-canvas' }, stage, hint, legend), details,
+    tree, h('div', { class: 'editor-canvas' }, stage, hint, legend, hud), details,
   ));
 
   // ===== Données =====
@@ -113,9 +125,25 @@ export async function render(view, session, params) {
 
   try {
     scene = new (await import('../three/room-scene.js')).RoomScene(stage, {
-      onSelect: (id) => select(id),
-      onMove: (unit, changes) => patchUnit(unit, changes),
+      onSelect: (id) => { if (!state.panel) select(id); },
+      canEdit: (u) => can(u.parent_id === null ? 'furniture.edit' : 'storage.edit'),
+      onGizmoChange: (c, problem, isDraft) => {
+        showHud(c, problem);
+        if (isDraft) state.panel?.onGizmo?.(c, false);
+      },
+      onGizmoEnd: async (unit, c, isDraft) => {
+        hud.hidden = true;
+        if (isDraft) return state.panel?.onGizmo?.(c, true);
+        const changes = {};
+        for (const key of ['pos_x_mm', 'pos_y_mm', 'pos_z_mm', 'rotation_deg', 'width_mm', 'depth_mm', 'height_mm']) {
+          if (c[key] !== unit[key]) changes[key] = c[key];
+        }
+        if (Object.keys(changes).length === 0) return scene?.rebuildUnits();
+        // Refus du serveur (chevauchement…) : le rangement revient à sa place
+        if (!await patchUnit(unit, changes)) scene?.rebuildUnits();
+      },
       onContextMenu: (unit, point) => {
+        if (state.panel) return;
         if (unit) select(unit.id);
         openContextMenu(unit ? unitMenuItems(unit) : roomMenuItems(), { x: point.clientX, y: point.clientY, label: unit ? `Actions pour ${unit.name}` : 'Actions de la salle' });
       },
@@ -162,17 +190,23 @@ export async function render(view, session, params) {
       return h('span', { class: 'legend-item' }, dot, t);
     }));
   }
-  const setMoveMode = (on) => {
-    if (moveButton) pressed(moveButton, on);
-    scene?.setMoveMode(on);
-  };
-  moveButton?.addEventListener('click', () => setMoveMode(moveButton.getAttribute('aria-pressed') !== 'true'));
+  function showHud(c, problem) {
+    const unit = unitLabel();
+    hud.hidden = false;
+    hud.classList.toggle('is-invalid', Boolean(problem));
+    const parts = [`${formatLength(c.width_mm, unit)} × ${formatLength(c.depth_mm, unit)} × ${formatLength(c.height_mm, unit)}`,
+      `X ${formatLength(c.pos_x_mm, unit)}  Y ${formatLength(c.pos_y_mm, unit)}  Z ${formatLength(c.pos_z_mm, unit)}`];
+    if (c.parent_id === null || c.parent_id === undefined) parts.push(`${c.rotation_deg}°`);
+    clear(hud, h('span', {}, parts.join('   ·   ')), problem && h('strong', {}, problem));
+  }
 
   // Flèches : décalage de 10 mm (Maj : 100 mm) ; Pg préc./suiv. : hauteur ; Échap : désélection
   stage.addEventListener('keydown', (event) => {
     const u = unitById(state.selectedId);
-    if (event.key === 'Escape') return select(null);
-    if (!u || !can(u.parent_id === null ? 'furniture.edit' : 'storage.edit')) return;
+    if (event.key === 'Escape') return state.panel ? state.panel.cancel() : select(null);
+    const modes = { q: 'none', w: 'translate', e: 'rotate', r: 'scale' };
+    if (gizmoSwitch && modes[event.key?.toLowerCase()] && !event.ctrlKey && !event.metaKey) { event.preventDefault(); return setGizmoMode(modes[event.key.toLowerCase()]); }
+    if (state.panel || !u || !can(u.parent_id === null ? 'furniture.edit' : 'storage.edit')) return;
     const step = event.shiftKey ? 100 : 10;
     const moves = { ArrowLeft: ['pos_x_mm', -step], ArrowRight: ['pos_x_mm', step], ArrowUp: ['pos_z_mm', -step], ArrowDown: ['pos_z_mm', step], PageUp: ['pos_y_mm', step], PageDown: ['pos_y_mm', -step] };
     const move = moves[event.key];
@@ -224,7 +258,7 @@ export async function render(view, session, params) {
   // ===== Panneau de propriétés =====
 
   function renderDetails() {
-    if (!state.payload) return;
+    if (!state.payload || state.panel) return;
     const unit = unitLabel();
     const u = unitById(state.selectedId);
     if (!u) {
@@ -392,10 +426,9 @@ export async function render(view, session, params) {
       { separator: true },
       editRight && { label: furniture ? 'Modifier les dimensions…' : 'Modifier…', icon: 'edit', onSelect: () => editUnit(u, parent) },
       editRight && !furniture && { label: 'Renommer…', icon: 'tag', onSelect: () => rename(u) },
-      furniture && can('furniture.edit') && moveButton && { label: 'Déplacer dans la salle', icon: 'move', onSelect: () => {
+      furniture && can('furniture.edit') && { label: 'Déplacer dans la salle', icon: 'move', onSelect: () => {
         select(u.id);
-        setMoveMode(true);
-        toast('Faites glisser le meuble au sol. Maj : pas de 10 cm.', 'info');
+        setGizmoMode('translate');
       } },
       canNest && furniture && { label: 'Ajouter un tiroir…', icon: 'drawer', onSelect: nest('drawer') },
       canNest && furniture && { label: 'Ajouter une étagère…', icon: 'layers', onSelect: nest('shelf') },
@@ -450,7 +483,7 @@ export async function render(view, session, params) {
   // ===== Actions =====
 
   async function openSettings() {
-    const result = await openRoomDialog(state.payload.room);
+    const result = await openRoomDialog(state.payload.room, state.payload);
     if (result) apply(result);
   }
 
@@ -474,10 +507,44 @@ export async function render(view, session, params) {
     } catch (error) { showError(error); }
   }
 
+  /**
+   * Panneau latéral à la place des propriétés : contrairement à une fenêtre, il laisse la vue 3D visible
+   * et manipulable pendant la saisie. Résout avec la valeur passée à close().
+   */
+  function openPanel(title, build) {
+    state.panel?.cancel();
+    return new Promise((resolve) => {
+      const panel = { onGizmo: null, cancel: () => finish(undefined) };
+      const finish = (value) => {
+        if (state.panel !== panel) return;
+        state.panel = null;
+        hud.hidden = true;
+        scene?.clearDraft();
+        renderDetails();
+        resolve(value);
+      };
+      state.panel = panel;
+      clear(details,
+        h('header', { class: 'panel-header' },
+          h('h2', { class: 'panel-title' }, title),
+          h('button', { class: 'icon-btn icon-btn-small', type: 'button', 'aria-label': 'Annuler', title: 'Annuler (Échap)', onclick: () => finish(undefined) }, icon('x'))),
+        build(finish, panel));
+      details.scrollTop = 0;
+      details.querySelector('input, select')?.focus({ preventScroll: true });
+      // Sur mobile, le panneau est sous la vue : l'aperçu reste au-dessus
+      details.addEventListener('keydown', (event) => { if (event.key === 'Escape' && state.panel === panel) finish(undefined); });
+    });
+  }
+
+  const actionsRow = (close, submitLabel) => h('div', { class: 'panel-actions' },
+    h('button', { class: 'btn', type: 'button', onclick: () => close(undefined) }, 'Annuler'),
+    h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, submitLabel)));
+
   async function generate(u) {
     const types = state.types.filter((t) => t.shape !== 'divider');
     const flat = ['drawer', 'box', 'bin'].includes(u.shape);
-    const saved = await openDialog(`Générer l'intérieur de « ${u.name} »`, (close) => {
+    scene?.focus(u.id);
+    const saved = await openPanel(`Remplir « ${u.name} »`, (close) => {
       const inside = unitInterior(u);
       let mode = flat ? 'grid' : 'stack';
       const rows = h('input', { name: 'rows', type: 'number', min: 1, max: 50, value: flat ? 2 : 4, required: true });
@@ -486,28 +553,43 @@ export async function render(view, session, params) {
       const type = h('select', { name: 'type_id' }, types.map((t) => h('option', { value: t.id, selected: t.shape === (flat ? 'bin' : 'drawer') }, t.name)));
       const labels = h('textarea', { name: 'labels', rows: 4, placeholder: 'M3 x 12\nM3 x 16\nM4 x 6' });
       const stack = h('textarea', { name: 'stack', rows: 7, placeholder: 'Visserie ; 75\nRésistances 1 % ; 75\nCondensateurs ; 100\nCâbles ; 200' });
-      const total = h('p', { class: 'field-hint' });
+      const status = h('p', { class: 'panel-status', role: 'status' });
+      const submit = actionsRow(close, 'Créer');
       const parseStack = () => stack.value.split('\n').map((l) => l.trim()).filter(Boolean).map((line) => {
         const m = line.match(/^(.*?)[;,\t]\s*(\d+)\s*(?:mm)?$/);
         return m ? { name: m[1].trim(), height_mm: Number(m[2]) } : { name: line, height_mm: 0 };
       });
-      const updateTotal = () => {
-        const sum = parseStack().reduce((n, e) => n + e.height_mm, 0);
-        total.textContent = `Total : ${sum} mm pour ${inside.height} mm disponibles.`;
-        total.classList.toggle('field-error', sum > inside.height);
+      const labelList = () => labels.value.split('\n').map((l) => l.trim());
+      const refresh = () => {
+        const t = types.find((x) => x.id === Number(type.value));
+        const g = Number(gap.value || 0);
+        let drafts = [];
+        let problem = null;
+        let summary = '';
+        if (mode === 'stack') {
+          const entries = parseStack();
+          const total = entries.reduce((n, x) => n + x.height_mm, 0) + Math.max(0, entries.length - 1) * g;
+          summary = `${plural(entries.length, 'rangement')}, ${total} mm sur ${inside.height} mm disponibles.`;
+          if (entries.length === 0) problem = 'Une ligne par rangement : nom ; hauteur en mm.';
+          else if (entries.some((x) => x.height_mm < 10)) problem = 'Chaque ligne doit indiquer une hauteur, par exemple « Visserie ; 75 ».';
+          else if (total > inside.height) problem = `Trop haut de ${total - inside.height} mm.`;
+          else drafts = stackLayout(u, t, entries, g);
+        } else {
+          drafts = gridLayout(u, t, Number(rows.value) || 0, Number(columns.value) || 0, g, labelList());
+          if (drafts.length === 0) problem = 'Trop de divisions pour la place disponible.';
+          else summary = `${plural(drafts.length, 'rangement')} de ${formatLength(drafts[0].width_mm, unitLabel())} × ${formatLength(drafts[0].depth_mm, unitLabel())} × ${formatLength(drafts[0].height_mm, unitLabel())}.`;
+        }
+        scene?.setPreviewUnits(u, drafts);
+        status.textContent = problem ?? summary;
+        status.classList.toggle('is-invalid', Boolean(problem));
+        submit.querySelector('[type=submit]').disabled = Boolean(problem);
       };
-      stack.addEventListener('input', updateTotal);
-      updateTotal();
       const gridFields = h('div', {},
-        h('p', { class: 'field-hint' }, flat
-          ? `Posés au fond (${formatLength(inside.width, unitLabel())} × ${formatLength(inside.depth, unitLabel())}), rangées de l'arrière vers l'avant.`
-          : `Répartis sur la hauteur (${formatLength(inside.width, unitLabel())} × ${formatLength(inside.height, unitLabel())}), de haut en bas.`),
+        h('p', { class: 'field-hint' }, flat ? "Posés au fond, rangées de l'arrière vers l'avant." : 'Répartis sur la hauteur, de haut en bas.'),
         h('div', { class: 'form-grid' }, field('Rangées', rows), field('Colonnes', columns)),
         field('Étiquettes (facultatif)', labels, 'Une par ligne, dans l’ordre de lecture.'));
-      const stackFields = h('div', {},
-        field('Tiroirs, de haut en bas', stack, 'Une ligne par tiroir : nom ; hauteur en mm.'), total);
-      const sync = () => { gridFields.hidden = mode !== 'grid'; stackFields.hidden = mode !== 'stack'; };
-      sync();
+      const stackFields = h('div', {}, field('De haut en bas', stack, 'Une ligne par rangement : nom ; hauteur en mm.'));
+      const sync = () => { gridFields.hidden = mode !== 'grid'; stackFields.hidden = mode !== 'stack'; refresh(); };
       const modeSwitch = !flat && h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Disposition' },
         [['stack', 'Liste de tiroirs'], ['grid', 'Grille régulière']].map(([m, text]) => h('button', {
           type: 'button', role: 'radio', class: 'segmented-option', 'aria-checked': String(m === mode),
@@ -517,13 +599,11 @@ export async function render(view, session, params) {
             sync();
           },
         }, text)));
-      const form = h('form', { class: 'dialog-body', novalidate: true },
+      const form = h('form', { class: 'panel-form', novalidate: true },
         modeSwitch,
         h('div', { class: 'form-grid' }, field('Type', type), field('Espacement (mm)', gap)),
-        gridFields, stackFields,
-        h('div', { class: 'dialog-actions' },
-          h('button', { class: 'btn', type: 'button', onclick: () => close(false) }, 'Annuler'),
-          h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, 'Générer'))));
+        gridFields, stackFields, status, submit);
+      form.addEventListener('input', refresh);
       form.addEventListener('submit', (event) => {
         event.preventDefault();
         const body = { type_id: Number(type.value), gap_mm: Number(gap.value || 0) };
@@ -532,7 +612,7 @@ export async function render(view, session, params) {
         } else {
           body.rows = Number(rows.value);
           body.columns = Number(columns.value);
-          body.labels = labels.value.split('\n').map((l) => l.trim()).slice(0, body.rows * body.columns);
+          body.labels = labelList().slice(0, body.rows * body.columns);
           while (body.labels.length && !body.labels.at(-1)) body.labels.pop();
           body.labels = body.labels.map((l) => l || ' ');
         }
@@ -544,34 +624,100 @@ export async function render(view, session, params) {
           } catch (error) { showError(error, form); }
         });
       });
+      requestAnimationFrame(sync);
       return form;
-    }, { wide: true });
+    });
     if (saved) {
       state.expanded.add(u.id);
       await reload();
     }
   }
 
-  /** Création (unit null) ou modification d'un meuble (parent null) ou d'un rangement. */
+  /**
+   * Création (u null) ou modification d'un meuble (parent null) ou d'un rangement, avec aperçu en direct :
+   * le formulaire et le gizmo agissent sur le même brouillon, visible dans la vue 3D.
+   */
   async function editUnit(u, parent, { shape = null } = {}) {
     const room = state.payload.room;
-    const unit = room.display_unit;
     const isFurniture = parent === null;
     const types = state.types;
-    const saved = await openDialog(u ? `Modifier « ${u.name} »` : isFurniture ? 'Nouveau meuble' : `Nouveau rangement dans « ${parent.name} »`, (close) => {
+    let unit = room.display_unit;
+    if (u) select(u.id);
+    const saved = await openPanel(u ? `Modifier « ${u.name} »` : isFurniture ? 'Nouveau meuble' : `Dans « ${parent.name} »`, (close, panel) => {
       const inside = parent ? unitInterior(parent) : null;
       const typeSelect = h('select', { name: 'type_id' }, types.map((t) => h('option', { value: t.id, selected: t.id === (u?.type_id ?? types.find((x) => x.shape === (shape ?? (isFurniture ? 'cabinet' : 'drawer')))?.id) }, `${t.name} (${SHAPE_LABELS[t.shape]})`)));
-      const len = (name, mm) => h('input', { name, type: 'number', inputmode: 'decimal', step: UNITS[unit].step, value: toDisplay(mm, unit), required: true });
+      const len = (name, mm) => h('input', { name, type: 'number', inputmode: 'decimal', step: UNITS[unit].step, value: toDisplay(mm, unit), required: true, dataset: { mm: mm } });
       const name = h('input', { name: 'name', required: true, maxlength: 120, value: u?.name ?? '' });
-      const label = h('input', { name: 'label', maxlength: 50, value: u?.label ?? '' });
+      const labelInput = h('input', { name: 'label', maxlength: 50, value: u?.label ?? '' });
       const reference = h('input', { name: 'reference', maxlength: 50, value: u?.reference ?? '' });
       const description = h('textarea', { name: 'description', rows: 2, maxlength: 1000 }, u?.description ?? '');
       const width = len('width_mm', u?.width_mm ?? 0); const depth = len('depth_mm', u?.depth_mm ?? 0); const height = len('height_mm', u?.height_mm ?? 0);
       const px = len('pos_x_mm', u?.pos_x_mm ?? 0); const py = len('pos_y_mm', u?.pos_y_mm ?? 0); const pz = len('pos_z_mm', u?.pos_z_mm ?? 0);
+      const lengths = [width, depth, height, px, py, pz];
       const rotation = h('input', { name: 'rotation_deg', type: 'number', min: 0, max: 359, step: 1, value: u?.rotation_deg ?? 0 });
-      const panel = h('input', { name: 'panel_mm', type: 'number', min: 0, max: 200, step: 1, value: u?.panel_mm ?? 0 });
+      const panelInput = h('input', { name: 'panel_mm', type: 'number', min: 0, max: 200, step: 1, value: u?.panel_mm ?? 0 });
       const capacity = h('input', { name: 'capacity', type: 'number', min: 0, step: 'any', value: u?.capacity ?? '', placeholder: 'Facultatif' });
       const color = h('input', { name: 'color', type: 'color', value: u?.color ?? '#b08d5c' });
+      const status = h('div', { class: 'panel-status', role: 'status' });
+      const submit = actionsRow(close, u ? 'Enregistrer' : isFurniture ? 'Ajouter le meuble' : 'Ajouter le rangement');
+      const unitSelect = h('select', { 'aria-label': 'Unité des cotes', class: 'select-small' }, Object.keys(UNITS).map((k) => h('option', { value: k, selected: k === unit }, k)));
+      const unitLabels = [];
+      const unitText = () => { const el = h('span', { class: 'unit-text' }, unit); unitLabels.push(el); return el; };
+
+      const draft = () => {
+        const t = types.find((x) => x.id === Number(typeSelect.value));
+        return {
+          id: u?.id ?? -1, parent_id: parent?.id ?? null, type_id: t?.id, shape: t?.shape, name: name.value, label: labelInput.value,
+          width_mm: fromDisplay(width.value, unit), depth_mm: fromDisplay(depth.value, unit), height_mm: fromDisplay(height.value, unit),
+          pos_x_mm: fromDisplay(px.value, unit), pos_y_mm: fromDisplay(py.value, unit), pos_z_mm: fromDisplay(pz.value, unit),
+          rotation_deg: isFurniture ? Number(rotation.value) || 0 : 0, panel_mm: Number(panelInput.value) || 0, color: color.value,
+        };
+      };
+
+      /** Met à jour l'état affiché. rebuild : le brouillon de la scène doit être reconstruit. */
+      const refresh = (rebuild = true) => {
+        const d = draft();
+        // Messages dans l'unité choisie dans ce formulaire
+        const problem = unitProblem({ ...room, display_unit: unit }, state.payload.units, parent, d);
+        const usable = [d.width_mm, d.depth_mm, d.height_mm].every((v) => Number.isFinite(v) && v >= 1 && v <= 50000) && [d.pos_x_mm, d.pos_y_mm, d.pos_z_mm].every(Number.isFinite);
+        if (rebuild && usable) scene?.setDraft(d, parent, { valid: !problem });
+        else scene?.setDraftValid(!problem);
+        submit.querySelector('[type=submit]').disabled = Boolean(problem);
+        const roomSpan = Math.max(...room.outline.flat(), room.height_mm);
+        const tooBig = unit !== 'cm' && unit !== 'mm' && Math.max(d.width_mm, d.depth_mm, d.height_mm) > roomSpan;
+        status.classList.toggle('is-invalid', Boolean(problem));
+        clear(status,
+          h('span', {}, problem ?? (u ? 'Emplacement valide.' : 'Emplacement libre : déplacez-le avec les flèches du gizmo.')),
+          // Le cas du « 100 » tapé en pensant centimètres alors que la salle est réglée en mètres
+          tooBig && h('button', { class: 'btn btn-small', type: 'button', onclick: () => {
+            const positions = [px, py, pz].map((input) => fromDisplay(input.value, unit));
+            unit = 'cm';
+            unitSelect.value = 'cm';
+            applyUnit();
+            [px, py, pz].forEach((input, i) => { input.value = toDisplay(positions[i], unit); });
+            refresh();
+          } }, 'Ces cotes sont en cm'));
+      };
+      const applyUnit = () => {
+        lengths.forEach((input) => { input.step = UNITS[unit].step; });
+        unitLabels.forEach((el) => { el.textContent = unit; });
+      };
+      unitSelect.addEventListener('change', () => {
+        const values = lengths.map((input) => fromDisplay(input.value, unit));
+        unit = unitSelect.value;
+        applyUnit();
+        lengths.forEach((input, i) => { if (Number.isFinite(values[i])) input.value = toDisplay(values[i], unit); });
+        refresh(false);
+      });
+
+      // Le gizmo met à jour le formulaire : les deux restent toujours d'accord
+      panel.onGizmo = (c, final) => {
+        const write = (input, mm) => { input.value = toDisplay(mm, unit); };
+        write(width, c.width_mm); write(depth, c.depth_mm); write(height, c.height_mm);
+        write(px, c.pos_x_mm); write(py, c.pos_y_mm); write(pz, c.pos_z_mm);
+        rotation.value = c.rotation_deg;
+        refresh(final);
+      };
 
       const applyTypeDefaults = () => {
         const t = types.find((x) => x.id === Number(typeSelect.value));
@@ -579,46 +725,43 @@ export async function render(view, session, params) {
         let size = { width_mm: t.default_width_mm, depth_mm: t.default_depth_mm, height_mm: t.default_height_mm };
         if (inside) size = { width_mm: Math.min(size.width_mm, inside.width), depth_mm: Math.min(size.depth_mm, inside.depth), height_mm: Math.min(size.height_mm, inside.height) };
         width.value = toDisplay(size.width_mm, unit); depth.value = toDisplay(size.depth_mm, unit); height.value = toDisplay(size.height_mm, unit);
-        panel.value = t.default_panel_mm;
+        panelInput.value = t.default_panel_mm;
         color.value = t.default_color;
         const count = state.payload.units.filter((x) => x.parent_id === (parent?.id ?? null) && x.type_id === t.id).length;
         if (!name.dataset.touched) name.value = `${t.name} ${isFurniture ? String.fromCharCode(65 + count) : count + 1}`;
         const spot = findFreeSpot(room, state.payload.units, parent, size);
         if (spot) { px.value = toDisplay(spot.pos_x_mm, unit); py.value = toDisplay(spot.pos_y_mm, unit); pz.value = toDisplay(spot.pos_z_mm, unit); }
-        spotHint.textContent = spot ? 'Position libre proposée automatiquement.' : "Aucun emplacement libre trouvé automatiquement : indiquez une position.";
       };
-      const spotHint = h('p', { class: 'field-hint' });
       name.addEventListener('input', () => { name.dataset.touched = '1'; });
-      if (!u) { typeSelect.addEventListener('change', applyTypeDefaults); }
+      if (!u) typeSelect.addEventListener('change', applyTypeDefaults);
 
-      const form = h('form', { class: 'dialog-body', novalidate: true },
-        h('div', { class: 'form-grid' }, field('Type', typeSelect), field('Nom', name)),
-        h('div', { class: 'form-grid' }, field('Étiquette', label, 'Code court, ex. « A » ou « T2 ».'), field('Référence', reference, 'Unique dans tout le système (facultatif).')),
-        field('Description', description),
-        h('fieldset', { class: 'form-section' }, h('legend', {}, `Dimensions extérieures (${unit})`),
-          h('div', { class: 'form-grid form-grid-3' }, field('Largeur', width), field('Profondeur', depth), field('Hauteur', height)),
-          inside && h('p', { class: 'field-hint' }, `Intérieur disponible dans « ${parent.name} » : ${formatLength(inside.width, unit)} × ${formatLength(inside.depth, unit)} × ${formatLength(inside.height, unit)}.`)),
-        h('fieldset', { class: 'form-section' }, h('legend', {}, `Position (${unit})`),
-          h('p', { class: 'field-hint' }, isFurniture
-            ? "Coin arrière gauche du meuble, depuis l'origine de la salle. La rotation se fait autour de ce coin."
-            : `Coin arrière gauche bas, depuis le coin arrière gauche bas de l'intérieur de « ${parent.name} ».`),
-          h('div', { class: isFurniture ? 'form-grid form-grid-4' : 'form-grid form-grid-3' },
-            field('X', px), field(isFurniture ? 'Y (élévation)' : 'Y (hauteur)', py), field(isFurniture ? 'Z' : 'Z (depuis le fond)', pz),
-            isFurniture && field('Rotation (°)', rotation)),
-          spotHint),
-        h('div', { class: 'form-grid form-grid-3' }, field('Épaisseur des parois (mm)', panel), field('Couleur', color), field('Capacité (objets)', capacity, "Pour l'état « plein ».")),
-        h('div', { class: 'dialog-actions' },
-          h('button', { class: 'btn', type: 'button', onclick: () => close(false) }, 'Annuler'),
-          h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, u ? 'Enregistrer' : isFurniture ? 'Ajouter le meuble' : 'Ajouter le rangement'))));
+      const form = h('form', { class: 'panel-form', novalidate: true },
+        field('Type', typeSelect), field('Nom', name),
+        h('div', { class: 'panel-section-head' }, h('h3', { class: 'panel-subtitle' }, 'Dimensions extérieures'), unitSelect),
+        h('div', { class: 'form-grid form-grid-3' },
+          field(h('span', {}, 'Largeur (', unitText(), ')'), width), field(h('span', {}, 'Profond. (', unitText(), ')'), depth), field(h('span', {}, 'Hauteur (', unitText(), ')'), height)),
+        inside && h('p', { class: 'field-hint' }, `Intérieur de « ${parent.name} » : ${formatLength(inside.width, unit)} × ${formatLength(inside.depth, unit)} × ${formatLength(inside.height, unit)}.`),
+        h('h3', { class: 'panel-subtitle' }, 'Position'),
+        h('div', { class: 'form-grid form-grid-3' },
+          field(h('span', {}, 'X (', unitText(), ')'), px), field(h('span', {}, 'Y (', unitText(), ')'), py), field(h('span', {}, 'Z (', unitText(), ')'), pz)),
+        isFurniture && field('Rotation (°)', rotation),
+        h('p', { class: 'field-hint' }, 'Avec le gizmo dans la vue : W déplacer, E pivoter, R taille. Le rangement s’aimante aux bords voisins.'),
+        h('details', { class: 'panel-more' }, h('summary', {}, 'Plus d’options'),
+          h('div', { class: 'form-grid' }, field('Étiquette', labelInput), field('Référence', reference)),
+          field('Description', description),
+          h('div', { class: 'form-grid form-grid-3' }, field('Parois (mm)', panelInput), field('Couleur', color), field('Capacité', capacity))),
+        status, submit);
       if (!u) applyTypeDefaults();
+      form.addEventListener('input', () => refresh());
+      requestAnimationFrame(() => refresh());
 
       form.addEventListener('submit', (event) => {
         event.preventDefault();
         const body = {
-          type_id: Number(typeSelect.value), name: name.value, label: label.value, reference: reference.value, description: description.value,
+          type_id: Number(typeSelect.value), name: name.value, label: labelInput.value, reference: reference.value, description: description.value,
           width_mm: fromDisplay(width.value, unit), depth_mm: fromDisplay(depth.value, unit), height_mm: fromDisplay(height.value, unit),
           pos_x_mm: fromDisplay(px.value, unit), pos_y_mm: fromDisplay(py.value, unit), pos_z_mm: fromDisplay(pz.value, unit),
-          panel_mm: Number(panel.value), color: color.value, capacity: capacity.value === '' ? null : Number(capacity.value),
+          panel_mm: Number(panelInput.value), color: color.value, capacity: capacity.value === '' ? null : Number(capacity.value),
         };
         if (isFurniture) body.rotation_deg = Number(rotation.value);
         if (!u) {
@@ -633,7 +776,7 @@ export async function render(view, session, params) {
         });
       });
       return form;
-    }, { wide: true });
+    });
 
     if (saved) {
       if (parent) state.expanded.add(parent.id);

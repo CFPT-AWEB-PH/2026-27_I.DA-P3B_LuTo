@@ -5,7 +5,8 @@
 import * as THREE from '/vendor/three/three.module.min.js';
 import { OrbitControls } from '/vendor/three/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from '/vendor/three/CSS2DRenderer.js';
-import { containsPoint, formatLength, furnitureFits, interior, wallLength } from '../spatial.js';
+import { TransformControls } from '/vendor/three/TransformControls.js';
+import { containsPoint, formatLength, interior, snapToEdges, unitFootprint, unitProblem, wallLength } from '../spatial.js';
 import { buildObjects } from './item-models.js';
 
 const S = 0.001;
@@ -13,6 +14,8 @@ const SELECT_COLOR = 0xffa31a;
 const INVALID_COLOR = 0xe5484d;
 const HIGHLIGHT_COLOR = 0x2f80ff;
 const DRAWER_OPEN_RATIO = 0.97;
+const VALID_COLOR = 0x2fb56f;
+const SNAP_DISTANCE = 12; // mm : distance d'aimantation aux bords voisins
 const STRIP_COLOR = 0xd9dbd6; // bandeau métallique des tiroirs
 const OPEN_TOP = new Set(['drawer', 'box', 'bin']);
 
@@ -32,7 +35,9 @@ export class RoomScene {
     this.highlightId = null;
     this.showDimensions = false;
     this.wallMode = 'auto';
-    this.moveMode = false;
+    this.minimal = callbacks.minimal ?? false;
+    this.gizmoMode = 'translate';
+    this.draft = null;
     this.materials = new Map();
     this.contents = [];
     this.walls = [];
@@ -77,7 +82,7 @@ export class RoomScene {
 
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
-    this.dragging = null;
+    if (!this.minimal) this.createGizmo();
     this.bindEvents();
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -98,13 +103,29 @@ export class RoomScene {
     for (const id of [...this.openDrawers]) if (!ids.has(id)) this.openDrawers.delete(id);
     if (this.selectedId !== null && !ids.has(this.selectedId)) this.selectedId = null;
 
+    this.detachGizmo();
     this.clearGroup(this.roomGroup);
     this.clearGroup(this.unitsGroup);
-    this.buildRoom();
+    if (!this.minimal) this.buildRoom();
     this.buildUnits();
     this.refreshOverlay();
-    if (first) this.viewPreset('iso');
+    if (first && !this.minimal) this.viewPreset('iso');
     this.updateWallVisibility();
+    this.refreshGizmo();
+    this.requestRender();
+  }
+
+  /** Aperçu autonome : cadre tout le contenu de la scène. */
+  frameAll() {
+    this.scene.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(this.unitsGroup);
+    if (box.isEmpty()) return;
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const distance = Math.max(size.length() / (2 * Math.tan((this.camera.fov * Math.PI) / 360)) * 1.15, 0.12);
+    this.camera.position.copy(center).add(new THREE.Vector3(0.45, 0.8, 0.9).normalize().multiplyScalar(distance));
+    this.controls.target.copy(center);
+    this.controls.update();
     this.requestRender();
   }
 
@@ -116,10 +137,7 @@ export class RoomScene {
   setColorOverrides(map) {
     this.colorOverrides = map;
     if (!this.room) return;
-    this.clearGroup(this.unitsGroup);
-    this.buildUnits();
-    this.refreshOverlay();
-    this.requestRender();
+    this.rebuildUnits();
   }
 
   // ===== Construction de la salle =====
@@ -262,18 +280,28 @@ export class RoomScene {
     for (const u of this.childrenOf.get(null) ?? []) this.buildUnit(u, this.unitsGroup, null);
   }
 
+  rebuildUnits() {
+    this.detachGizmo();
+    this.clearGroup(this.unitsGroup);
+    this.buildUnits();
+    this.refreshOverlay();
+    this.refreshGizmo();
+    this.requestRender();
+  }
+
+  /** Place un rangement dans le repère de son parent (intérieur) ou de la salle. */
+  placeUnit(group, u, parent) {
+    const inside = parent ? interior(parent.shape, parent.width_mm, parent.depth_mm, parent.height_mm, parent.panel_mm) ?? { x: 0, y: 0, z: 0 } : { x: 0, y: 0, z: 0 };
+    group.position.set((inside.x + u.pos_x_mm) * S, (inside.y + u.pos_y_mm) * S, (inside.z + u.pos_z_mm) * S);
+    group.rotation.y = parent ? 0 : (u.rotation_deg * Math.PI) / 180;
+    group.userData.baseZ = group.position.z;
+    if (u.shape === 'drawer' && this.openDrawers.has(u.id)) group.position.z += u.depth_mm * DRAWER_OPEN_RATIO * S;
+  }
+
   buildUnit(u, parentObject, parent) {
     const group = new THREE.Group();
     group.userData.unitId = u.id;
-    if (parent) {
-      const inside = interior(parent.shape, parent.width_mm, parent.depth_mm, parent.height_mm, parent.panel_mm) ?? { x: 0, y: 0, z: 0 };
-      group.position.set((inside.x + u.pos_x_mm) * S, (inside.y + u.pos_y_mm) * S, (inside.z + u.pos_z_mm) * S);
-    } else {
-      group.position.set(u.pos_x_mm * S, u.pos_y_mm * S, u.pos_z_mm * S);
-      group.rotation.y = (u.rotation_deg * Math.PI) / 180;
-    }
-    group.userData.baseZ = group.position.z;
-    if (u.shape === 'drawer' && this.openDrawers.has(u.id)) group.position.z += u.depth_mm * DRAWER_OPEN_RATIO * S;
+    this.placeUnit(group, u, parent);
     group.visible = !this.hidden.has(u.id);
     this.buildPanels(u, group);
 
@@ -456,6 +484,7 @@ export class RoomScene {
   select(id) {
     this.selectedId = id;
     this.refreshOverlay();
+    this.refreshGizmo();
     this.requestRender();
   }
 
@@ -581,6 +610,239 @@ export class RoomScene {
       else this.buildContent(cursor);
     }
     this.refreshOverlay();
+    this.refreshGizmo();
+  }
+
+  // ===== Gizmo : déplacer, pivoter, redimensionner directement dans la vue =====
+
+  createGizmo() {
+    // Le gizmo manipule un repère placé au centre du rangement ; le rangement suit par calcul
+    this.proxy = new THREE.Object3D();
+    this.proxy.rotation.order = 'YXZ';
+    this.gizmo = new TransformControls(this.camera, this.renderer.domElement);
+    this.gizmo.setSize(0.85);
+    this.gizmo.setTranslationSnap(0.005);
+    this.gizmo.setRotationSnap(THREE.MathUtils.degToRad(5));
+    this.scene.add(this.gizmo.getHelper());
+    this.gizmo.addEventListener('change', () => this.requestRender());
+    this.gizmo.addEventListener('dragging-changed', (event) => { this.controls.enabled = !event.value; });
+    this.gizmo.addEventListener('mouseDown', () => this.gizmoStart());
+    this.gizmo.addEventListener('objectChange', () => this.gizmoMove());
+    this.gizmo.addEventListener('mouseUp', () => this.gizmoEnd());
+  }
+
+  /** translate, rotate, scale ou none. */
+  setGizmoMode(mode) {
+    this.gizmoMode = mode;
+    this.refreshGizmo();
+    this.requestRender();
+  }
+
+  /** Cible du gizmo : le brouillon en cours, sinon le rangement sélectionné si l'utilisateur peut le modifier. */
+  gizmoTarget() {
+    if (this.draft) return this.draft;
+    if (this.previewGroup) return null;
+    const unit = this.unit(this.selectedId);
+    const group = this.unitGroups.get(this.selectedId);
+    if (!unit || !group || !this.callbacks.canEdit?.(unit)) return null;
+    return { unit, group, parent: this.unit(unit.parent_id) };
+  }
+
+  detachGizmo() {
+    this.gizmo?.detach();
+    this.proxy?.removeFromParent();
+    this.gizmoContext = null;
+  }
+
+  refreshGizmo() {
+    if (!this.gizmo || this.gizmo.dragging) return;
+    this.detachGizmo();
+    const target = this.gizmoMode === 'none' ? null : this.gizmoTarget();
+    if (!target?.group.parent) return;
+    const { unit, group, parent } = target;
+    // Un rangement imbriqué reste aligné sur son parent : pas de rotation
+    const mode = this.gizmoMode === 'rotate' && parent ? 'translate' : this.gizmoMode;
+    group.parent.add(this.proxy);
+    const half = this.halfVector(unit, unit.rotation_deg);
+    this.proxy.position.set(group.position.x + half.x * S, group.position.y + half.y * S, group.position.z + half.z * S);
+    this.proxy.rotation.set(0, group.rotation.y, 0);
+    this.proxy.scale.set(1, 1, 1);
+    this.gizmo.attach(this.proxy);
+    this.gizmo.setMode(mode);
+    this.gizmo.setSpace(mode === 'translate' && !parent ? 'world' : 'local');
+    this.gizmo.showX = mode !== 'rotate';
+    this.gizmo.showZ = mode !== 'rotate';
+    this.gizmo.showY = true;
+    this.gizmoContext = { unit, group, parent };
+  }
+
+  /** Vecteur du coin arrière-gauche-bas vers le centre, après rotation (en mm). */
+  halfVector(u, rotationDeg) {
+    const a = (rotationDeg * Math.PI) / 180;
+    const hx = u.width_mm / 2; const hz = u.depth_mm / 2;
+    return { x: hx * Math.cos(a) + hz * Math.sin(a), y: u.height_mm / 2, z: -hx * Math.sin(a) + hz * Math.cos(a) };
+  }
+
+  gizmoStart() {
+    if (!this.gizmoContext) return;
+    this.gizmoContext.candidate = null;
+    this.gizmoContext.start = { ...this.gizmoContext.unit };
+  }
+
+  /** Repères d'aimantation sur X et Z : bords des voisins et de ce qui contient le rangement. */
+  snapEdges(c, parent) {
+    const xs = []; const zs = []; const ys = [];
+    if (parent) {
+      const inside = interior(parent.shape, parent.width_mm, parent.depth_mm, parent.height_mm, parent.panel_mm);
+      if (inside) { xs.push(0, inside.width); zs.push(0, inside.depth); ys.push(0, inside.height); }
+      for (const o of this.units) {
+        if (o.parent_id !== parent.id || o.id === c.id) continue;
+        xs.push(o.pos_x_mm, o.pos_x_mm + o.width_mm);
+        zs.push(o.pos_z_mm, o.pos_z_mm + o.depth_mm);
+        ys.push(o.pos_y_mm, o.pos_y_mm + o.height_mm);
+      }
+    } else {
+      for (const [x, z] of this.room.outline) { xs.push(x); zs.push(z); }
+      ys.push(0);
+      for (const o of this.units) {
+        if (o.parent_id !== null || o.id === c.id) continue;
+        const corners = unitFootprint(o);
+        xs.push(...corners.map((p) => p[0]));
+        zs.push(...corners.map((p) => p[1]));
+        ys.push(o.pos_y_mm, o.pos_y_mm + o.height_mm);
+      }
+    }
+    return { xs, ys, zs };
+  }
+
+  gizmoMove() {
+    const context = this.gizmoContext;
+    if (!context?.start) return;
+    const { group, parent, start } = context;
+    const inside = parent ? interior(parent.shape, parent.width_mm, parent.depth_mm, parent.height_mm, parent.panel_mm) ?? { x: 0, y: 0, z: 0 } : { x: 0, y: 0, z: 0 };
+    const openOffset = start.shape === 'drawer' && this.openDrawers.has(start.id) ? start.depth_mm * DRAWER_OPEN_RATIO : 0;
+    const center = { x: this.proxy.position.x / S - inside.x, y: this.proxy.position.y / S - inside.y, z: this.proxy.position.z / S - inside.z - openOffset };
+    const c = { ...start };
+    const mode = this.gizmo.getMode();
+
+    if (mode === 'rotate') {
+      c.rotation_deg = ((Math.round(THREE.MathUtils.radToDeg(this.proxy.rotation.y)) % 360) + 360) % 360;
+    } else if (mode === 'scale') {
+      const dimension = (base, factor) => Math.max(10, Math.round((base * Math.abs(factor)) / 5) * 5);
+      c.width_mm = dimension(start.width_mm, this.proxy.scale.x);
+      c.height_mm = dimension(start.height_mm, this.proxy.scale.y);
+      c.depth_mm = dimension(start.depth_mm, this.proxy.scale.z);
+      group.scale.set(c.width_mm / start.width_mm, c.height_mm / start.height_mm, c.depth_mm / start.depth_mm);
+    }
+    const half = this.halfVector(c, c.rotation_deg);
+    c.pos_x_mm = Math.round(center.x - half.x);
+    c.pos_y_mm = Math.round(center.y - half.y);
+    c.pos_z_mm = Math.round(center.z - half.z);
+
+    if (mode === 'translate') {
+      const edges = this.snapEdges(c, parent);
+      const axisAligned = c.rotation_deg % 90 === 0;
+      const swapped = c.rotation_deg % 180 !== 0;
+      // Emprise au sol d'un meuble tourné de 90° : largeur et profondeur échangées, coin déplacé
+      if (axisAligned) {
+        const corners = unitFootprint(c);
+        const minX = Math.min(...corners.map((p) => p[0])); const minZ = Math.min(...corners.map((p) => p[1]));
+        const sizeX = swapped ? c.depth_mm : c.width_mm; const sizeZ = swapped ? c.width_mm : c.depth_mm;
+        c.pos_x_mm += snapToEdges(minX, sizeX, edges.xs, SNAP_DISTANCE) - minX;
+        c.pos_z_mm += snapToEdges(minZ, sizeZ, edges.zs, SNAP_DISTANCE) - minZ;
+      }
+      c.pos_y_mm = snapToEdges(c.pos_y_mm, c.height_mm, edges.ys, SNAP_DISTANCE);
+    }
+    // Rien ne descend sous le sol ou le fond du parent
+    c.pos_y_mm = Math.max(0, c.pos_y_mm);
+
+    group.position.set((inside.x + c.pos_x_mm) * S, (inside.y + c.pos_y_mm) * S, (inside.z + c.pos_z_mm + openOffset) * S);
+    if (!parent) group.rotation.y = (c.rotation_deg * Math.PI) / 180;
+    context.candidate = c;
+
+    const problem = unitProblem(this.room, this.units, parent, c);
+    const box = this.draft ? this.draftBox : this.selectionBox;
+    box?.material.color.setHex(problem ? INVALID_COLOR : (this.draft ? VALID_COLOR : SELECT_COLOR));
+    this.callbacks.onGizmoChange?.(c, problem, Boolean(this.draft));
+    this.requestRender();
+  }
+
+  gizmoEnd() {
+    const context = this.gizmoContext;
+    const candidate = context?.candidate;
+    if (context) { context.candidate = null; context.start = null; }
+    if (!candidate) return;
+    this.callbacks.onGizmoEnd?.(context.unit, candidate, Boolean(this.draft));
+  }
+
+  // ===== Brouillon : aperçu en direct d'un rangement en cours de création ou de modification =====
+
+  /** Affiche le rangement tel qu'il sera : c'est aussi sur lui qu'agit le gizmo. */
+  setDraft(unit, parent, { valid = true } = {}) {
+    let group = unit.id > 0 ? this.unitGroups.get(unit.id) : this.draftGroup;
+    if (!group) {
+      if (parent) this.reveal(parent.id);
+      group = new THREE.Group();
+      const content = new THREE.Group();
+      group.add(content);
+      group.userData.content = content;
+      (parent ? this.unitGroups.get(parent.id)?.userData.content : this.unitsGroup)?.add(group);
+      this.draftGroup = group;
+    }
+    this.placeUnit(group, unit, parent);
+    group.scale.set(1, 1, 1);
+    group.visible = true;
+    for (const child of [...group.children]) {
+      if (child === group.userData.content) continue;
+      group.remove(child);
+      disposeObject(child);
+    }
+    this.buildPanels(unit, group);
+    this.draftBox = selectionBox(unit, valid ? VALID_COLOR : INVALID_COLOR);
+    this.draftBox.userData.overlay = true;
+    group.add(this.draftBox);
+    this.draft = { unit, group, parent };
+    this.refreshGizmo();
+    this.requestRender();
+  }
+
+  setDraftValid(valid) {
+    this.draftBox?.material.color.setHex(valid ? VALID_COLOR : INVALID_COLOR);
+    this.requestRender();
+  }
+
+  /** Aperçu d'un ensemble généré (tiroirs, grille de bacs) dans un rangement. */
+  setPreviewUnits(parent, drafts) {
+    this.clearPreviewUnits();
+    const content = this.unitGroups.get(parent.id)?.userData.content;
+    if (!content) return;
+    this.previewGroup = new THREE.Group();
+    for (const d of drafts) {
+      const group = new THREE.Group();
+      this.placeUnit(group, d, parent);
+      this.buildPanels(d, group);
+      this.previewGroup.add(group);
+    }
+    content.add(this.previewGroup);
+    this.refreshGizmo();
+    this.requestRender();
+  }
+
+  clearPreviewUnits() {
+    if (!this.previewGroup) return;
+    this.previewGroup.removeFromParent();
+    disposeObject(this.previewGroup);
+    this.previewGroup = null;
+    this.requestRender();
+  }
+
+  /** Fin du brouillon : la scène reprend l'état réel. */
+  clearDraft() {
+    this.clearPreviewUnits();
+    this.draft = null;
+    this.draftBox = null;
+    this.draftGroup = null;
+    this.rebuildUnits();
   }
 
   // ===== Caméra =====
@@ -676,16 +938,10 @@ export class RoomScene {
     });
   }
 
-  // ===== Déplacement à la souris (meubles) =====
-
-  setMoveMode(enabled) {
-    this.moveMode = enabled;
-    this.renderer.domElement.classList.toggle('is-move-mode', enabled);
-  }
-
   bindEvents() {
     const canvas = this.renderer.domElement;
     let down = null;
+    let gizmoPressed = false;
     // Clic droit : un glissement déplace la vue, un clic sans mouvement ouvre le menu.
     // Selon le système, l'événement contextmenu arrive à l'appui ou au relâchement.
     let right = null;
@@ -713,37 +969,17 @@ export class RoomScene {
           }, 550) };
         }
       }
-      if (!this.moveMode || event.button !== 0) return;
-      const hit = this.pick(event);
-      const top = hit && this.topLevelOf(hit);
-      if (!top || top.id !== this.selectedId) return;
-      const floorPoint = this.floorPoint(event);
-      if (!floorPoint) return;
-      const g = this.unitGroups.get(top.id);
-      this.dragging = { unit: top, group: g, offsetX: g.position.x - floorPoint.x, offsetZ: g.position.z - floorPoint.z, start: g.position.clone(), moved: false };
-      this.controls.enabled = false;
-      canvas.setPointerCapture(event.pointerId);
+      // Un appui sur une poignée du gizmo n'est ni un clic ni un appui long
+      gizmoPressed = Boolean(this.gizmo?.axis);
+      if (gizmoPressed) cancelLongPress();
     };
 
     this.onPointerMove = (event) => {
       if (right && Math.hypot(event.clientX - right.x, event.clientY - right.y) > 5) rightMoved = true;
       if (longPress && Math.hypot(event.clientX - longPress.clientX, event.clientY - longPress.clientY) > 10) cancelLongPress();
-      if (!this.dragging) return;
-      const point = this.floorPoint(event);
-      if (!point) return;
-      const step = event.shiftKey ? 100 : 10;
-      const x = Math.round(((point.x + this.dragging.offsetX) / S) / step) * step;
-      const z = Math.round(((point.z + this.dragging.offsetZ) / S) / step) * step;
-      this.dragging.group.position.set(x * S, this.dragging.group.position.y, z * S);
-      this.dragging.moved = true;
-      this.dragging.candidate = { ...this.dragging.unit, pos_x_mm: x, pos_z_mm: z };
-      const ok = furnitureFits(this.room, this.units, this.dragging.candidate);
-      this.selectionBox?.material.color.setHex(ok ? SELECT_COLOR : INVALID_COLOR);
-      this.callbacks.onDrag?.(this.dragging.candidate, ok);
-      this.requestRender();
     };
 
-    this.onPointerUp = async (event) => {
+    this.onPointerUp = (event) => {
       const wasClick = down && !longPressFired && Math.hypot(event.clientX - down.x, event.clientY - down.y) < 5;
       down = null;
       cancelLongPress();
@@ -752,22 +988,7 @@ export class RoomScene {
         if (pendingMenu && !rightMoved) openMenu(pendingMenu);
         pendingMenu = null;
       }
-      if (this.dragging) {
-        const drag = this.dragging;
-        this.dragging = null;
-        this.controls.enabled = true;
-        canvas.releasePointerCapture?.(event.pointerId);
-        if (drag.moved && drag.candidate) {
-          const ok = await this.callbacks.onMove?.(drag.unit, { pos_x_mm: drag.candidate.pos_x_mm, pos_z_mm: drag.candidate.pos_z_mm });
-          if (!ok) {
-            drag.group.position.copy(drag.start);
-            this.selectionBox?.material.color.setHex(SELECT_COLOR);
-            this.requestRender();
-          }
-          return;
-        }
-      }
-      if (wasClick && event.button === 0) {
+      if (wasClick && !gizmoPressed && event.button === 0) {
         const hit = this.pick(event);
         this.callbacks.onSelect?.(hit?.id ?? null);
       }
@@ -817,18 +1038,6 @@ export class RoomScene {
     return null;
   }
 
-  floorPoint(event) {
-    this.setPointer(event);
-    const point = new THREE.Vector3();
-    return this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), point) ? point : null;
-  }
-
-  topLevelOf(u) {
-    let cursor = u;
-    while (cursor && cursor.parent_id !== null) cursor = this.unit(cursor.parent_id);
-    return cursor;
-  }
-
   // ===== Rendu =====
 
   animate(duration, step) {
@@ -875,6 +1084,8 @@ export class RoomScene {
   dispose() {
     this.disposed = true;
     this.resizeObserver.disconnect();
+    this.detachGizmo();
+    this.gizmo?.dispose();
     this.controls.dispose();
     const canvas = this.renderer.domElement;
     canvas.removeEventListener('pointerdown', this.onPointerDown);
