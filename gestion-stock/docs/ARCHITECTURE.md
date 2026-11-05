@@ -2,7 +2,7 @@
 
 Statut : **Phase 1, validée sur le matériel réel** (sauf le choix HTTPS, §6).
 
-Cible vérifiée le 2026-11-02 : Raspberry Pi 4 Model B (rév. 1.5), 4 cœurs, 1,8 Go de RAM et 1,8 Go de swap zram, Debian 13 « trixie » en 64 bits (aarch64, noyau 6.18), carte SD de 28 Go (21 Go libres), Ethernet 10.5.35.39/26 (DHCP), heure synchronisée par NTP (Europe/Zurich), accès Internet vers Google : OK. Aucun service web, base de données ni conteneur présent : pas de données à préserver.
+Cible vérifiée le 2026-11-02 : Raspberry Pi 4 Model B (rév. 1.5), 4 cœurs, 1,8 Go de RAM et 1,8 Go de swap zram, Debian 13 « trixie » en 64 bits (aarch64, noyau 6.18), carte SD de 28 Go (21 Go libres), Ethernet en DHCP sur 10.5.35.0/26 (10.5.35.38 depuis le 2026-11-05), heure synchronisée par NTP (Europe/Zurich), accès Internet vers Google : OK. Aucun service web, base de données ni conteneur présent : pas de données à préserver.
 
 ## 1. Vue d'ensemble
 
@@ -86,20 +86,25 @@ Opérations de stock : transaction InnoDB + `SELECT … FOR UPDATE` sur la ligne
 
 ## 6. HTTPS, PWA et Google sur un réseau local : contraintes
 
-- **Service worker et installation PWA** : exigent un contexte sécurisé (HTTPS), sauf sur `localhost`. En `http://10.5.35.39`, la PWA n'est **pas installable** et le service worker ne démarre pas.
+- **Service worker et installation PWA** : exigent un contexte sécurisé (HTTPS), sauf sur `localhost`. En HTTP sur l'adresse du Pi, la PWA n'est **pas installable** et le service worker ne démarre pas ; l'application fonctionne normalement sans eux. Tout est prêt et testé via un tunnel SSH vers `localhost` : il suffira de servir le site en HTTPS.
 - **Google OAuth** : Google refuse les URI de redirection sur une adresse IP privée en HTTP. Il faut un **nom de domaine public** (le DNS peut pointer vers l'IP locale) en **HTTPS**.
 - **Accès Internet** : la connexion Google exige que le navigateur et le Pi joignent Google (le Pi récupère les clés JWKS et échange le code). Sans Internet, aucune nouvelle connexion n'est possible ; les sessions déjà ouvertes restent valides jusqu'à leur expiration. Les erreurs sont affichées clairement.
 
 Options (décision en attente) :
 
-1. **Recommandée** : un sous-domaine que vous contrôlez (ex. `stock.mondomaine.ch`), avec un enregistrement DNS A vers `10.5.35.39` et un certificat Let's Encrypt obtenu par challenge DNS-01 (Caddy + API du fournisseur DNS). Certificat reconnu par tous les appareils, sans rien installer.
-2. Un nom de type `10-5-35-39.sslip.io` avec la CA interne de Caddy : il faut installer le certificat racine sur **chaque** appareil, ce qui est pénible sur les smartphones et souvent impossible sur des appareils gérés.
+1. **Recommandée** : un sous-domaine que vous contrôlez (ex. `stock.mondomaine.ch`), avec un enregistrement DNS A vers l'adresse du Pi (à figer d'abord, voir §8) et un certificat Let's Encrypt obtenu par challenge DNS-01 (Caddy + API du fournisseur DNS). Certificat reconnu par tous les appareils, sans rien installer.
+2. Un nom de type `10-5-35-38.sslip.io` avec la CA interne de Caddy : il faut installer le certificat racine sur **chaque** appareil, ce qui est pénible sur les smartphones et souvent impossible sur des appareils gérés.
 3. HTTP seul : fonctionne pour la consultation, mais **sans** PWA ni connexion Google. Non conforme au cahier des charges.
 
 ## 7. Hors ligne
 
-Lecture : coque de l'application et Three.js mis en cache ; les données de l'API sont en « réseau d'abord », jamais mises en cache si la réponse est authentifiée et sensible (utilisateurs, historique).
-Écriture : **aucune** opération de stock n'est simulée hors ligne. Hors connexion, les boutons de stock sont désactivés et un bandeau l'indique. Une file d'attente avec synchronisation pourra être ajoutée plus tard si le besoin est confirmé.
+`frontend/sw.js` :
+
+- **Coque préchargée** (HTML, CSS, JS, Three.js, icônes), liste générée à la construction de l'image Caddy. Toutes les pages sont servies depuis ce cache : l'application démarre sans réseau et ses fichiers restent de la même version.
+- **API jamais interceptée ni stockée** : aucune donnée de compte ou de stock ne reste sur l'appareil, et il n'y a donc rien à purger à la déconnexion. Sans serveur, l'application affiche « Serveur injoignable » : pas de consultation hors ligne.
+- **Écriture** : **aucune** opération n'est simulée ni mise en attente. Une requête échoue franchement et le message indique que rien n'a été enregistré. Une file d'attente avec synchronisation et gestion des conflits reste possible si le besoin est confirmé.
+- **Mises à jour** : chaque déploiement change la version dans `sw.js`. La nouvelle version se télécharge en arrière-plan, puis une notification propose « Mettre à jour » : elle n'est jamais imposée, pour ne pas couper un formulaire en cours.
+- Le bandeau « Serveur injoignable » s'appuie aussi sur l'échec réel des requêtes, car `navigator.onLine` reste vrai quand le Wi-Fi fonctionne mais que le serveur ne répond pas.
 
 ## 8. Risques identifiés
 
@@ -107,7 +112,7 @@ Lecture : coque de l'application et Three.js mis en cache ; les données de l'AP
 |---|---|---|
 | Architecture CPU | Vérifiée : aarch64 / arm64, donc images officielles PHP, MariaDB et Caddy disponibles | Aucune |
 | 2 Go de RAM, dont environ 350 Mo pris par le bureau graphique | Marge limitée | `innodb_buffer_pool_size=256M`, PHP-FPM `ondemand` ; désactiver le bureau graphique (`multi-user.target`) si vous êtes d'accord |
-| IP obtenue par DHCP (10.5.35.39/26) | L'adresse peut changer, ce qui casserait le DNS et l'OAuth | Réservation DHCP auprès de l'administrateur réseau ou IP fixe |
+| IP obtenue par DHCP (**déjà changée** : 10.5.35.39 puis 10.5.35.38 le 2026-11-05) | Site et liens de connexion inaccessibles, et plus tard DNS et OAuth cassés | Réservation DHCP auprès de l'administrateur réseau ou IP fixe. En attendant : `scripts/deploy.sh` et `APP_URL` à ajuster. Identifier le Pi par ses clés SSH (ssh refuse une autre machine) et **pas par `cuto.local`**, nom porté aussi par un autre Raspberry Pi du réseau |
 | `sudo` demande un mot de passe | Je ne peux pas installer Docker moi-même | Installation de Docker lancée par vous, puis `cuto` ajouté au groupe `docker` |
 | Carte SD (usure, corruption) | Perte de données | Sauvegardes quotidiennes, copie hors du Pi conseillée, SSD USB recommandé |
 | HTTPS et domaine non disponibles | Ni PWA ni Google | Voir §6 |

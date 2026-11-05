@@ -167,3 +167,33 @@ Audit écran par écran sur une copie locale complète (Docker, données réalis
 **Vérifications**
 - 17 routes parcourues sans erreur de console ni texte parasite ; navigation au clavier du menu ; annulation d'un retrait d'accès ; refus du serveur (dernier administrateur) correctement affiché et rétabli.
 - Aucune modification de l'API ni des données. Les tests d'intégration du serveur n'ont pas été relancés (backend inchangé).
+
+## Phase 6 : tableau de bord, menu contextuel, PWA et mobile (2026-11-05)
+
+**Fait**
+- Tableau de bord sur l'accueil (déjà refondu) : chiffres clés cliquables et derniers mouvements. `GET /api/dashboard` ne renvoie chaque bloc qu'avec la permission correspondante.
+- Menu contextuel (`context-menu.js`) : clic droit, appui long au toucher, touche Menu ou Maj+F10.
+  - Présent sur les salles, les objets, l'arborescence, les objets d'un rangement et la vue 3D (meuble, rangement ou vide de la salle).
+  - Contenu adapté aux permissions, recadré dans l'écran, fermé par Échap, clic extérieur, défilement ou redimensionnement.
+  - Le menu natif reste actif ailleurs, dans les champs de saisie, sur un texte sélectionné et avec Maj + clic droit.
+  - Sur les cartes, le bouton « ⋯ » est l'alternative visible.
+  - Dans la 3D, un clic droit glissé déplace la vue sans ouvrir de menu.
+- Écarts assumés par rapport aux exemples du cahier des charges : sur une salle, « Modifier » et « Gérer les paramètres » ne font qu'une entrée (« Modifier les paramètres… »), car c'est le même formulaire ; « Gérer les ouvertures… » s'y ajoute. Sur un rangement, « Ajouter ou déplacer des objets » est en deux entrées.
+- PWA : manifeste, icônes générées par `scripts/generate-icons.mjs`, service worker (voir ARCHITECTURE §7), proposition de mise à jour, installation depuis le menu du compte quand le navigateur la permet.
+- Serveur injoignable : écran et bandeau clairs, reprise au retour du réseau, message « rien n'a été enregistré » sur une écriture échouée.
+
+**Tests**
+- `pwa_test.php` : 23 vérifications (tableau de bord selon le rôle, manifeste, icônes, service worker versionné, fichiers préchargés tous disponibles, en-têtes). Total serveur : **247 vérifications, 0 échec** (58 + 23 + 80 + 86).
+- PWA dans un **vrai navigateur (Edge sans interface)**, sur le vrai serveur via un tunnel SSH vers `localhost`, sans compte : service worker activé, 39 fichiers préchargés, aucune réponse d'API en cache, installable selon le navigateur, écran « Serveur injoignable » et Three.js disponibles tunnel coupé, écriture en échec franc, retour à la normale, aucune erreur de console ni de CSP.
+- Interface sur le banc local (fausse API) : vrais clics droits, permissions Élève et Administrateur, appui long simulé, 375 px sans débordement.
+
+**Bugs trouvés et corrigés**
+- **Éditeur 3D bloqué sur « Chargement… » pour tout compte sans `furniture.edit`, donc les élèves** (`false?.addEventListener` lève une erreur), présent depuis la phase 4. Les tests d'API ne pouvaient pas le voir.
+- Menu « ⋯ » des fiches du catalogue déformé par `.item-actions *`.
+- **Le Pi a changé d'adresse** (DHCP) : 10.5.35.39 est maintenant une autre machine et `cuto.local` désigne un autre Raspberry Pi. Pi identifié à 10.5.35.38 par ses empreintes SSH ; `APP_URL` et `scripts/deploy.sh` corrigés.
+
+**Limites connues**
+- En HTTP (situation actuelle), ni service worker ni installation : c'est imposé par les navigateurs, et l'étape HTTPS reste à faire.
+- Le navigateur intégré à l'application Claude n'enregistre pas de service worker : ces tests passent par Edge.
+- Appui long testé par événements simulés, pas sur un vrai téléphone. L'installation elle-même (fenêtre du navigateur) n'a pas été cliquée : seule l'installabilité est vérifiée.
+- La connexion réelle sur le site n'a pas été parcourue par mes soins : à vérifier à la phase 7.
