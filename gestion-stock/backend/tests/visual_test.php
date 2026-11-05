@@ -86,7 +86,7 @@ $itemId = $r['body']['item']['id'];
 $r = $admin->request('PATCH', "/api/items/{$itemId}", ['visual' => 'screw', 'visual_color' => '#AABBCC']);
 check('Modèle et couleur enregistrés', ($r['body']['item']['visual'] ?? '') === 'screw' && $r['body']['item']['visual_color'] === '#aabbcc', $r['body']['item'] ?? null);
 $r = $admin->request('PATCH', "/api/items/{$itemId}", ['visual_color' => null]);
-check('Couleur retirée', ($r['body']['item']['visual_color'] ?? 'x') === null && $r['body']['item']['visual'] === 'screw');
+check('Couleur retirée', $r['status'] === 200 && $r['body']['item']['visual_color'] === null && $r['body']['item']['visual'] === 'screw', $r['body']);
 $found = $admin->request('GET', '/api/items?q=TST3D-VIS')['body']['items'][0] ?? [];
 check('Apparence dans les résultats de recherche', ($found['visual'] ?? '') === 'screw');
 
