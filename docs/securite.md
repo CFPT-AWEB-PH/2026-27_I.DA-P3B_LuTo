@@ -57,7 +57,7 @@ Apache/PHP, Docker Compose, base MariaDB, daemon BLE (Python), dépendances.
 
 | # | Fichier | Problème | Correction |
 |---|---------|----------|------------|
-| F1 | `docker-compose.yml` | Mots de passe par défaut `rootpass` / `arbitrage_pass` utilisés si `.env` est incomplet. | Variables obligatoires (`${VAR:?}`). Votre `.env` contient encore ces valeurs par défaut : voir « À faire ». |
+| F1 | `docker-compose.yml` | Mots de passe faibles par défaut utilisés si `.env` est incomplet. | Variables obligatoires (`${VAR:?}`). Les mots de passe du Raspberry ont été changés depuis. |
 | F2 | `Dockerfile` | Code modifiable par l'utilisateur Apache ; volume en écriture. | Code en lecture seule (`:ro`, appartenant à root), `no-new-privileges`, fonctions shell désactivées, `allow_url_fopen` coupé. |
 | F3 | Apache | Version exposée, TRACE autorisé, méthodes non utilisées acceptées. | `ServerTokens Prod`, `TraceEnable Off`, seules GET, POST et HEAD sont acceptées, corps limité à 4 Mo. |
 | F4 | `combat.php` | Lien « Retour » construit depuis le Referer (redirection vers un site externe possible). | Seulement un chemin `.php` du même site. |
@@ -74,14 +74,7 @@ Apache/PHP, Docker Compose, base MariaDB, daemon BLE (Python), dépendances.
 
 ## À faire de votre côté (non automatisable)
 
-1. **Changer les mots de passe de la base** (votre `.env` utilise encore `rootpass` et `arbitrage_pass`). Sur le Pi :
-   ```bash
-   docker exec -it sabre_db mariadb -uroot -p'ANCIEN_ROOT' -e "
-     ALTER USER 'root'@'%' IDENTIFIED BY 'NOUVEAU_ROOT';
-     ALTER USER 'root'@'localhost' IDENTIFIED BY 'NOUVEAU_ROOT';
-     ALTER USER 'arbitrage_user'@'%' IDENTIFIED BY 'NOUVEAU_APP';"
-   ```
-   Puis mettez les mêmes valeurs dans `.env` et relancez `docker compose up -d`.
+1. **Mots de passe de la base** : changés sur le Raspberry en novembre 2026, ils ne sont plus écrits dans le dépôt. Pour les changer de nouveau : `ALTER USER` dans MariaDB, mêmes valeurs dans `.env`, puis `docker compose up -d`. Attention : la clé qui chiffre les mots de passe relisibles dérive de `DB_PASS` ; sans les rechiffrer, ils deviennent illisibles et se réenregistrent à la prochaine connexion de chaque compte (les accès Wi-Fi et les jetons des Raspberry sont à regénérer).
 2. **Changer le mot de passe `Super`** partout où il servait, puisqu'il était écrit dans le code.
 3. **Supprimer les dossiers `_backup_*`** du projet quand vous n'en avez plus besoin.
 4. **Tunnel internet** : ne l'activez (`--profile tunnel`) que lorsque c'est nécessaire.

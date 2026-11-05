@@ -523,9 +523,16 @@ Nouvelle page Admin › Raspberry : le compte affiché sur chaque écran, attrib
 **Images du guide**
 Captures refaites en deux versions, noir et blanc (thème Orange · blanc · bleu), au choix avec un bouton. Elles passent en pleine largeur, avec une miniature dans la liste, et chaque fiche peut recevoir l'image de son choix.
 
+**Impression du guide**
+Le compte connecté retrouve son identifiant et son mot de passe sur le papier, et les administrateurs toute la liste, avec une mention « document confidentiel ».
+
+**Mots de passe de la base**
+Les mots de passe de MariaDB du Raspberry étaient écrits dans le dépôt public : ils ont été changés (les mots de passe relisibles ont été rechiffrés au passage) et retirés des fichiers. Les anciennes valeurs restent dans l'historique Git, mais ne servent plus.
+
 **Problèmes rencontrés :**
 - Le disque du Raspberry était plein, ce qui bloquait le déploiement : cache de construction Docker vidé (950 Mo).
 - Le test réel du script d'installation a montré une erreur en fin d'exécution (variable locale utilisée par un `trap`) : corrigée avant le déploiement.
+- Le script de changement des mots de passe a d'abord échoué sur une copie d'essai (arrêt à mi-chemin, retour en arrière incomplet) : corrigé avant de le lancer sur le Raspberry.
 - Les combats de démonstration paraissaient terminés sur les captures : la base d'essai n'était pas dans le même fuseau horaire que l'application.
 
 **Tests :** copie isolée de l'application avec Docker (parcours complets, droits d'accès, faux fichiers), script d'installation exécuté dans un conteneur, puis essai réel du fond d'écran sur le Raspberry principal avec un compte temporaire.

@@ -2688,6 +2688,8 @@ body:has(#pad[data-actif="1"]) { padding-bottom: 0 !important; }
     .guide-pin { background: #e0245e !important; color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .guide-astuces { border-color: #999; background: #fff; break-inside: avoid; font-size: 9.5pt; }
     .guide-texte a { text-decoration: none; }
+    .page-content:has(.guide-layout) .table-wrap { overflow: visible; }
+    .page-content:has(.guide-layout) thead, .page-content:has(.guide-layout) thead th { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .guide-voir { font-size: 9pt; }
     .guide-voir a::after { content: " ·"; }
     .guide-parcours li { background: #fff !important; border-bottom: 1px solid #ddd; break-inside: avoid; }

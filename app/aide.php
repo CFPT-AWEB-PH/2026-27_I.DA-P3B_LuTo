@@ -163,12 +163,13 @@ require __DIR__ . '/includes/header.php';
 <?php if ($user): ?>
 <section class="card mb-5" aria-labelledby="h-mon-identifiant">
     <h2 id="h-mon-identifiant" class="h-inline"><?= icon('user') ?> Mon identifiant : <code><?= e($user['username']) ?></code></h2>
-    <p class="no-print"><strong>Mon mot de passe :</strong> <?= $monMdp !== null ? '<code>' . e($monMdp) . '</code>' : '<span class="muted">pas encore connu : il s\'affichera après votre prochaine connexion</span>' ?></p>
+    <p class="print-only"><strong>Document confidentiel : il contient des mots de passe, ne le laissez pas traîner.</strong></p>
+    <p><strong>Mon mot de passe :</strong><?= $monMdp !== null ? '<code>' . e($monMdp) . '</code>' : '<span class="muted">pas encore connu : il s\'affichera après votre prochaine connexion</span>' ?></p>
     <p class="hint">Rôle <?= e(nomRole($pdo, $user['role'])) ?>. Le mot de passe est donné par l'organisation et ne se change pas.</p>
     <?php if (estSuperAdmin()): ?>
-    <p class="no-print"><strong>Compte système :</strong> identifiant <code><?= e(COMPTE_SYSTEME) ?></code> · mot de passe <code><?= e(MDP_COMPTE_SYSTEME) ?></code> <span class="hint">(imposé, il ne peut pas être modifié)</span></p>
-    <details class="wifi-guide no-print" open>
-        <summary>Tous les identifiants et mots de passe (administrateurs seulement)</summary>
+    <p><strong>Compte système :</strong> identifiant <code><?= e(COMPTE_SYSTEME) ?></code> · mot de passe <code><?= e(MDP_COMPTE_SYSTEME) ?></code> <span class="hint">(imposé, il ne peut pas être modifié)</span></p>
+    <div class="wifi-guide">
+        <h3>Tous les identifiants et mots de passe (administrateurs seulement)</h3>
         <div class="table-wrap">
             <table>
                 <caption class="visually-hidden">Comptes de l'application</caption>
@@ -200,7 +201,7 @@ require __DIR__ . '/includes/header.php';
                 </tbody>
             </table>
         </div>
-    </details>
+    </div>
     <?php endif; ?>
 </section>
 <?php endif; ?>
