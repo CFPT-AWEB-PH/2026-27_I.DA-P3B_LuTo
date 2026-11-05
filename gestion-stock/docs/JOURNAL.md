@@ -346,4 +346,6 @@ Demande de l'utilisateur : audit complet et correction. Modèle de menace et ris
 
 **Tests** : `backend/tests/security_test.php`, écrit d'abord et lancé sur l'ancien code : 47 échecs, dont toutes les escalades. Après correction, toutes les suites passent sur une pile Docker locale neuve (x86). Navigateur sur cette pile : profils Administrateur, gestionnaire limité et Élève, éditeur 3D, refus affiché dans la page Utilisateurs, aucune violation CSP ; service worker activé dans Edge sans interface.
 
-**Limites** : ni commité ni déployé. Pas essayé sur le Pi (arm64) ni sur sa base réelle, HTTPS seulement sur un certificat local. Risques restants et décisions à prendre : `docs/SECURITE.md`.
+**Déployé** sur le Pi (version 20261105-144243-800dfd6) : conteneurs sains, base à jour. `run-tests.sh` : toutes les suites passent, sauf 3 vérifications de `stock_test.php` qui supposent un catalogue vide : le vrai catalogue de l'atelier compte 101 objets avec « résistance » (1101 trouvés au lieu de 1000) et remplit les premiers résultats de « armoire A » et « ARM-A ». La recherche n'a pas été modifiée, et ces vérifications passent sur une base neuve. Sur le Pi : seuls 3 comptes ont des droits d'administration, tous attribués par le compte 1 ; le rôle par défaut n'en a aucun.
+
+**Limites** : HTTPS essayé seulement avec un certificat local ; le site reste en HTTP. Risques restants et décisions à prendre : `docs/SECURITE.md`.
