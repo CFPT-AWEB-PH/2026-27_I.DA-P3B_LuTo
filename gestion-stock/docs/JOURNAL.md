@@ -185,6 +185,7 @@ Audit écran par écran sur une copie locale complète (Docker, données réalis
 **Tests**
 - `pwa_test.php` : 23 vérifications (tableau de bord selon le rôle, manifeste, icônes, service worker versionné, fichiers préchargés tous disponibles, en-têtes). Total serveur : **247 vérifications, 0 échec** (58 + 23 + 80 + 86).
 - PWA dans un **vrai navigateur (Edge sans interface)**, sur le vrai serveur via un tunnel SSH vers `localhost`, sans compte : service worker activé, 39 fichiers préchargés, aucune réponse d'API en cache, installable selon le navigateur, écran « Serveur injoignable » et Three.js disponibles tunnel coupé, écriture en échec franc, retour à la normale, aucune erreur de console ni de CSP.
+- Mise à jour testée avec un vrai déploiement pendant que la page était ouverte : nouvelle version proposée, ancien et nouveau caches côte à côte, ancien cache supprimé après accord. Total navigateur : 17 vérifications, 0 échec.
 - Interface sur le banc local (fausse API) : vrais clics droits, permissions Élève et Administrateur, appui long simulé, 375 px sans débordement.
 
 **Bugs trouvés et corrigés**
