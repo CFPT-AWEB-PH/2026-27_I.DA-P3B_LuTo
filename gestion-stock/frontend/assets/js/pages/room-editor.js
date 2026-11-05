@@ -9,7 +9,9 @@ import {
   findFreeSpot, formatLength, fromDisplay, rotateAroundCenter, SHAPE_LABELS, toDisplay, unitInterior, UNITS,
 } from '../spatial.js';
 import { openOpeningsDialog, openRoomDialog } from './room-form.js';
-import { addDialog, formatQuantity, itemDialog, pickItem, takeDialog } from '../stock-dialogs.js';
+import { addDialog, formatQuantity, itemDialog, moveDialog, pickItem, takeDialog } from '../stock-dialogs.js';
+import { contextMenu, openContextMenu } from '../context-menu.js';
+import { itemMenuItems } from '../item-menu.js';
 
 let scene = null;
 
@@ -27,16 +29,16 @@ export async function render(view, session, params) {
   const tree = h('nav', { class: 'editor-tree', 'aria-label': 'Rangements de la salle' });
   const details = h('aside', { class: 'editor-details', 'aria-live': 'polite' });
   const stage = h('div', { class: 'editor-stage' });
-  const hint = h('p', { class: 'editor-hint' }, 'Clic : sélectionner  ·  Glisser : tourner  ·  Clic droit ou Maj + glisser : déplacer la vue  ·  Molette : zoomer  ·  Double-clic : ouvrir un tiroir');
+  const hint = h('p', { class: 'editor-hint' }, 'Clic : sélectionner  ·  Glisser : tourner  ·  Clic droit : menu d’actions  ·  Clic droit + glisser : déplacer la vue  ·  Molette : zoomer  ·  Double-clic : ouvrir un tiroir');
   // L'aide s'efface dès la première interaction : elle a servi
   stage.addEventListener('pointerdown', () => hint.classList.add('is-faded'), { once: true });
 
   const pressed = (button, on) => button.setAttribute('aria-pressed', String(on));
   const label = (text) => h('span', { class: 'btn-label' }, text);
   const dimsButton = h('button', { class: 'btn btn-small', type: 'button', 'aria-pressed': 'false', title: 'Afficher les cotes' }, icon('ruler'), label('Cotes'));
-  const moveButton = can('furniture.edit') && h('button', { class: 'btn btn-small', type: 'button', 'aria-pressed': 'false', title: 'Faire glisser le meuble sélectionné au sol (Maj : pas de 10 cm)' }, icon('move'), label('Déplacer'));
-  const colorSelect = can('stock.view') && h('select', { class: 'select-small', 'aria-label': 'Couleurs des rangements' },
-    h('option', { value: 'original' }, "Couleurs d'origine"), h('option', { value: 'fill' }, 'Couleurs de remplissage'));
+  const moveButton = can('furniture.edit') ? h('button', { class: 'btn btn-small', type: 'button', 'aria-pressed': 'false', title: 'Faire glisser le meuble sélectionné au sol (Maj : pas de 10 cm)' }, icon('move'), label('Déplacer')) : null;
+  const colorSelect = can('stock.view') ? h('select', { class: 'select-small', 'aria-label': 'Couleurs des rangements' },
+    h('option', { value: 'original' }, "Couleurs d'origine"), h('option', { value: 'fill' }, 'Couleurs de remplissage')) : null;
   const legend = h('div', { class: 'fill-legend', hidden: true });
   const wallSelect = h('select', { class: 'select-small', 'aria-label': 'Affichage des murs' },
     [['auto', 'Murs : auto'], ['transparent', 'Murs : transparents'], ['hidden', 'Murs : masqués'], ['solid', 'Murs : pleins']].map(([v, t]) => h('option', { value: v }, t)));
@@ -55,13 +57,8 @@ export async function render(view, session, params) {
       h('div', { class: 'toolbar-group', role: 'group', 'aria-label': 'Affichage' }, dimsButton, wallSelect, colorSelect, moveButton,
         h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Réafficher les éléments masqués', onclick: () => { scene?.showAll(); renderTree(); renderDetails(); } }, icon('eye'), label('Tout afficher'))),
       h('div', { class: 'toolbar-group toolbar-end' },
-        can('rooms.edit') && h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Fenêtres, portes et passages', onclick: async () => {
-          await openOpeningsDialog(state.payload, (payload) => apply(payload));
-        } }, icon('door'), label('Ouvertures')),
-        can('rooms.edit') && h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Dimensions, porte et apparence', onclick: async () => {
-          const result = await openRoomDialog(state.payload.room);
-          if (result) apply(result);
-        } }, icon('sliders'), label('Salle')),
+        can('rooms.edit') && h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Fenêtres, portes et passages', onclick: () => openOpenings() }, icon('door'), label('Ouvertures')),
+        can('rooms.edit') && h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Dimensions, porte et apparence', onclick: () => openSettings() }, icon('sliders'), label('Salle')),
         can('furniture.edit') && h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: () => editUnit(null, null) }, icon('plus'), 'Meuble'))),
     ),
     tree, h('div', { class: 'editor-canvas' }, stage, hint, legend), details,
@@ -118,6 +115,10 @@ export async function render(view, session, params) {
     scene = new (await import('../three/room-scene.js')).RoomScene(stage, {
       onSelect: (id) => select(id),
       onMove: (unit, changes) => patchUnit(unit, changes),
+      onContextMenu: (unit, point) => {
+        if (unit) select(unit.id);
+        openContextMenu(unit ? unitMenuItems(unit) : roomMenuItems(), { x: point.clientX, y: point.clientY, label: unit ? `Actions pour ${unit.name}` : 'Actions de la salle' });
+      },
     });
   } catch (error) {
     stage.append(h('div', { class: 'alert alert-error' }, "La vue 3D n'a pas pu démarrer (WebGL indisponible sur cet appareil). L'arborescence et les propriétés restent utilisables."));
@@ -161,11 +162,11 @@ export async function render(view, session, params) {
       return h('span', { class: 'legend-item' }, dot, t);
     }));
   }
-  moveButton?.addEventListener('click', () => {
-    const on = moveButton.getAttribute('aria-pressed') !== 'true';
-    pressed(moveButton, on);
+  const setMoveMode = (on) => {
+    if (moveButton) pressed(moveButton, on);
     scene?.setMoveMode(on);
-  });
+  };
+  moveButton?.addEventListener('click', () => setMoveMode(moveButton.getAttribute('aria-pressed') !== 'true'));
 
   // Flèches : décalage de 10 mm (Maj : 100 mm) ; Pg préc./suiv. : hauteur ; Échap : désélection
   stage.addEventListener('keydown', (event) => {
@@ -194,8 +195,7 @@ export async function render(view, session, params) {
       const kids = childrenOf(u.id);
       const open = state.expanded.has(u.id);
       const hidden = scene?.hidden.has(u.id) ?? false;
-      return h('li', { class: ['tree-node', u.id === state.selectedId && 'is-selected', hidden && 'is-hidden'] },
-        h('div', { class: 'tree-row' },
+      const row = h('div', { class: 'tree-row' },
           kids.length
             ? h('button', { class: 'tree-toggle', type: 'button', 'aria-expanded': String(open), 'aria-label': `${open ? 'Replier' : 'Déplier'} ${u.name}`,
               onclick: () => { if (open) state.expanded.delete(u.id); else state.expanded.add(u.id); renderTree(); } }, icon('chevronRight'))
@@ -204,7 +204,10 @@ export async function render(view, session, params) {
             h('span', { class: 'tree-swatch', dataset: { color: u.color } }), u.name, u.label && h('span', { class: 'badge' }, u.label)),
           h('button', { class: 'tree-eye', type: 'button', 'aria-pressed': String(hidden), title: hidden ? 'Afficher' : 'Masquer temporairement', 'aria-label': `${hidden ? 'Afficher' : 'Masquer'} ${u.name}`,
             onclick: () => { scene?.setHidden(u.id, !hidden); renderTree(); } }, icon(hidden ? 'eyeOff' : 'eye')),
-        ),
+        );
+      contextMenu(row, () => unitMenuItems(u), { label: `Actions pour ${u.name}` });
+      return h('li', { class: ['tree-node', u.id === state.selectedId && 'is-selected', hidden && 'is-hidden'] },
+        row,
         kids.length > 0 && open && h('ul', { class: 'tree-children' }, kids.map(node)),
       );
     };
@@ -317,20 +320,20 @@ export async function render(view, session, params) {
       try {
         const { contents } = await api(`/storage-units/${u.id}/contents?deep=1`);
         clear(body, contents.length
-          ? h('ul', { class: 'plain-list contents-list' }, contents.map((c) => h('li', { class: 'list-row' },
+          ? h('ul', { class: 'plain-list contents-list' }, contents.map((c) => withItemMenu(c, h('li', { class: 'list-row' },
             h('div', { class: 'list-row-main' },
               h('a', { href: `/items/${c.item_id}` }, c.name),
               h('span', { class: 'sub' }, formatQuantity(c.quantity, c.unit), c.unit_id !== u.id && `, dans ${c.path.split(' › ').slice(-1)[0]}`)),
             can('stock.take') && h('button', { class: 'btn btn-small', type: 'button', 'aria-label': `Prendre ${c.name}`, onclick: async () => {
               const item = { id: c.item_id, name: c.name, unit: c.unit, is_consumable: c.is_consumable };
               if (await takeDialog(item, { unit_id: c.unit_id, path: c.path, quantity: c.quantity })) { await reload(); }
-            } }, 'Prendre'))))
+            } }, 'Prendre')))))
           : h('p', { class: 'muted small' }, 'Aucun objet rangé ici.'));
       } catch (error) { clear(body, errorState(error, load)); }
     };
     load();
     return h('div', {},
-      h('h3', { class: 'panel-subtitle' }, 'Objets rangés ici', u.capacity && h('span', { class: 'count' }, `capacité ${formatQuantity(u.capacity)}`)),
+      h('h3', { class: 'panel-subtitle contents-heading' }, 'Objets rangés ici', u.capacity && h('span', { class: 'count' }, `capacité ${formatQuantity(u.capacity)}`)),
       body,
       h('div', { class: 'detail-actions' },
         can('stock.add') && h('button', { class: 'btn btn-small', type: 'button', onclick: async () => {
@@ -342,7 +345,118 @@ export async function render(view, session, params) {
         } }, 'Nouvel objet')));
   }
 
+  // ===== Menus contextuels =====
+
+  function withItemMenu(c, element) {
+    const item = { id: c.item_id, name: c.name, unit: c.unit, is_consumable: c.is_consumable };
+    contextMenu(element, () => itemMenuItems(item, session, {
+      reload, location: { unit_id: c.unit_id, path: c.path, quantity: c.quantity },
+    }), { label: `Actions pour ${c.name}` });
+    return element;
+  }
+
+  /** Salle (clic droit dans le vide de la vue 3D). */
+  function roomMenuItems() {
+    return [
+      can('furniture.edit') && { label: 'Ajouter un meuble…', icon: 'plus', onSelect: () => editUnit(null, null) },
+      can('rooms.edit') && { label: 'Modifier les paramètres…', icon: 'sliders', onSelect: openSettings },
+      can('rooms.edit') && { label: 'Gérer les ouvertures…', icon: 'door', onSelect: openOpenings },
+      { separator: true },
+      { label: 'Vue 3D', icon: 'cube', onSelect: () => scene?.viewPreset('iso') },
+      { label: 'Vue de dessus', icon: 'grid', onSelect: () => scene?.viewPreset('top') },
+      { label: 'Vue depuis la porte', icon: 'door', onSelect: () => scene?.viewPreset('door') },
+      { label: 'Tout afficher', icon: 'eye', onSelect: () => { scene?.showAll(); renderTree(); renderDetails(); } },
+    ];
+  }
+
+  /** Meuble ou rangement : mêmes actions que le panneau de propriétés, selon les permissions. */
+  function unitMenuItems(u) {
+    const parent = unitById(u.parent_id);
+    const furniture = u.parent_id === null;
+    const editRight = can(furniture ? 'furniture.edit' : 'storage.edit');
+    const canNest = can('storage.edit') && u.can_contain_units && unitInterior(u);
+    const nest = (shape) => () => editUnit(null, u, { shape });
+    const hidden = scene?.hidden.has(u.id) ?? false;
+    const showContents = () => {
+      select(u.id);
+      // Le panneau vient d'être reconstruit : aller aux objets (sous la vue 3D sur mobile)
+      details.querySelector('.contents-heading')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    };
+    return [
+      { label: 'Sélectionner et centrer', icon: 'focus', onSelect: () => select(u.id, { focus: true }) },
+      u.can_hold_items && can('stock.view') && { label: 'Consulter le contenu', icon: 'box', onSelect: showContents },
+      u.shape === 'drawer' && { label: scene?.isDrawerOpen(u.id) ? 'Fermer le tiroir' : 'Ouvrir le tiroir', icon: 'drawer', onSelect: () => {
+        scene?.setDrawerOpen(u.id, !scene.isDrawerOpen(u.id));
+        setTimeout(renderDetails, 260);
+      } },
+      { separator: true },
+      editRight && { label: furniture ? 'Modifier les dimensions…' : 'Modifier…', icon: 'edit', onSelect: () => editUnit(u, parent) },
+      editRight && !furniture && { label: 'Renommer…', icon: 'tag', onSelect: () => rename(u) },
+      furniture && can('furniture.edit') && moveButton && { label: 'Déplacer dans la salle', icon: 'move', onSelect: () => {
+        select(u.id);
+        setMoveMode(true);
+        toast('Faites glisser le meuble au sol. Maj : pas de 10 cm.', 'info');
+      } },
+      canNest && furniture && { label: 'Ajouter un tiroir…', icon: 'drawer', onSelect: nest('drawer') },
+      canNest && furniture && { label: 'Ajouter une étagère…', icon: 'layers', onSelect: nest('shelf') },
+      canNest && !furniture && { label: 'Ajouter un sous-rangement…', icon: 'plus', onSelect: nest('box') },
+      { separator: true },
+      u.can_hold_items && can('stock.add') && { label: 'Ajouter des objets…', icon: 'plus', onSelect: async () => {
+        const item = await pickItem(`Ajouter dans « ${u.name} » : choisir l'objet`);
+        if (item && await addDialog(item, { unit_id: u.id, path: u.path })) { await reload(); select(u.id); }
+      } },
+      u.can_hold_items && can('stock.move') && { label: 'Déplacer des objets…', icon: 'move', onSelect: () => moveContents(u) },
+      { separator: true },
+      { label: hidden ? 'Afficher' : 'Masquer temporairement', icon: hidden ? 'eye' : 'eyeOff', onSelect: () => { scene?.setHidden(u.id, !hidden); renderTree(); renderDetails(); } },
+      editRight && { label: 'Supprimer…', icon: 'trash', danger: true, onSelect: () => remove(u) },
+    ];
+  }
+
+  async function rename(u) {
+    const saved = await openDialog(`Renommer « ${u.name} »`, (close) => {
+      const name = h('input', { name: 'name', required: true, maxlength: 120, value: u.name });
+      const form = h('form', { class: 'dialog-body', novalidate: true }, field('Nom', name),
+        h('div', { class: 'dialog-actions' },
+          h('button', { class: 'btn', type: 'button', onclick: () => close(false) }, 'Annuler'),
+          h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, 'Renommer'))));
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        busy(event.submitter, async () => {
+          try {
+            await api(`/storage-units/${u.id}`, { method: 'PATCH', body: { name: name.value } });
+            close(true);
+          } catch (error) { showError(error, form); }
+        });
+      });
+      return form;
+    });
+    if (saved) await reload();
+  }
+
+  async function moveContents(u) {
+    try {
+      const { contents } = await api(`/storage-units/${u.id}/contents`);
+      if (contents.length === 0) return toast(`Aucun objet directement dans « ${u.name} ».`, 'info');
+      const c = contents.length === 1 ? contents[0] : await openDialog(`Déplacer depuis « ${u.name} »`, (close) => h('div', { class: 'dialog-body' },
+        h('ul', { class: 'plain-list choice-list' }, contents.map((x) => h('li', {},
+          h('button', { class: 'choice', type: 'button', onclick: () => close(x) }, x.name, h('strong', { class: 'choice-side' }, formatQuantity(x.quantity, x.unit)))))),
+        h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => close(undefined) }, 'Annuler'))));
+      if (!c) return;
+      const done = await moveDialog({ id: c.item_id, name: c.name, unit: c.unit }, { unit_id: c.unit_id, path: c.path, quantity: c.quantity });
+      if (done) { await reload(); select(u.id); }
+    } catch (error) { showError(error); }
+  }
+
   // ===== Actions =====
+
+  async function openSettings() {
+    const result = await openRoomDialog(state.payload.room);
+    if (result) apply(result);
+  }
+
+  async function openOpenings() {
+    await openOpeningsDialog(state.payload, (payload) => apply(payload));
+  }
 
   async function remove(u) {
     const count = state.payload.units.filter((x) => x.path.startsWith(`${u.path} › `)).length;
@@ -395,14 +509,14 @@ export async function render(view, session, params) {
   }
 
   /** Création (unit null) ou modification d'un meuble (parent null) ou d'un rangement. */
-  async function editUnit(u, parent) {
+  async function editUnit(u, parent, { shape = null } = {}) {
     const room = state.payload.room;
     const unit = room.display_unit;
     const isFurniture = parent === null;
     const types = state.types;
     const saved = await openDialog(u ? `Modifier « ${u.name} »` : isFurniture ? 'Nouveau meuble' : `Nouveau rangement dans « ${parent.name} »`, (close) => {
       const inside = parent ? unitInterior(parent) : null;
-      const typeSelect = h('select', { name: 'type_id' }, types.map((t) => h('option', { value: t.id, selected: t.id === (u?.type_id ?? (isFurniture ? types.find((x) => x.shape === 'cabinet')?.id : types.find((x) => x.shape === 'drawer')?.id)) }, `${t.name} (${SHAPE_LABELS[t.shape]})`)));
+      const typeSelect = h('select', { name: 'type_id' }, types.map((t) => h('option', { value: t.id, selected: t.id === (u?.type_id ?? types.find((x) => x.shape === (shape ?? (isFurniture ? 'cabinet' : 'drawer')))?.id) }, `${t.name} (${SHAPE_LABELS[t.shape]})`)));
       const len = (name, mm) => h('input', { name, type: 'number', inputmode: 'decimal', step: UNITS[unit].step, value: toDisplay(mm, unit), required: true });
       const name = h('input', { name: 'name', required: true, maxlength: 120, value: u?.name ?? '' });
       const label = h('input', { name: 'label', maxlength: 50, value: u?.label ?? '' });
@@ -494,6 +608,14 @@ export async function render(view, session, params) {
     if (highlight && unitById(highlight)) {
       select(highlight);
       scene?.highlight(highlight);
+    }
+    const query = new URLSearchParams(location.search);
+    const action = query.get('action');
+    if (action) {
+      query.delete('action');
+      history.replaceState(null, '', `${location.pathname}${query.size ? `?${query}` : ''}`);
+      if (action === 'add-furniture' && can('furniture.edit')) editUnit(null, null);
+      if (action === 'openings' && can('rooms.edit')) openOpenings();
     }
   } catch (error) {
     title.textContent = error.status === 404 ? 'Salle introuvable' : 'Salle';

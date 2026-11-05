@@ -20,6 +20,7 @@ import * as movementsPage from './pages/movements.js';
 import * as catalogAdminPage from './pages/catalog-admin.js';
 import * as settingsPage from './pages/settings.js';
 import { searchBox } from './search-box.js';
+import { canInstall, initPwa, onInstallChange, promptInstall } from './pwa.js';
 
 // nav: false = page accessible mais absente du menu ; « :param » = segment variable
 // group : section du menu ; tab : présent dans la barre d'onglets mobile
@@ -186,7 +187,10 @@ function userMenu(user) {
       h('strong', {}, user.display_name || user.email),
       user.display_name && h('span', {}, user.email),
       h('div', {}, h('span', { class: 'badge badge-accent' }, user.role.name))),
-    items: [{ label: 'Se déconnecter', icon: 'logOut', danger: true, onSelect: logout }],
+    items: [
+      canInstall() && { label: "Installer l'application", icon: 'take', onSelect: promptInstall },
+      { label: 'Se déconnecter', icon: 'logOut', danger: true, onSelect: logout },
+    ],
   });
 }
 
@@ -220,10 +224,16 @@ function renderShell() {
       h('span', { class: 'tab-pill' }, icon(r.icon)), r.label)));
   document.body.classList.toggle('has-admin-nav', visible.some((r) => !r.tab));
 
+  // Le menu du compte est reconstruit quand l'installation devient possible
+  const accountSlot = h('div', { class: 'account-slot' }, userMenu(user));
+  onInstallChange(() => clear(accountSlot, userMenu(user)));
+
+  // Aucune donnée n'est conservée hors connexion et aucune opération n'est mise en attente : on le dit clairement
   const offline = h('div', { class: 'offline-banner', role: 'status', hidden: navigator.onLine },
-    icon('wifiOff'), 'Hors connexion : consultation seulement, les modifications reprendront au retour du réseau.');
+    icon('wifiOff'), 'Serveur injoignable : les données affichées peuvent être dépassées et rien ne peut être enregistré.');
   window.addEventListener('offline', () => { offline.hidden = false; });
   window.addEventListener('online', () => { offline.hidden = true; });
+  window.addEventListener('server-reachability', (event) => { offline.hidden = event.detail; });
 
   clear(root,
     h('a', { class: 'skip-link', href: '#view' }, 'Aller au contenu'),
@@ -239,7 +249,7 @@ function renderShell() {
           class: 'icon-btn search-toggle', type: 'button', 'aria-label': 'Rechercher',
           onclick: () => { document.body.classList.add('search-open'); search.querySelector('input').focus(); },
         }, icon('search')),
-        userMenu(user)),
+        accountSlot),
     ),
     offline,
     nav,
@@ -277,12 +287,20 @@ onUnauthorized(() => {
   navigate('/login', { replace: true });
 });
 
+initPwa();
+
 try {
   await loadSession();
   render();
 } catch (error) {
+  const unreachable = error.status === 0;
   clear(root, h('div', { class: 'boot' },
-    emptyState(error.message ?? "L'application n'a pas pu démarrer.", { title: 'Démarrage impossible', iconName: 'wifiOff' }),
+    emptyState(unreachable
+      ? "L'application a besoin du serveur pour afficher les données. Vérifiez que vous êtes connecté au réseau de l'établissement."
+      : error.message ?? "L'application n'a pas pu démarrer.",
+    { title: unreachable ? 'Serveur injoignable' : 'Démarrage impossible', iconName: 'wifiOff' }),
     h('button', { class: 'btn btn-primary', onclick: () => location.reload() }, icon('refresh'), 'Réessayer'),
   ));
+  // Reprise automatique dès le retour du réseau
+  if (unreachable) window.addEventListener('online', () => location.reload(), { once: true });
 }

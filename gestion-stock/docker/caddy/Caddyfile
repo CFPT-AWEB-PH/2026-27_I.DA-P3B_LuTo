@@ -12,7 +12,7 @@
 		X-Frame-Options DENY
 		Referrer-Policy same-origin
 		Permissions-Policy "camera=(self), microphone=(), geolocation=()"
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://accounts.google.com"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://accounts.google.com"
 	}
 
 	request_body {
@@ -28,8 +28,11 @@
 	handle {
 		root * /srv/frontend
 		try_files {path} /index.html
-		# Revalidation systématique (ETag) tant que le service worker ne gère pas les versions
+		# Revalidation systématique (ETag) : sw.js doit toujours être comparé au serveur pour détecter
+		# une nouvelle version, et les autres fichiers sont servis par le service worker quand il est actif
 		header Cache-Control "no-cache"
+		@manifest path /manifest.webmanifest
+		header @manifest Content-Type "application/manifest+json"
 		file_server
 	}
 

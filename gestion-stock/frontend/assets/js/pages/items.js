@@ -3,9 +3,11 @@
 import { api } from '../api.js';
 import { append, clear, h } from '../dom.js';
 import { icon } from '../icons.js';
-import { emptyState, errorState, filterToggle, finePointer, locationLabel, pageHeader, plural, showError, skeleton } from '../ui.js';
+import { emptyState, errorState, filterToggle, finePointer, locationLabel, menuButton, pageHeader, plural, showError, skeleton } from '../ui.js';
 import { formatQuantity, itemDialog, takeDialog, unitLabel } from '../stock-dialogs.js';
 import { navigate } from '../app.js';
+import { contextMenu } from '../context-menu.js';
+import { itemMenuItems } from '../item-menu.js';
 
 export async function render(view, session) {
   const params = new URLSearchParams(location.search);
@@ -112,7 +114,8 @@ export async function render(view, session) {
   function card(item, active) {
     const main = item.locations[0];
     const empty = Number(item.total_quantity) === 0;
-    return h('article', { class: ['item-card', item.is_low && 'is-low', empty && 'is-empty'] },
+    const menuItems = () => itemMenuItems(item, session, { reload: load, active });
+    const element = h('article', { class: ['item-card', item.is_low && 'is-low', empty && 'is-empty'] },
       item.photo_url
         ? h('img', { class: 'item-thumb', src: item.photo_url, alt: '', loading: 'lazy', decoding: 'async' })
         : h('div', { class: 'item-thumb item-thumb-empty', 'aria-hidden': 'true' }, icon('box')),
@@ -136,8 +139,12 @@ export async function render(view, session) {
           main && session.can('stock.take') && active && h('button', {
             class: 'btn btn-small btn-primary', type: 'button', 'aria-label': `Prendre ${item.name}`,
             onclick: async () => { if (await takeDialog(item, main)) load(); },
-          }, icon('take'), 'Prendre'))),
+          }, icon('take'), 'Prendre'),
+          // Alternative visible au clic droit et à l'appui long
+          menuButton({ label: `Autres actions pour ${item.name}`, items: menuItems().filter((e) => e && !e.separator) }))),
     );
+    contextMenu(element, menuItems, { label: `Actions pour ${item.name}` });
+    return element;
   }
 }
 

@@ -73,6 +73,8 @@ services:
     build:
       context: .
       dockerfile: docker/caddy/Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
     image: gestion_stock-caddy:${APP_VERSION:-current}
     restart: unless-stopped
     ports:

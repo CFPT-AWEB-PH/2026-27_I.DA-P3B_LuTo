@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Controller\AllowlistController;
 use App\Controller\AuthController;
 use App\Controller\CatalogController;
+use App\Controller\DashboardController;
 use App\Controller\HealthController;
 use App\Controller\ItemController;
 use App\Controller\RoleController;
@@ -89,6 +90,8 @@ $router->add('POST', '/stock/move', [StockController::class, 'move']);
 $router->add('GET', '/loans', [StockController::class, 'loans']);
 $router->add('POST', '/loans/{id:\d+}/return', [StockController::class, 'giveBack']);
 $router->add('GET', '/movements', [StockController::class, 'movements']);
+
+$router->add('GET', '/dashboard', [DashboardController::class, 'show']);
 
 $router->add('GET', '/settings', [SettingsController::class, 'show']);
 $router->add('PATCH', '/settings', [SettingsController::class, 'update']);

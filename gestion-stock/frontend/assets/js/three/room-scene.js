@@ -505,9 +505,33 @@ export class RoomScene {
   bindEvents() {
     const canvas = this.renderer.domElement;
     let down = null;
+    // Clic droit : un glissement déplace la vue, un clic sans mouvement ouvre le menu.
+    // Selon le système, l'événement contextmenu arrive à l'appui ou au relâchement.
+    let right = null;
+    let rightMoved = false;
+    let pendingMenu = null;
+    // Toucher : appui long pour le menu, annulé par un mouvement ou un second doigt
+    let longPress = null;
+    let longPressFired = false;
+    const cancelLongPress = () => { clearTimeout(longPress?.timer); longPress = null; };
+    const openMenu = (point) => this.callbacks.onContextMenu?.(this.pick(point), point);
 
     this.onPointerDown = (event) => {
       down = { x: event.clientX, y: event.clientY };
+      longPressFired = false;
+      if (event.button === 2) { right = { x: event.clientX, y: event.clientY }; rightMoved = false; pendingMenu = null; }
+      if (event.pointerType !== 'mouse') {
+        cancelLongPress();
+        if (event.isPrimary) {
+          const point = { clientX: event.clientX, clientY: event.clientY };
+          longPress = { ...point, timer: setTimeout(() => {
+            longPress = null;
+            longPressFired = true;
+            openMenu(point);
+            navigator.vibrate?.(10);
+          }, 550) };
+        }
+      }
       if (!this.moveMode || event.button !== 0) return;
       const hit = this.pick(event);
       const top = hit && this.topLevelOf(hit);
@@ -521,6 +545,8 @@ export class RoomScene {
     };
 
     this.onPointerMove = (event) => {
+      if (right && Math.hypot(event.clientX - right.x, event.clientY - right.y) > 5) rightMoved = true;
+      if (longPress && Math.hypot(event.clientX - longPress.clientX, event.clientY - longPress.clientY) > 10) cancelLongPress();
       if (!this.dragging) return;
       const point = this.floorPoint(event);
       if (!point) return;
@@ -537,8 +563,14 @@ export class RoomScene {
     };
 
     this.onPointerUp = async (event) => {
-      const wasClick = down && Math.hypot(event.clientX - down.x, event.clientY - down.y) < 5;
+      const wasClick = down && !longPressFired && Math.hypot(event.clientX - down.x, event.clientY - down.y) < 5;
       down = null;
+      cancelLongPress();
+      if (event.button === 2) {
+        right = null;
+        if (pendingMenu && !rightMoved) openMenu(pendingMenu);
+        pendingMenu = null;
+      }
       if (this.dragging) {
         const drag = this.dragging;
         this.dragging = null;
@@ -568,14 +600,19 @@ export class RoomScene {
     };
 
     this.onContextMenu = (event) => {
-      if (!this.callbacks.onContextMenu) return;
-      const hit = this.pick(event);
-      if (!hit) return;
+      if (!this.callbacks.onContextMenu || event.shiftKey) return;
       event.preventDefault();
-      this.callbacks.onContextMenu(hit, event);
+      const point = { clientX: event.clientX, clientY: event.clientY };
+      if (longPressFired) return; // Android : fin de l'appui long, déjà traitée
+      cancelLongPress();
+      if (right) { pendingMenu = point; return; } // bouton encore enfoncé : décision au relâchement
+      if (rightMoved) { rightMoved = false; return; } // la vue vient d'être déplacée
+      longPressFired = event.pointerType !== 'mouse' && event.pointerType !== undefined && event.pointerType !== '';
+      openMenu(point);
     };
 
     canvas.addEventListener('pointerdown', this.onPointerDown);
+    canvas.addEventListener('pointercancel', cancelLongPress);
     canvas.addEventListener('pointermove', this.onPointerMove);
     canvas.addEventListener('pointerup', this.onPointerUp);
     canvas.addEventListener('dblclick', this.onDoubleClick);

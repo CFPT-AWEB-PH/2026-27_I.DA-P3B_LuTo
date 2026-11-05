@@ -1310,3 +1310,44 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 @media (prefers-reduced-transparency: reduce) {
   .topbar, .tabbar { background: var(--surface); backdrop-filter: none; }
 }
+
+/* ===== Menu contextuel ===== */
+.context-menu { position: fixed; right: auto; top: 0; left: 0; max-height: calc(100dvh - var(--s4)); max-width: calc(100vw - var(--s4)); overflow-y: auto; transform-origin: top left; }
+.menu-separator { height: 1px; margin: var(--s1) var(--s2); background: var(--line); }
+.has-context-menu { -webkit-touch-callout: none; }
+@media (pointer: coarse) {
+  .has-context-menu { -webkit-user-select: none; user-select: none; }
+  .context-menu .menu-item { min-height: var(--tap); }
+}
+.choice-list { display: grid; gap: var(--s2); margin: 0; }
+.choice { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); width: 100%; min-height: var(--tap); padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.choice:hover { background: var(--surface-hover); }
+.choice-side { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* ===== Tableau de bord ===== */
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--s3); margin-bottom: var(--s4); }
+.kpi-row:empty { display: none; }
+.kpi { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s3) var(--s4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); color: var(--ink); text-decoration: none; }
+.kpi:hover { background: var(--surface-hover); border-color: var(--line-strong); }
+.kpi-value { font-family: var(--font-display); font-size: var(--text-xl); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; line-height: var(--lh-tight); }
+.kpi-label { font-size: var(--text-sm); color: var(--ink-2); }
+.kpi-warn { background: var(--warning-soft); border-color: var(--warning-line); }
+.kpi-warn:hover { background: var(--warning-soft); border-color: var(--warning); }
+.kpi-warn .kpi-value, .kpi-warn .kpi-label { color: var(--warning); }
+.home-activity { margin-top: var(--s4); overflow: hidden; }
+.home-activity .section-header { padding: var(--s4) var(--s5) 0; }
+.home-activity .empty-state { padding: var(--s6) var(--s4); }
+@media (max-width: 767px) {
+  .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s2); }
+  .kpi { padding: var(--s3); }
+}
+
+/* Le lien étiré des cartes impose position: relative à .item-actions * : le menu « ⋯ » reste un calque flottant,
+   au-dessus des actions de la carte suivante tant qu'il est ouvert */
+.item-actions { align-items: center; }
+.item-actions .popover { position: absolute; z-index: var(--z-popover); }
+.item-actions .popover * { position: static; }
+.item-actions:has(.popover:not([hidden])) { z-index: var(--z-popover); }
+@media (max-width: 767px) {
+  .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}

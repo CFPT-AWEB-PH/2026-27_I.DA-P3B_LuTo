@@ -38,8 +38,11 @@ export async function api(path, { method = 'GET', body } = {}) {
       credentials: 'same-origin',
     });
   } catch {
-    throw new ApiError(0, 'Serveur injoignable. Vérifiez votre connexion réseau.');
+    // navigator.onLine reste vrai si le Wi-Fi fonctionne mais que le serveur est injoignable
+    window.dispatchEvent(new CustomEvent('server-reachability', { detail: false }));
+    throw new ApiError(0, 'Serveur injoignable : rien n’a été enregistré. Vérifiez votre connexion réseau.');
   }
+  window.dispatchEvent(new CustomEvent('server-reachability', { detail: true }));
 
   if (response.status === 204) return null;
   let data = null;

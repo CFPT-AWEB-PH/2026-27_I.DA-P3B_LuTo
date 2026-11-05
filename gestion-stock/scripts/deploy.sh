@@ -3,7 +3,9 @@
 # Seul le contenu committé est envoyé : l'arbre de travail doit être propre.
 set -euo pipefail
 
-HOST=${DEPLOY_HOST:-cuto@10.5.35.39}
+# Adresse DHCP : à ajuster si elle change (ssh refuse toute machine dont la clé diffère).
+# Ne pas utiliser cuto.local : un autre Raspberry Pi du réseau porte le même nom.
+HOST=${DEPLOY_HOST:-cuto@10.5.35.38}
 BASE=${DEPLOY_BASE:-/home/cuto/gestion_stock}
 
 cd "$(git rev-parse --show-toplevel)"
