@@ -322,3 +322,28 @@ Demandes de l'utilisateur : ajouter un compte à la fois, ne pas devoir tout imp
 **Tests** : banc local avec fausse API et CSP réelle : parcours complet d'ajout, doublon, champs vides, sélection partielle (seuls les comptes cochés reçoivent un nouveau mot de passe), impression partielle avec `window.print` simulé, avertissement à la fermeture, redirections, profil Élève, thème sombre, 375 px sans débordement. Corrigés en testant : boutons sur le titre à 375 px, bouton réactivé sans sélection, vignette de résistance presque vide.
 
 **Limites** : pas vérifié sur le serveur réel, ni sur une vraie imprimante pour la sélection. Un objet dont le nom n'est reconnu par aucune règle (ex. « Multimètre ») a la vignette générique d'un boîtier : choisir un modèle sur sa fiche ou y mettre une photo.
+
+## Audit de sécurité (2026-11-05)
+
+Demande de l'utilisateur : audit complet et correction. Modèle de menace et risques restants : `docs/SECURITE.md`.
+
+**Corrigé**
+- Escalade de privilèges : `users.manage` pouvait se donner le rôle administrateur, désactiver un administrateur ou reprendre le mot de passe d'un compte plus fort ; `roles.manage` pouvait s'ajouter n'importe quelle permission. Nouveau `PrivilegeGuard`.
+- Rôle par défaut : plus de droits d'administration possibles dessus (sinon chaque nouveau compte les reçoit).
+- Refus par défaut dans le routeur : toute route exige une session, sauf les 4 déclarées publiques.
+- Identifiants : les variantes accentuées contournaient la limite d'essais par compte (collation de la base). Format vérifié avant la requête.
+- Liste d'autorisation : un retrait ferme les sessions concernées, et un gestionnaire limité ne peut pas retirer un compte plus fort. Un administrateur sans e-mail peut de nouveau retirer une entrée.
+- Sessions : rotation à la connexion. Mots de passe : 72 octets au plus, différents de l'identifiant, empreinte remise à niveau à la connexion.
+- Photos : 24 mégapixels au plus (à 36 Mpx, le décodage tuait le processus PHP faute de mémoire).
+- Erreurs 500 provoquées par la page demandée, une date impossible, un champ numérique trop long ; paramètres en tableau ignorés.
+- Quotas par compte : mots de passe, photos, créations en masse.
+- `/api/health` : l'état seulement en public.
+- Caddy : HSTS en HTTPS, CSP sans Google tant que la connexion n'existe pas, COOP et CORP, délais de lecture, jetons retirés des journaux.
+- Conteneurs : `php` et `caddy` en lecture seule, capacités retirées, `no-new-privileges` partout, `php` sans accès à Internet. PHP : fonctions d'exécution de commandes désactivées.
+- `.gitignore` : listes de classes (`.xls*`, `.csv`), clés et sauvegardes.
+
+**Vérifié sans rien à corriger** : injections SQL, XSS (DOM construit sans `innerHTML`, nom piégé affiché comme texte), CORS absent, CSRF, secrets absents du dépôt et de l'historique Git, empreintes bcrypt, sessions hachées en base, service worker à l'écart de l'API.
+
+**Tests** : `backend/tests/security_test.php`, écrit d'abord et lancé sur l'ancien code : 47 échecs, dont toutes les escalades. Après correction, toutes les suites passent sur une pile Docker locale neuve (x86). Navigateur sur cette pile : profils Administrateur, gestionnaire limité et Élève, éditeur 3D, refus affiché dans la page Utilisateurs, aucune violation CSP ; service worker activé dans Edge sans interface.
+
+**Limites** : ni commité ni déployé. Pas essayé sur le Pi (arm64) ni sur sa base réelle, HTTPS seulement sur un certificat local. Risques restants et décisions à prendre : `docs/SECURITE.md`.

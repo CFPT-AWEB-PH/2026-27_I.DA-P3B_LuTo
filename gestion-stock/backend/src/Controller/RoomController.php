@@ -120,6 +120,7 @@ final class RoomController
     public static function duplicate(Request $request, array $params): Response
     {
         $auth = $request->requirePermission('rooms.edit');
+        StorageUnitController::consumeBulkQuota($auth);
         $sourceId = (int) $params['id'];
 
         $newId = Database::transaction(static function (PDO $pdo) use ($sourceId, $auth): int {

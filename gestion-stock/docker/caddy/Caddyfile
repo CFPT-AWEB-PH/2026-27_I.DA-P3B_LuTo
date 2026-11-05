@@ -1,8 +1,15 @@
 {
-	# HTTP tant que le nom de domaine n'est pas configuré (voir docs/ARCHITECTURE.md §6)
-	auto_https disable_redirects
+	# Une connexion lente ne doit pas occuper le serveur indéfiniment
+	servers {
+		timeouts {
+			read_header 10s
+			read_body 60s
+			idle 2m
+		}
+	}
 }
 
+# ":80" : HTTP local, sans redirection. Nom de domaine : HTTPS automatique et redirection du HTTP.
 {$SITE_ADDRESS::80} {
 	encode zstd gzip
 
@@ -11,9 +18,16 @@
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
 		Referrer-Policy same-origin
-		Permissions-Policy "camera=(self), microphone=(), geolocation=()"
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://accounts.google.com"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy same-origin
+		Cross-Origin-Resource-Policy same-origin
+		# Connexion Google, le jour où elle sera en place : ajouter https://accounts.google.com à form-action
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
 	}
+
+	# HSTS uniquement en HTTPS : en HTTP, il serait ignoré par les navigateurs
+	@https protocol https
+	header @https Strict-Transport-Security "max-age=31536000"
 
 	request_body {
 		max_size 6MB
@@ -36,8 +50,18 @@
 		file_server
 	}
 
+	# Ni le jeton des liens de connexion ni le jeton CSRF dans les journaux
+	# (Caddy masque déjà les cookies et l'en-tête Authorization)
 	log {
 		output stdout
-		format json
+		format filter {
+			wrap json
+			fields {
+				request>uri query {
+					delete token
+				}
+				request>headers>X-Csrf-Token delete
+			}
+		}
 	}
 }

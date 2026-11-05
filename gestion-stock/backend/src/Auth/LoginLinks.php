@@ -36,7 +36,7 @@ final class LoginLinks
         if (!self::enabled()) {
             throw new HttpException(403, 'La connexion par lien est désactivée.', ['code' => 'disabled_method']);
         }
-        if (!preg_match('/^[a-f0-9]{64}$/', $token)) {
+        if (!preg_match('/^[a-f0-9]{64}$/D', $token)) {
             throw new HttpException(400, 'Lien de connexion invalide.', ['code' => 'invalid_link']);
         }
         $pdo = Database::connection();

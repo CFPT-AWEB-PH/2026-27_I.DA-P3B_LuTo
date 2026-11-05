@@ -23,6 +23,16 @@ final class RateLimiter
         }
     }
 
+    /**
+     * Compte une opération coûteuse (mot de passe à calculer, image à décoder…), réussie ou non,
+     * et la refuse au-delà du quota : un compte ne peut pas saturer le serveur à lui seul.
+     */
+    public static function consume(string $bucket, int $limit, int $windowSeconds): void
+    {
+        self::hit($bucket, $windowSeconds);
+        self::assertAllowed($bucket, $limit + 1, $windowSeconds);
+    }
+
     public static function hit(string $bucket, int $windowSeconds): void
     {
         $pdo = Database::connection();

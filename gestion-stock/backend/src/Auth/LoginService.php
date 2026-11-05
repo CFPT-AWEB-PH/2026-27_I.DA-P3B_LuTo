@@ -80,14 +80,21 @@ final class LoginService
     public static function loginWithPassword(string $username, string $password, string $ip): int
     {
         $pdo = Database::connection();
-        $stmt = $pdo->prepare('SELECT id, is_active, password_hash FROM users WHERE username = ?');
-        $stmt->execute([$username]);
-        $user = $stmt->fetch();
-        $hash = $user['password_hash'] ?? null;
+        // Format vérifié avant la base, dont la collation assimile « žoe » à « zoe » : ces variantes
+        // échapperaient à la limite d'essais par compte, et un identifiant mal formé est souvent
+        // un mot de passe saisi dans le mauvais champ, à ne pas écrire dans le journal.
+        $wellFormed = Passwords::isValidUsername($username);
+        $user = false;
+        if ($wellFormed) {
+            $stmt = $pdo->prepare('SELECT id, is_active, password_hash FROM users WHERE username = ?');
+            $stmt->execute([$username]);
+            $user = $stmt->fetch();
+        }
+        $hash = $user === false ? null : $user['password_hash'];
         // Compte inconnu : un calcul d'empreinte équivalent, pour que le temps de réponse ne le trahisse pas
         $valid = $hash !== null ? password_verify($password, $hash) : password_hash($password, PASSWORD_DEFAULT) === '';
         if ($user === false || $hash === null || !$valid) {
-            Audit::log($user === false ? null : (int) $user['id'], 'auth.denied', details: ['username' => $username, 'reason' => 'bad_password'], ip: $ip);
+            Audit::log($user === false ? null : (int) $user['id'], 'auth.denied', details: ['username' => $wellFormed ? $username : null, 'reason' => 'bad_password'], ip: $ip);
             throw new HttpException(401, 'Identifiant ou mot de passe incorrect.', ['code' => 'bad_credentials']);
         }
         $userId = (int) $user['id'];
@@ -96,6 +103,9 @@ final class LoginService
             throw new HttpException(403, 'Ce compte est désactivé. Adressez-vous à la personne qui gère les comptes.', ['code' => 'disabled']);
         }
         $pdo->prepare('UPDATE users SET last_login_at = UTC_TIMESTAMP() WHERE id = ?')->execute([$userId]);
+        if (password_needs_rehash((string) $hash, PASSWORD_DEFAULT)) {
+            $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?')->execute([Passwords::hash($password), $userId]);
+        }
         Audit::log($userId, 'auth.login', 'user', $userId, ['via' => 'password'], $ip);
         return $userId;
     }

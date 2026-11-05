@@ -26,8 +26,10 @@ final class HealthController
             }
         } catch (\Throwable $e) {
             error_log('Health check: ' . $e->getMessage());
-            return Response::json(['status' => 'error', 'version' => Config::version(), 'database' => 'unavailable'], 503);
+            return Response::json(['status' => 'error'], 503);
         }
-        return Response::json($body, $body['status'] === 'ok' ? 200 : 503);
+        $code = $body['status'] === 'ok' ? 200 : 503;
+        // Version et état des migrations aident un attaquant : réservés à l'administration
+        return Response::json($request->auth?->can('system.admin') ? $body : ['status' => $body['status']], $code);
     }
 }

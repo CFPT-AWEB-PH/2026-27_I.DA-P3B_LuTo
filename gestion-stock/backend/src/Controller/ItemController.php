@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Audit;
+use App\Auth\RateLimiter;
 use App\Database;
 use App\Http\HttpException;
 use App\Http\Input;
@@ -35,6 +36,8 @@ final class ItemController
     private const PHOTO_DIR = '/app/storage/uploads/items';
     private const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
     private const PHOTO_MAX_SIDE = 1200;
+    // GD réserve 4 octets par pixel : au-delà, le décodage dépasserait memory_limit (128 Mo) et tuerait la requête
+    private const PHOTO_MAX_PIXELS = 24_000_000;
 
     public static function index(Request $request): Response
     {
@@ -48,7 +51,7 @@ final class ItemController
             $unitIds = [$unitId, ...self::descendants($pdo, $unitId)];
         }
         $sort = in_array($query['sort'] ?? '', ItemSearch::SORTS, true) ? $query['sort'] : 'relevance';
-        $page = max(1, $int('page') ?? 1);
+        $page = min(1_000_000, max(1, $int('page') ?? 1));
         $perPage = min(100, max(1, $int('per_page') ?? 25));
 
         $result = ItemSearch::search($pdo, [
@@ -215,6 +218,7 @@ final class ItemController
     {
         $auth = $request->requirePermission('items.edit');
         $id = (int) $params['id'];
+        RateLimiter::consume("costly-photo:{$auth->userId}", 120, 600);
         $pdo = Database::connection();
         self::item($pdo, $id);
 
@@ -230,8 +234,8 @@ final class ItemController
         if ($info === false || !in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true)) {
             Input::fail('photo', 'Format accepté : JPEG, PNG ou WebP.');
         }
-        if ($info[0] * $info[1] > 40_000_000) {
-            Input::fail('photo', 'Image trop grande (40 mégapixels maximum).');
+        if ($info[0] * $info[1] > self::PHOTO_MAX_PIXELS) {
+            Input::fail('photo', 'Image trop grande (24 mégapixels maximum).');
         }
         $source = match ($info[2]) {
             IMAGETYPE_JPEG => @imagecreatefromjpeg($file['tmp_name']),
@@ -243,6 +247,9 @@ final class ItemController
         }
         $scale = min(1, self::PHOTO_MAX_SIDE / max($info[0], $info[1]));
         $image = imagescale($source, max(1, (int) round($info[0] * $scale)), max(1, (int) round($info[1] * $scale)));
+        if ($image === false) {
+            Input::fail('photo', 'Image illisible ou corrompue.');
+        }
         if (!is_dir(self::PHOTO_DIR)) {
             mkdir(self::PHOTO_DIR, 0750, true);
         }
@@ -255,7 +262,7 @@ final class ItemController
         $old->execute([$id]);
         $previous = $old->fetchColumn();
         $pdo->prepare('UPDATE items SET photo_path = ? WHERE id = ?')->execute([$name, $id]);
-        if (is_string($previous) && $previous !== '' && preg_match('/^[\w.]+$/', $previous)) {
+        if (is_string($previous) && $previous !== '' && preg_match('/^[\w.]+$/D', $previous)) {
             @unlink(self::PHOTO_DIR . "/{$previous}");
         }
         Audit::log($auth->userId, 'item.photo_updated', 'item', $id, [], $request->ip);
@@ -270,7 +277,7 @@ final class ItemController
         $stmt = $pdo->prepare('SELECT photo_path FROM items WHERE id = ?');
         $stmt->execute([$id]);
         $path = $stmt->fetchColumn();
-        if (is_string($path) && preg_match('/^[\w.]+$/', $path)) {
+        if (is_string($path) && preg_match('/^[\w.]+$/D', $path)) {
             @unlink(self::PHOTO_DIR . "/{$path}");
         }
         $pdo->prepare('UPDATE items SET photo_path = NULL WHERE id = ?')->execute([$id]);
@@ -284,7 +291,7 @@ final class ItemController
         $stmt = Database::connection()->prepare('SELECT photo_path FROM items WHERE id = ?');
         $stmt->execute([(int) $params['id']]);
         $path = $stmt->fetchColumn();
-        if (!is_string($path) || !preg_match('/^[\w.]+$/', $path) || !is_file(self::PHOTO_DIR . "/{$path}")) {
+        if (!is_string($path) || !preg_match('/^[\w.]+$/D', $path) || !is_file(self::PHOTO_DIR . "/{$path}")) {
             throw new HttpException(404, 'Aucune photo.');
         }
         return Response::binary((string) file_get_contents(self::PHOTO_DIR . "/{$path}"), 'image/webp');
@@ -370,12 +377,12 @@ final class ItemController
             }
             $key = "field_{$fieldId}";
             $text = is_bool($value) ? ($value ? '1' : '0') : (is_scalar($value) ? trim((string) $value) : Input::fail($key, 'Valeur invalide.'));
-            $ok = match ($def['field_type']) {
+            $ok = mb_strlen($text) <= 500 && match ($def['field_type']) {
                 'number' => is_numeric($text),
-                'date' => (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/', $text) && checkdate((int) substr($text, 5, 2), (int) substr($text, 8, 2), (int) substr($text, 0, 4)),
+                'date' => (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/D', $text) && checkdate((int) substr($text, 5, 2), (int) substr($text, 8, 2), (int) substr($text, 0, 4)),
                 'boolean' => in_array($text, ['0', '1'], true),
                 'select' => in_array($text, json_decode((string) $def['options'], true) ?: [], true),
-                default => mb_strlen($text) <= 500,
+                default => true,
             };
             if (!$ok) {
                 Input::fail($key, "Valeur invalide pour « {$def['name']} ».");

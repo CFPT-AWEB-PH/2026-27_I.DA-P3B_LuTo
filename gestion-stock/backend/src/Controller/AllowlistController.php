@@ -6,6 +6,9 @@ namespace App\Controller;
 
 use App\Audit;
 use App\Auth\Allowlist;
+use App\Auth\AuthContext;
+use App\Auth\PrivilegeGuard;
+use App\Auth\SessionManager;
 use App\Database;
 use App\Http\HttpException;
 use App\Http\Input;
@@ -57,13 +60,34 @@ final class AllowlistController
             $stmt->execute([$id]);
             $entry = $stmt->fetch() ?: throw new HttpException(404, 'Entrée introuvable.');
             $pdo->prepare('DELETE FROM allowlist WHERE id = ?')->execute([$id]);
-            if (!Allowlist::isAllowed($auth->email)) {
+            // Un compte à identifiant et mot de passe n'a pas d'adresse et ne dépend pas de cette liste
+            if (str_contains((string) $auth->email, '@') && !Allowlist::isAllowed((string) $auth->email)) {
                 throw new HttpException(409, 'Suppression refusée : vous perdriez votre propre accès.');
             }
+            self::closeSessionsOfRemoved($pdo, $entry, $auth);
             return $entry;
         });
 
         Audit::log($auth->userId, 'allowlist.removed', 'allowlist', $id, $entry, $request->ip);
         return Response::noContent();
+    }
+
+    /**
+     * Retirer une adresse doit couper l'accès tout de suite, pas à l'expiration de ses sessions.
+     * Un compte reste connecté s'il est encore autorisé autrement (autre entrée, administrateur initial).
+     * Priver d'accès un compte plus puissant que soi est refusé, et toute la suppression annulée.
+     *
+     * @param array{kind: string, value: string} $entry
+     */
+    private static function closeSessionsOfRemoved(PDO $pdo, array $entry, AuthContext $auth): void
+    {
+        $stmt = $pdo->prepare($entry['kind'] === 'email' ? 'SELECT id, email, role_id FROM users WHERE email = ?' : 'SELECT id, email, role_id FROM users WHERE email LIKE ?');
+        $stmt->execute([$entry['kind'] === 'email' ? $entry['value'] : '%@' . addcslashes($entry['value'], '%_\\')]);
+        foreach ($stmt->fetchAll() as $user) {
+            if (!Allowlist::isAllowed($user['email'])) {
+                PrivilegeGuard::assertCanHandleRole($auth, $pdo, (int) $user['role_id']);
+                SessionManager::destroyAllForUser((int) $user['id']);
+            }
+        }
     }
 }

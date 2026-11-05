@@ -112,7 +112,7 @@ final class StockController
             $params[] = $q['type'];
         }
         foreach (['from' => '>=', 'to' => '<'] as $key => $op) {
-            if (isset($q[$key]) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $q[$key])) {
+            if (isset($q[$key]) && preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D', $q[$key], $d) && checkdate((int) $d[2], (int) $d[3], (int) $d[1])) {
                 // bornes en dates locales (Europe/Zurich) converties en UTC
                 $date = new \DateTimeImmutable($q[$key] . ' 00:00:00', new \DateTimeZone('Europe/Zurich'));
                 if ($key === 'to') {
@@ -122,7 +122,7 @@ final class StockController
                 $params[] = $date->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
             }
         }
-        $page = max(1, (int) ($q['page'] ?? 1));
+        $page = min(1_000_000, max(1, (int) ($q['page'] ?? 1)));
         $perPage = min(200, max(1, (int) ($q['per_page'] ?? 50)));
         $pdo = Database::connection();
         $whereSql = implode(' AND ', $where);

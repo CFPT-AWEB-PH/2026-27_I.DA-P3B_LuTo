@@ -7,6 +7,8 @@ namespace App\Controller;
 use App\Audit;
 use App\Auth\AdminGuard;
 use App\Auth\Passwords;
+use App\Auth\PrivilegeGuard;
+use App\Auth\RateLimiter;
 use App\Auth\SessionManager;
 use App\Database;
 use App\Http\HttpException;
@@ -65,6 +67,7 @@ final class UserController
     {
         $auth = $request->requirePermission('users.manage');
         $input = $request->input();
+        RateLimiter::consume("costly-bcrypt:{$auth->userId}", self::COSTLY_LIMIT, self::COSTLY_WINDOW);
         $roleId = $input->int('role_id', 1);
         $raw = $request->json()['people'] ?? null;
         if (!is_array($raw) || !array_is_list($raw) || $raw === [] || count($raw) > self::IMPORT_BATCH) {
@@ -76,7 +79,7 @@ final class UserController
             $people[] = ['first_name' => $in->string('first_name', 70), 'last_name' => $in->string('last_name', 70), 'group' => $in->optionalString('group', 60)];
         }
 
-        $result = Database::transaction(static function (PDO $pdo) use ($people, $roleId): array {
+        $result = Database::transaction(static function (PDO $pdo) use ($people, $roleId, $auth): array {
             $role = $pdo->prepare('SELECT is_protected FROM roles WHERE id = ?');
             $role->execute([$roleId]);
             $protected = $role->fetchColumn();
@@ -86,6 +89,7 @@ final class UserController
             if ((int) $protected) {
                 Input::fail('role_id', 'Par sécurité, on ne crée pas de comptes administrateurs par import.');
             }
+            PrivilegeGuard::assertCanHandleRole($auth, $pdo, $roleId);
             $known = $pdo->prepare('SELECT username FROM users WHERE import_key = ?');
             $taken = $pdo->prepare('SELECT 1 FROM users WHERE username = ?');
             $insert = $pdo->prepare(
@@ -124,27 +128,33 @@ final class UserController
 
     /**
      * Change le mot de passe d'un compte : réservé aux gestionnaires, une personne ne peut pas changer
-     * le sien elle-même. Sans mot de passe fourni, il est généré. Ses sessions ouvertes sont fermées.
+     * le sien elle-même, ni celui d'un compte plus puissant que le sien (ce serait prendre sa place).
+     * Sans mot de passe fourni, il est généré. Ses sessions ouvertes sont fermées.
      */
     public static function setPassword(Request $request, array $params): Response
     {
         $auth = $request->requirePermission('users.manage');
         $id = (int) $params['id'];
+        RateLimiter::consume("costly-bcrypt:{$auth->userId}", self::COSTLY_LIMIT, self::COSTLY_WINDOW);
         $input = $request->input();
         $password = $input->has('password') ? $input->string('password', 200, 8) : Passwords::generate();
+        // bcrypt ne tient compte que des 72 premiers octets : la suite donnerait une fausse impression de solidité
+        if (strlen($password) > 72) {
+            Input::fail('password', '72 octets maximum.');
+        }
 
         $user = Database::transaction(static function (PDO $pdo) use ($id, $password, $auth): array {
             $stmt = $pdo->prepare(
-                'SELECT u.id, u.username, u.display_name, u.user_group, r.is_protected
-                 FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? FOR UPDATE'
+                'SELECT id, username, display_name, user_group, role_id FROM users WHERE id = ? FOR UPDATE'
             );
             $stmt->execute([$id]);
             $user = $stmt->fetch() ?: throw new HttpException(404, 'Utilisateur introuvable.');
+            PrivilegeGuard::assertCanHandleRole($auth, $pdo, (int) $user['role_id']);
             if ($user['username'] === null) {
                 throw new HttpException(409, 'Ce compte se connecte par son adresse e-mail : il n\'a pas de mot de passe.');
             }
-            if ((int) $user['is_protected'] && !$auth->can('system.admin')) {
-                throw new HttpException(403, 'Seul un administrateur peut changer le mot de passe d\'un administrateur.');
+            if (mb_strtolower($password) === $user['username']) {
+                Input::fail('password', 'Le mot de passe doit être différent de l\'identifiant.');
             }
             $pdo->prepare('UPDATE users SET password_hash = ?, password_set_at = UTC_TIMESTAMP() WHERE id = ?')->execute([Passwords::hash($password), $id]);
             return $user;
@@ -156,6 +166,9 @@ final class UserController
     }
 
     private const IMPORT_BATCH = 25;
+    // Calcul d'empreinte coûteux : largement de quoi traiter plusieurs classes en 10 minutes
+    private const COSTLY_LIMIT = 120;
+    private const COSTLY_WINDOW = 600;
 
     /** « TOM » + « CUNNINGHAM » → « Tom Cunningham ». */
     private static function displayName(string $firstName, string $lastName): string
@@ -185,6 +198,8 @@ final class UserController
             $stmt = $pdo->prepare('SELECT id, role_id, is_active, display_name FROM users WHERE id = ? FOR UPDATE');
             $stmt->execute([$id]);
             $user = $stmt->fetch() ?: throw new HttpException(404, 'Utilisateur introuvable.');
+            // Ni agir sur un compte plus puissant que soi, ni attribuer un rôle plus puissant que le sien
+            PrivilegeGuard::assertCanHandleRole($auth, $pdo, (int) $user['role_id']);
 
             $changes = [];
             if ($input->has('display_name')) {
@@ -197,6 +212,7 @@ final class UserController
                 if ($exists->fetchColumn() === false) {
                     Input::fail('role_id', 'Rôle introuvable.');
                 }
+                PrivilegeGuard::assertCanHandleRole($auth, $pdo, $roleId);
                 $changes['role_id'] = $roleId;
             }
             if ($input->has('is_active')) {

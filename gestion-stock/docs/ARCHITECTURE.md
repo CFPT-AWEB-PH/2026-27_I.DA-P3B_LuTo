@@ -20,7 +20,7 @@ Cible vérifiée le 2026-11-02 : Raspberry Pi 4 Model B (rév. 1.5), 4 cœurs, 1
  └────────────────────────────────────────────────────────────────┘
 ```
 
-Seul `caddy` publie des ports (80/443). MariaDB et PHP ne sont joignables que depuis le réseau Docker privé.
+Seul `caddy` publie des ports (80/443). MariaDB et PHP ne sont joignables que depuis des réseaux Docker internes, sans accès à Internet. Les conteneurs `php` et `caddy` tournent en lecture seule, sans capacité superflue.
 
 ## 2. Choix techniques
 
@@ -83,7 +83,8 @@ Opérations de stock : transaction InnoDB + `SELECT … FOR UPDATE` sur la ligne
 - Rôle par défaut des nouveaux utilisateurs : « Élève ». Le dernier administrateur actif ne peut être ni rétrogradé ni désactivé.
 - Cookies de session `Secure`, `HttpOnly`, `SameSite=Lax` ; jeton CSRF (en-tête `X-CSRF-Token`) sur toute requête qui modifie des données.
 - PDO avec requêtes préparées partout ; échappement à l'affichage côté client (`textContent`, jamais `innerHTML` avec des données).
-- Permissions vérifiées dans chaque contrôleur via `require_permission('stock.take')` ; le frontend ne fait que masquer des boutons.
+- Toute route exige une session, sauf les routes déclarées publiques ; permissions vérifiées dans chaque contrôleur via `requirePermission('stock.take')`, hiérarchie des rôles par `PrivilegeGuard` ; le frontend ne fait que masquer des boutons.
+- Modèle de menace, règles et risques restants : `docs/SECURITE.md`.
 - Secrets uniquement dans `.env` (non versionné, `chmod 600` sur le Pi). `.env.example` contient des valeurs vides.
 - Limite de taille des requêtes (1 Mo pour le JSON, 5 Mo pour les photos, types MIME vérifiés, ré-encodage des images), limitation du nombre de requêtes sur les points d'authentification.
 

@@ -19,6 +19,11 @@ final class SessionManager
 
     public static function create(int $userId, Request $request): void
     {
+        // Une session déjà ouverte dans ce navigateur est remplacée, jamais conservée à côté
+        $previous = $request->cookies[self::COOKIE] ?? '';
+        if (preg_match('/^[a-f0-9]{64}$/D', $previous)) {
+            Database::connection()->prepare('DELETE FROM sessions WHERE id = ?')->execute([hash('sha256', $previous)]);
+        }
         $token = bin2hex(random_bytes(32));
         $lifetime = self::lifetimeDays();
         $stmt = Database::connection()->prepare(
@@ -39,7 +44,7 @@ final class SessionManager
     public static function resolve(Request $request): ?AuthContext
     {
         $token = $request->cookies[self::COOKIE] ?? '';
-        if (!preg_match('/^[a-f0-9]{64}$/', $token)) {
+        if (!preg_match('/^[a-f0-9]{64}$/D', $token)) {
             return null;
         }
         $pdo = Database::connection();

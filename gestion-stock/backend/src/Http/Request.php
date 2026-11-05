@@ -50,9 +50,10 @@ final class Request
         return new self(
             strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET'),
             $path,
-            $_GET,
+            // « ?q[]=x » : les tableaux ne sont attendus nulle part, ils sont ignorés
+            array_filter($_GET, 'is_string'),
             $headers,
-            array_map('strval', $_COOKIE),
+            array_filter($_COOKIE, 'is_string'),
             (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
             ($_SERVER['HTTPS'] ?? '') === 'on',
         );

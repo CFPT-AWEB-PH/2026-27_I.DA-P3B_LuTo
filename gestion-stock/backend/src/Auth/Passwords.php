@@ -20,6 +20,12 @@ final class Passwords
         return substr($chars, 0, 5) . '-' . substr($chars, 5);
     }
 
+    /** Les identifiants créés par usernameBase() : minuscules sans accents, chiffres et points. */
+    public static function isValidUsername(string $username): bool
+    {
+        return (bool) preg_match('/^[a-z0-9.]{1,60}$/D', $username);
+    }
+
     public static function hash(string $password): string
     {
         return password_hash($password, PASSWORD_DEFAULT);

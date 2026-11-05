@@ -10,6 +10,8 @@ namespace App\Http;
  */
 final class Input
 {
+    private const CONTROL_CHARS = '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/';
+
     /** @param array<string, mixed> $data */
     public function __construct(private readonly array $data)
     {
@@ -34,7 +36,7 @@ final class Input
         if ($length > $max) {
             self::fail($key, "{$max} caractères maximum.");
         }
-        if (preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $value)) {
+        if (preg_match(self::CONTROL_CHARS, $value)) {
             self::fail($key, 'Caractères de contrôle interdits.');
         }
         return $value;
@@ -80,7 +82,7 @@ final class Input
     public function color(string $key): string
     {
         $value = $this->data[$key] ?? null;
-        if (!is_string($value) || !preg_match('/^#[0-9a-fA-F]{6}$/', $value)) {
+        if (!is_string($value) || !preg_match('/^#[0-9a-fA-F]{6}$/D', $value)) {
             self::fail($key, 'Couleur au format #rrggbb attendue.');
         }
         return strtolower($value);
@@ -153,7 +155,7 @@ final class Input
             self::fail($key, "Liste de {$maxItems} éléments maximum attendue.");
         }
         foreach ($value as $item) {
-            if (!is_string($item) || $item === '' || mb_strlen($item) > $maxLength) {
+            if (!is_string($item) || $item === '' || mb_strlen($item) > $maxLength || preg_match(self::CONTROL_CHARS, $item)) {
                 self::fail($key, 'Élément de liste invalide.');
             }
         }

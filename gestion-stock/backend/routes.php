@@ -19,15 +19,16 @@ use App\Controller\TemplateController;
 use App\Controller\UserController;
 use App\Http\Router;
 
-// Chaque contrôleur vérifie lui-même l'authentification et les permissions.
+// Toute route exige une session, sauf celles marquées public: true.
+// Chaque contrôleur vérifie ensuite les permissions de l'action.
 $router = new Router();
 
-$router->add('GET', '/health', [HealthController::class, 'show']);
+$router->add('GET', '/health', [HealthController::class, 'show'], public: true);
 
-$router->add('GET', '/auth/config', [AuthController::class, 'config']);
+$router->add('GET', '/auth/config', [AuthController::class, 'config'], public: true);
 $router->add('GET', '/auth/me', [AuthController::class, 'me']);
-$router->add('GET', '/auth/link', [AuthController::class, 'link']);
-$router->add('POST', '/auth/login', [AuthController::class, 'login']);
+$router->add('GET', '/auth/link', [AuthController::class, 'link'], public: true);
+$router->add('POST', '/auth/login', [AuthController::class, 'login'], public: true);
 $router->add('POST', '/auth/logout', [AuthController::class, 'logout']);
 
 $router->add('GET', '/users', [UserController::class, 'index']);

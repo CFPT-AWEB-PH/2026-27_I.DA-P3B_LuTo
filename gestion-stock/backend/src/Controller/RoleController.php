@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Audit;
 use App\Auth\AdminGuard;
+use App\Auth\PrivilegeGuard;
 use App\Database;
 use App\Http\HttpException;
 use App\Http\Input;
@@ -41,9 +42,10 @@ final class RoleController
         $permissions = $input->has('permissions') ? $input->stringList('permissions', 100, 50) : [];
         $isDefault = $input->has('is_default') && $input->bool('is_default');
 
-        $id = Database::transaction(static function (PDO $pdo) use ($name, $description, $permissions, $isDefault): int {
+        $id = Database::transaction(static function (PDO $pdo) use ($name, $description, $permissions, $isDefault, $auth): int {
             self::assertNameFree($pdo, $name, null);
             self::assertPermissionsExist($pdo, $permissions);
+            PrivilegeGuard::assertCanGrant($auth, $permissions);
             $pdo->prepare('INSERT INTO roles (name, description) VALUES (?, ?)')->execute([$name, $description]);
             $id = (int) $pdo->lastInsertId();
             self::replacePermissions($pdo, $id, $permissions);
@@ -63,9 +65,10 @@ final class RoleController
         $id = (int) $params['id'];
         $input = $request->input();
 
-        $changes = Database::transaction(static function (PDO $pdo) use ($id, $input): array {
+        $changes = Database::transaction(static function (PDO $pdo) use ($id, $input, $auth): array {
             AdminGuard::lock($pdo);
             $role = self::lockRole($pdo, $id);
+            PrivilegeGuard::assertCanHandleRole($auth, $pdo, $id);
             $changes = [];
 
             if ($input->has('name')) {
@@ -86,6 +89,10 @@ final class RoleController
                 }
                 $permissions = $input->stringList('permissions', 100, 50);
                 self::assertPermissionsExist($pdo, $permissions);
+                PrivilegeGuard::assertCanGrant($auth, $permissions);
+                if ((int) $role['is_default']) {
+                    PrivilegeGuard::assertSafeAsDefault($permissions);
+                }
                 self::replacePermissions($pdo, $id, $permissions);
                 $changes['permissions'] = $permissions;
             }
@@ -111,8 +118,9 @@ final class RoleController
         $auth = $request->requirePermission('roles.manage');
         $id = (int) $params['id'];
 
-        $name = Database::transaction(static function (PDO $pdo) use ($id): string {
+        $name = Database::transaction(static function (PDO $pdo) use ($id, $auth): string {
             $role = self::lockRole($pdo, $id);
+            PrivilegeGuard::assertCanHandleRole($auth, $pdo, $id);
             if ((int) $role['is_protected']) {
                 throw new HttpException(409, 'Le rôle administrateur ne peut pas être supprimé.');
             }
@@ -174,6 +182,7 @@ final class RoleController
 
     private static function makeDefault(PDO $pdo, int $id): void
     {
+        PrivilegeGuard::assertSafeAsDefault(PrivilegeGuard::rolePermissions($pdo, $id));
         $pdo->prepare('UPDATE roles SET is_default = (id = ?)')->execute([$id]);
     }
 

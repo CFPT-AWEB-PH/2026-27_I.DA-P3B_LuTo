@@ -59,7 +59,7 @@ final class Allowlist
             }
             return ['kind' => 'email', 'value' => $value];
         }
-        if (!preg_match('/^(?=.{3,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/', $value)) {
+        if (!preg_match('/^(?=.{3,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/D', $value)) {
             Input::fail('value', 'Domaine invalide (exemple : eduge.ch).');
         }
         return ['kind' => 'domain', 'value' => $value];

@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Audit;
 use App\Auth\AuthContext;
+use App\Auth\RateLimiter;
 use App\Database;
 use App\Http\HttpException;
 use App\Http\Input;
@@ -155,6 +156,7 @@ final class StorageUnitController
         $input = $request->input();
         $parentId = $input->optionalInt('parent_id', null, 1);
         self::requireEditRight($auth, $parentId);
+        self::consumeBulkQuota($auth);
 
         $result = Database::transaction(static function (PDO $pdo) use ($input, $parentId, $auth, $request): array {
             $tree = $input->has('template_id')
@@ -335,6 +337,7 @@ final class StorageUnitController
     public static function generate(Request $request, array $params): Response
     {
         $auth = $request->requirePermission('storage.edit');
+        self::consumeBulkQuota($auth);
         $id = (int) $params['id'];
         $input = $request->input();
         $stack = $input->has('stack') ? self::readStack($request->json()['stack']) : null;
@@ -434,6 +437,12 @@ final class StorageUnitController
         $stmt = $pdo->prepare('SELECT COUNT(DISTINCT item_id) FROM stock_levels WHERE quantity > 0 AND unit_id IN (' . implode(',', array_fill(0, count($unitIds), '?')) . ')');
         $stmt->execute($unitIds);
         return (int) $stmt->fetchColumn();
+    }
+
+    /** Créations en masse : des milliers de lignes et la salle verrouillée le temps de les vérifier. */
+    public static function consumeBulkQuota(AuthContext $auth): void
+    {
+        RateLimiter::consume("costly-bulk:{$auth->userId}", 300, 600);
     }
 
     private static function requireEditRight(AuthContext $auth, ?int $parentId): void
