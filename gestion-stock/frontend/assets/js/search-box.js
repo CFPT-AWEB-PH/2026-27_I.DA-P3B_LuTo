@@ -1,23 +1,26 @@
-// Recherche globale de la barre supérieure : suggestions pendant la saisie (serveur), Entrée pour
-// la page de résultats. Raccourci : « / » ou Ctrl+K. Navigation au clavier dans les suggestions.
-// Sur mobile, elle se déplie par-dessus la barre supérieure (bouton loupe).
+// Recherche d'objets avec suggestions pendant la saisie (serveur), Entrée pour la page de résultats.
+// Deux présentations : « bar » dans la barre supérieure (repliée derrière une loupe sur mobile) et
+// « hero » en tête de l'accueil. Raccourci global : « / » ou Ctrl+K. Navigation au clavier dans les suggestions.
 
 import { api } from './api.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
 import { formatQuantity } from './stock-dialogs.js';
 
-export function searchBox(navigate) {
+const collapse = () => document.body.classList.remove('search-open');
+
+export function searchBox(navigate, { id = 'global', variant = 'bar', placeholder = 'Rechercher un objet, une référence…' } = {}) {
+  const bar = variant === 'bar';
+  const listId = `${id}-suggestions`;
   const input = h('input', {
-    type: 'search', class: 'global-search-input', placeholder: 'Rechercher un objet, une référence…', autocomplete: 'off',
-    role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'global-suggestions', 'aria-autocomplete': 'list', 'aria-label': 'Recherche globale',
-    enterkeyhint: 'search',
+    type: 'search', class: ['search-input', bar ? 'global-search-input' : 'home-search-input'], placeholder, autocomplete: 'off',
+    role: 'combobox', 'aria-expanded': 'false', 'aria-controls': listId, 'aria-autocomplete': 'list',
+    'aria-label': bar ? 'Recherche globale' : 'Rechercher un objet', enterkeyhint: 'search',
   });
-  const list = h('ul', { id: 'global-suggestions', class: 'suggestions', role: 'listbox', 'aria-label': 'Suggestions', hidden: true });
-  const collapse = () => document.body.classList.remove('search-open');
-  const form = h('form', { class: 'global-search', role: 'search' },
-    h('div', { class: 'search-field' }, icon('search'), input, h('kbd', { class: 'kbd', 'aria-hidden': 'true' }, '/')),
-    h('button', { class: 'icon-btn search-close', type: 'button', 'aria-label': 'Fermer la recherche', onclick: () => { close(); collapse(); } }, icon('x')),
+  const list = h('ul', { id: listId, class: 'suggestions', role: 'listbox', 'aria-label': 'Suggestions', hidden: true });
+  const form = h('form', { class: bar ? 'global-search' : 'home-search', role: 'search' },
+    h('div', { class: 'search-field' }, icon('search'), input, bar && h('kbd', { class: 'kbd', 'aria-hidden': 'true' }, '/')),
+    bar && h('button', { class: 'icon-btn search-close', type: 'button', 'aria-label': 'Fermer la recherche', onclick: () => { close(); collapse(); } }, icon('x')),
     list);
   let active = -1;
   let items = [];
@@ -60,11 +63,11 @@ export function searchBox(navigate) {
         const { suggestions } = await api(`/items/suggest?q=${encodeURIComponent(q)}`);
         if (current !== sequence) return;
         items = suggestions;
-        const all = h('li', { role: 'option', id: 'sugg-all', class: 'suggestion-all', onmousedown: (e) => { e.preventDefault(); open(`/items?q=${encodeURIComponent(q)}`); } },
+        const all = h('li', { role: 'option', id: `${id}-all`, class: 'suggestion-all', onmousedown: (e) => { e.preventDefault(); open(`/items?q=${encodeURIComponent(q)}`); } },
           icon('search'), `Voir tous les résultats pour « ${q} »`);
         show(suggestions.length
           ? [...suggestions.map((s, i) => h('li', {
-            role: 'option', id: `sugg-${i}`, 'aria-selected': 'false',
+            role: 'option', id: `${id}-opt-${i}`, 'aria-selected': 'false',
             onmousedown: (e) => { e.preventDefault(); open(`/items/${s.id}`); },
           },
             h('div', { class: 'suggestion-name' }, s.name, h('span', { class: 'suggestion-qty' }, formatQuantity(s.total_quantity, s.unit))),
@@ -80,7 +83,13 @@ export function searchBox(navigate) {
     const count = list.children.length;
     if (event.key === 'ArrowDown' && !list.hidden) { event.preventDefault(); highlight((active + 1) % count); }
     else if (event.key === 'ArrowUp' && !list.hidden) { event.preventDefault(); highlight((active - 1 + count) % count); }
-    else if (event.key === 'Escape') { event.preventDefault(); close(); input.blur(); collapse(); }
+    else if (event.key === 'Escape') {
+      event.preventDefault();
+      // Premier Échap : ferme les suggestions ; second : quitte le champ
+      if (!list.hidden) return close();
+      input.blur();
+      collapse();
+    }
   });
   input.addEventListener('blur', () => setTimeout(close, 150));
 
@@ -88,18 +97,20 @@ export function searchBox(navigate) {
     event.preventDefault();
     const q = input.value.trim();
     if (active >= 0 && active < items.length) return open(`/items/${items[active].id}`);
-    if (q) open(`/items?q=${encodeURIComponent(q)}`);
-  });
-
-  document.addEventListener('keydown', (event) => {
-    const typing = event.target.closest?.('input, textarea, select, [contenteditable]');
-    if ((event.key === '/' && !typing) || (event.key.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey))) {
-      if (!document.body.contains(input) || document.querySelector('dialog[open]')) return;
-      event.preventDefault();
-      document.body.classList.add('search-open');
-      input.focus();
-      input.select();
-    }
+    open(q ? `/items?q=${encodeURIComponent(q)}` : '/items');
   });
   return form;
 }
+
+// Raccourci : le champ de l'accueil s'il est affiché, sinon celui de la barre supérieure
+document.addEventListener('keydown', (event) => {
+  const typing = event.target.closest?.('input, textarea, select, [contenteditable]');
+  if (!((event.key === '/' && !typing) || (event.key.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey)))) return;
+  if (document.querySelector('dialog[open]')) return;
+  const target = document.querySelector('.home-search-input') ?? document.querySelector('.global-search-input');
+  if (!target) return;
+  event.preventDefault();
+  if (target.classList.contains('global-search-input')) document.body.classList.add('search-open');
+  target.focus();
+  target.select();
+});

@@ -1,9 +1,9 @@
 // Journal des mouvements avec filtres (utilisateur, objet, salle, type, période).
 
 import { api } from '../api.js';
-import { clear, formatDate, h } from '../dom.js';
+import { append, clear, formatDate, h } from '../dom.js';
 import { icon } from '../icons.js';
-import { emptyState, errorState, field, locationLabel, pageHeader, plural, showError, skeleton } from '../ui.js';
+import { emptyState, errorState, field, filterToggle, locationLabel, pageHeader, plural, showError, skeleton } from '../ui.js';
 import { formatQuantity } from '../stock-dialogs.js';
 
 const LABELS = { take: 'Emprunt', consume: 'Consommation', return: 'Retour', add: 'Ajout', adjust: 'Correction', move: 'Déplacement' };
@@ -42,31 +42,47 @@ export async function render(view) {
   const itemId = params.get('item_id');
   const table = h('div', {}, skeleton('row', 6));
   const pager = h('nav', { class: 'pager', 'aria-label': 'Pages de l’historique' });
+  const filterEls = [type, user, room, from, to];
+  const toggle = filterToggle('movement-filters');
+  const reset = h('button', { class: 'btn btn-small btn-ghost filters-reset', type: 'button', hidden: true, onclick: () => {
+    filterEls.forEach((el) => { el.value = ''; });
+    page = 1;
+    load();
+  } }, icon('x'), 'Effacer les filtres');
   let page = 1;
 
-  view.append(
+  append(view, 
     pageHeader({ title: 'Historique', description: 'Qui a pris, rendu, ajouté, corrigé ou déplacé quoi, quand, et en quelle quantité.' }),
     itemId && h('p', { class: 'filter-note' }, h('span', { class: 'badge badge-info' }, 'Filtré sur un objet'), h('a', { href: '/movements', class: 'small' }, 'Voir tout l’historique')),
-    h('div', { class: 'filters' }, field('Type', type), field('Personne', user), field('Salle', room), field('Du', from), field('Au', to)),
+    toggle.element,
+    h('div', { class: 'filters', id: 'movement-filters' }, field('Type', type), field('Personne', user), field('Salle', room),
+      h('div', { class: 'filters-period' }, field('Du', from), field('Au', to))),
+    reset,
     table, pager,
   );
 
   const load = async () => {
     const q = new URLSearchParams({ page, per_page: 50 });
-    for (const el of [type, user, room, from, to]) if (el.value) q.set(el.name, el.value);
+    for (const el of filterEls) if (el.value) q.set(el.name, el.value);
+    reset.hidden = !filterEls.some((el) => el.value);
+    toggle.setCount(filterEls.filter((el) => el.value).length);
     if (itemId) q.set('item_id', itemId);
     table.setAttribute('aria-busy', 'true');
     try {
       const data = await api(`/movements?${q}`);
-      clear(table, data.movements.length ? h('div', { class: 'card card-flush' }, h('table', { class: 'data-table' },
+      clear(table, data.movements.length ? h('div', { class: 'card card-flush' }, h('table', { class: 'data-table movements-table' },
         h('thead', {}, h('tr', {}, ['Date', 'Objet', 'Mouvement', 'Quantité', 'Emplacement', 'Par'].map((t) => h('th', { scope: 'col' }, t)))),
         h('tbody', {}, data.movements.map((m) => movementRow(m)))))
-        : h('div', { class: 'card' }, emptyState('Aucun mouvement pour ces filtres. Élargissez la période ou retirez un filtre.', { iconName: 'history' })));
+        : h('div', { class: 'card' }, reset.hidden
+          ? emptyState('Les prises, retours, ajouts et déplacements apparaîtront ici.', { title: 'Aucun mouvement', iconName: 'history' })
+          : emptyState('Aucun mouvement pour ces filtres. Élargissez la période ou retirez un filtre.', {
+            title: 'Aucun résultat', iconName: 'history', action: h('button', { class: 'btn', type: 'button', onclick: () => reset.click() }, 'Effacer les filtres'),
+          })));
       const pages = Math.ceil(data.total / data.per_page);
       clear(pager, h('span', {}, plural(data.total, 'mouvement')), pages > 1 && [
-        h('button', { class: 'btn btn-small', type: 'button', disabled: page <= 1, onclick: () => { page--; load(); } }, icon('chevronLeft'), 'Précédente'),
+        h('button', { class: 'btn btn-small', type: 'button', disabled: page <= 1, onclick: () => { page--; load(); window.scrollTo({ top: 0 }); } }, icon('chevronLeft'), 'Précédente'),
         h('span', { class: 'num' }, `Page ${page} sur ${pages}`),
-        h('button', { class: 'btn btn-small', type: 'button', disabled: page >= pages, onclick: () => { page++; load(); } }, 'Suivante', icon('chevronRight'))]);
+        h('button', { class: 'btn btn-small', type: 'button', disabled: page >= pages, onclick: () => { page++; load(); window.scrollTo({ top: 0 }); } }, 'Suivante', icon('chevronRight'))]);
     } catch (error) {
       clear(table, errorState(error, load));
     } finally {
@@ -74,7 +90,7 @@ export async function render(view) {
     }
   };
 
-  for (const el of [type, user, room, from, to]) el.addEventListener('change', () => { page = 1; load(); });
+  for (const el of filterEls) el.addEventListener('change', () => { page = 1; load(); });
   try {
     const [{ rooms }, users] = await Promise.all([api('/rooms'), api('/users/options')]);
     room.append(...rooms.map((r) => h('option', { value: r.id }, r.name)));

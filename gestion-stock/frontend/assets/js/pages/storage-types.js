@@ -1,12 +1,12 @@
 import { api } from '../api.js';
-import { clear, h } from '../dom.js';
+import { append, clear, h } from '../dom.js';
 import { busy, checkbox, confirmDialog, errorState, field, openDialog, pageHeader, skeleton, showError, toast } from '../ui.js';
 import { icon } from '../icons.js';
 import { SHAPE_LABELS } from '../spatial.js';
 
 export function render(view) {
   const list = h('div', { class: 'list-container' }, skeleton('row', 4));
-  view.append(
+  append(view, 
     pageHeader({
       title: 'Types de rangement',
       description: 'La forme définit le rendu 3D et le volume intérieur. Les types fournis ne se suppriment pas, mais leurs valeurs par défaut se modifient.',

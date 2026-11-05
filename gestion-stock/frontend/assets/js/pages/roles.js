@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { clear, h } from '../dom.js';
+import { append, clear, h } from '../dom.js';
 import { busy, checkbox, confirmDialog, errorState, field, openDialog, pageHeader, plural, showError, skeleton, toast } from '../ui.js';
 import { icon } from '../icons.js';
 
@@ -7,7 +7,7 @@ export async function render(view) {
   const list = h('div', { class: 'role-grid' }, skeleton('card', 3));
   const addButton = h('button', { class: 'btn btn-primary', type: 'button' }, icon('plus'), 'Nouveau rôle');
 
-  view.append(
+  append(view, 
     pageHeader({ title: 'Rôles et permissions', description: 'Le rôle par défaut est donné à chaque nouvel utilisateur. Le rôle administrateur a toujours toutes les permissions.', actions: addButton }),
     list,
   );

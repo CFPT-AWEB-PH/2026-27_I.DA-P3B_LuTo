@@ -135,6 +135,77 @@ export function confirmDialog({ title, message, confirmLabel = 'Confirmer', canc
   )).then(Boolean);
 }
 
+/**
+ * Bouton qui ouvre un menu d'actions (motif « menu button » de l'ARIA APG) : flèches, Début et Fin
+ * pour se déplacer, Échap pour fermer en rendant le focus au bouton, clic extérieur pour fermer.
+ * items : [{ label, icon, onSelect, danger }] ; les valeurs fausses sont ignorées.
+ */
+export function menuButton({ label, items, trigger = null, header = null }) {
+  const button = trigger ?? h('button', { class: 'icon-btn icon-btn-bordered', type: 'button', 'aria-label': label, title: label }, icon('more'));
+  const menuId = nextId('menu');
+  Object.entries({ 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-controls': menuId }).forEach(([k, v]) => button.setAttribute(k, v));
+  const entries = items.filter(Boolean).map((item) => h('button', {
+    class: ['menu-item', item.danger && 'menu-item-danger'], type: 'button', role: 'menuitem', tabindex: '-1',
+    // Le focus revient au bouton avant l'action : une boîte de dialogue ouverte ensuite le lui rendra
+    onclick: () => { toggle(false, true); item.onSelect(); },
+  }, item.icon && icon(item.icon), item.label));
+  const menu = h('div', { class: 'popover', id: menuId, role: 'menu', 'aria-label': label, hidden: true }, header, entries);
+  const wrapper = h('div', { class: 'popover-anchor' }, button, menu);
+  const onOutside = (event) => { if (!wrapper.contains(event.target)) toggle(false); };
+
+  function toggle(open, restoreFocus = false) {
+    if (open === !menu.hidden) return;
+    menu.hidden = !open;
+    button.setAttribute('aria-expanded', String(open));
+    if (open) {
+      document.addEventListener('pointerdown', onOutside);
+      entries[0]?.focus();
+    } else {
+      document.removeEventListener('pointerdown', onOutside);
+      if (restoreFocus) button.focus();
+    }
+  }
+  button.addEventListener('click', () => toggle(menu.hidden));
+  wrapper.addEventListener('keydown', (event) => {
+    if (menu.hidden) {
+      if (event.key === 'ArrowDown' && event.target === button) { event.preventDefault(); toggle(true); }
+      return;
+    }
+    const index = entries.indexOf(document.activeElement);
+    const go = (i) => { event.preventDefault(); entries[(i + entries.length) % entries.length].focus(); };
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); toggle(false, true); }
+    else if (event.key === 'ArrowDown') go(index + 1);
+    else if (event.key === 'ArrowUp') go(index - 1);
+    else if (event.key === 'Home') go(0);
+    else if (event.key === 'End') go(entries.length - 1);
+    else if (event.key === 'Tab') toggle(false);
+  });
+  return wrapper;
+}
+
+/**
+ * Bouton « Filtres » (mobile uniquement, voir CSS) qui déplie le panneau placé juste après lui,
+ * avec le nombre de filtres actifs : la liste reste visible sans faire défiler cinq champs.
+ */
+export function filterToggle(panelId) {
+  const count = h('span', { class: 'nav-count', hidden: true });
+  const button = h('button', {
+    class: 'btn filter-toggle', type: 'button', 'aria-expanded': 'false', 'aria-controls': panelId,
+    onclick: () => button.setAttribute('aria-expanded', String(button.getAttribute('aria-expanded') !== 'true')),
+  }, icon('sliders'), 'Filtres', count);
+  return {
+    element: button,
+    setCount(n) {
+      count.hidden = n === 0;
+      count.textContent = String(n);
+      button.setAttribute('aria-label', n ? `Filtres, ${n} actif${n > 1 ? 's' : ''}` : 'Filtres');
+    },
+  };
+}
+
+/** Vrai sur un appareil à pointeur précis (souris) : on peut y donner le focus sans ouvrir de clavier virtuel. */
+export const finePointer = () => window.matchMedia('(pointer: fine)').matches;
+
 /** Désactive un bouton pendant une opération asynchrone (évite les doubles envois) et affiche un indicateur. */
 export async function busy(button, task) {
   if (!button) return task();

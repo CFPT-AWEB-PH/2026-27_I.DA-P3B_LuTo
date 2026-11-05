@@ -1,7 +1,7 @@
 // Éditeur 3D d'une salle : scène, arborescence des rangements et panneau de propriétés.
 
 import { api } from '../api.js';
-import { clear, h } from '../dom.js';
+import { append, clear, h } from '../dom.js';
 import { busy, confirmDialog, emptyState, errorState, field, locationLabel, openDialog, plural, showError, skeleton, toast } from '../ui.js';
 import { icon } from '../icons.js';
 import { setTitle } from '../app.js';
@@ -43,7 +43,7 @@ export async function render(view, session, params) {
   const preset = (name, text) => h('button', { class: 'segmented-option', type: 'button', onclick: () => scene?.viewPreset(name) }, text);
 
   view.classList.add('view-wide');
-  view.append(h('div', { class: 'editor' },
+  append(view, h('div', { class: 'editor' },
     h('div', { class: 'editor-toolbar' },
       h('div', { class: 'editor-heading' },
         h('a', { class: 'icon-btn icon-btn-small', href: '/rooms', 'aria-label': 'Retour aux salles', title: 'Retour aux salles' }, icon('arrowLeft')),

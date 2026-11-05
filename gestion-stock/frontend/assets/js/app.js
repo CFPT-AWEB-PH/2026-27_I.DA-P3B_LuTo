@@ -2,9 +2,9 @@
 // Les permissions servent ici uniquement à adapter l'affichage ; le serveur les vérifie toujours.
 
 import { api, ApiError, onUnauthorized, setCsrfToken } from './api.js';
-import { clear, h } from './dom.js';
+import { append, clear, h } from './dom.js';
 import { icon } from './icons.js';
-import { emptyState, showError } from './ui.js';
+import { emptyState, menuButton, showError } from './ui.js';
 import * as homePage from './pages/home.js';
 import * as loginPage from './pages/login.js';
 import * as usersPage from './pages/users.js';
@@ -117,6 +117,9 @@ function render() {
     if (link.hasAttribute('aria-current')) link.setAttribute('aria-current', 'page');
   });
   setNavOpen(false);
+  // L'accueil a sa propre grande recherche : pas de second champ identique dans la barre
+  document.body.classList.toggle('is-home', route?.path === '/');
+  document.body.classList.remove('search-open');
 
   currentPage?.dispose?.();
   currentPage = route?.page ?? null;
@@ -130,7 +133,7 @@ function render() {
 
   if (!route) {
     document.title = `Page introuvable · ${appName()}`;
-    view.append(emptyState("Cette adresse ne correspond à aucune page. Elle a peut-être changé.", {
+    append(view, emptyState("Cette adresse ne correspond à aucune page. Elle a peut-être changé.", {
       title: 'Page introuvable', iconName: 'search',
       action: h('a', { class: 'btn btn-primary', href: '/' }, "Revenir à l'accueil"),
     }));
@@ -138,7 +141,7 @@ function render() {
   }
   if (route.permission && !session.can(route.permission)) {
     document.title = `Accès refusé · ${appName()}`;
-    view.append(emptyState("Votre rôle ne donne pas accès à cette page. Demandez à un administrateur si vous en avez besoin.", {
+    append(view, emptyState("Votre rôle ne donne pas accès à cette page. Demandez à un administrateur si vous en avez besoin.", {
       title: 'Accès refusé', iconName: 'shield',
       action: h('a', { class: 'btn', href: '/' }, "Revenir à l'accueil"),
     }));
@@ -173,28 +176,18 @@ async function logout() {
 }
 
 function userMenu(user) {
-  const button = h('button', {
-    class: 'user-button', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
-    'aria-label': `Compte de ${user.display_name || user.email}`,
-  }, h('span', { class: 'avatar', 'aria-hidden': 'true' }, initials(user)),
-  h('span', { class: 'user-button-name' }, user.display_name || user.email), icon('chevronDown'));
-  const menu = h('div', { class: 'popover', role: 'menu', hidden: true },
-    h('div', { class: 'popover-header' },
+  const label = `Compte de ${user.display_name || user.email}`;
+  return menuButton({
+    label,
+    trigger: h('button', { class: 'user-button', type: 'button', 'aria-label': label },
+      h('span', { class: 'avatar', 'aria-hidden': 'true' }, initials(user)),
+      h('span', { class: 'user-button-name' }, user.display_name || user.email), icon('chevronDown')),
+    header: h('div', { class: 'popover-header' },
       h('strong', {}, user.display_name || user.email),
-      h('span', {}, user.display_name ? user.email : null),
+      user.display_name && h('span', {}, user.email),
       h('div', {}, h('span', { class: 'badge badge-accent' }, user.role.name))),
-    h('button', { class: 'menu-item menu-item-danger', type: 'button', role: 'menuitem', onclick: logout }, icon('logOut'), 'Se déconnecter'));
-  const wrapper = h('div', { class: 'popover-anchor' }, button, menu);
-
-  const toggle = (open) => {
-    menu.hidden = !open;
-    button.setAttribute('aria-expanded', String(open));
-    if (open) menu.querySelector('[role=menuitem]').focus();
-  };
-  button.addEventListener('click', () => toggle(menu.hidden));
-  document.addEventListener('pointerdown', (event) => { if (!menu.hidden && !wrapper.contains(event.target)) toggle(false); });
-  wrapper.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !menu.hidden) { toggle(false); button.focus(); } });
-  return wrapper;
+    items: [{ label: 'Se déconnecter', icon: 'logOut', danger: true, onSelect: logout }],
+  });
 }
 
 function renderShell() {
@@ -207,7 +200,7 @@ function renderShell() {
     h('span', { class: 'brand-mark', 'aria-hidden': 'true' }, icon('drawer')),
     h('span', { class: 'brand-name' }, appName()));
 
-  const search = session.can('stock.view') ? searchBox(navigate) : null;
+  const search = session.can('stock.view') ? searchBox(navigate, { id: 'global' }) : null;
 
   const nav = h('nav', { class: 'sidebar', id: 'sidebar', tabindex: '-1', 'aria-label': 'Navigation principale' },
     h('div', { class: 'sidebar-brand' }, brand()),

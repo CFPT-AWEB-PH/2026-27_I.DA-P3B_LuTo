@@ -1,7 +1,7 @@
 // Paramètres de l'application.
 
 import { api } from '../api.js';
-import { h } from '../dom.js';
+import { append, h } from '../dom.js';
 import { busy, errorState, field, pageHeader, showError, toast } from '../ui.js';
 import { loadSettings } from '../app.js';
 
@@ -10,7 +10,7 @@ export async function render(view) {
   try {
     settings = (await api('/settings')).settings;
   } catch (error) {
-    return view.append(pageHeader({ title: 'Paramètres' }), errorState(error, () => location.reload()));
+    return append(view, pageHeader({ title: 'Paramètres' }), errorState(error, () => location.reload()));
   }
   const colors = settings['fill.colors'] ?? { empty: '#9ca3af', partial: '#f59e0b', full: '#dc2626' };
   const name = h('input', { name: 'app.name', maxlength: 80, value: settings['app.name'] ?? 'Gestion de stock' });
@@ -36,5 +36,5 @@ export async function render(view) {
     });
   });
 
-  view.append(pageHeader({ title: 'Paramètres', description: 'Nom affiché et couleurs communes à tous les utilisateurs.' }), form);
+  append(view, pageHeader({ title: 'Paramètres', description: 'Nom affiché et couleurs communes à tous les utilisateurs.' }), form);
 }

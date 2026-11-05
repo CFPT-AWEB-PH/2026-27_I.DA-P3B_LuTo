@@ -146,3 +146,24 @@ Vérifié dans le navigateur : page de connexion, messages d'erreur, redirection
 - Pas d'export CSV de l'historique pour l'instant.
 - Le mode hors ligne (file d'attente) n'est pas fait : prévu avec la PWA en phase 6. Aucune opération de stock n'est simulée hors ligne.
 - Données réelles constatées : la salle « test » créée par l'utilisateur (conservée).
+
+## Interface : deuxième passe de refonte (2026-11-03)
+
+Audit écran par écran sur une copie locale complète (Docker, données réalistes), à 1440, 768 et 375 px, en clair et en sombre. Détail, design system et pistes : [DESIGN.md](DESIGN.md).
+
+**Problèmes trouvés et corrigés**
+- Catalogue : tous les objets affichés « Archivé » et bouton « Prendre » absent (la liste de l'API ne renvoie pas `is_active`). L'état découle maintenant du filtre de la requête.
+- Historique : « null » écrit au-dessus des filtres (`Element.append`). Ajout d'un `append()` sûr dans `dom.js`, utilisé par toutes les pages.
+- Contrastes WCAG AA : texte d'indication, contours des champs et boutons (3:1), texte sur le rouge du thème sombre.
+
+**Améliorations**
+- Accueil : une seule recherche, avec suggestions instantanées.
+- Fiche objet : action principale mise en avant, actions rares dans un menu ; suppression expliquée avant d'être tentée si du stock reste.
+- Menus d'actions unifiés (navigation aux flèches), focus en contour qui respecte la forme des composants.
+- Historique : filtres repliés et cartes compactes sur mobile, « Effacer les filtres ».
+- Changement de rôle et retrait d'un accès : immédiats, annulables depuis la notification.
+- Jetons de graisse, d'interligne, d'espacement, de durée et de couleurs de calque ; plus de valeur en dur dans les composants.
+
+**Vérifications**
+- 17 routes parcourues sans erreur de console ni texte parasite ; navigation au clavier du menu ; annulation d'un retrait d'accès ; refus du serveur (dernier administrateur) correctement affiché et rétabli.
+- Aucune modification de l'API ni des données. Les tests d'intégration du serveur n'ont pas été relancés (backend inchangé).

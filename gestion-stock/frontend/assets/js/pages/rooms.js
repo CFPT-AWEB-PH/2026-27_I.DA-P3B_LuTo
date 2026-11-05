@@ -1,7 +1,7 @@
 import { api } from '../api.js';
-import { clear, h } from '../dom.js';
+import { append, clear, h } from '../dom.js';
 import { icon } from '../icons.js';
-import { confirmDialog, emptyState, errorState, pageHeader, plural, showError, skeleton, toast } from '../ui.js';
+import { confirmDialog, emptyState, errorState, menuButton, pageHeader, plural, showError, skeleton, toast } from '../ui.js';
 import { formatLength, polygonArea } from '../spatial.js';
 import { openRoomDialog } from './room-form.js';
 import { navigate } from '../app.js';
@@ -37,7 +37,7 @@ export function render(view, session) {
     if (result) navigate(`/rooms/${result.room.id}`);
   };
 
-  view.append(
+  append(view, 
     pageHeader({
       title: 'Salles',
       description: 'Ouvrez une salle pour la parcourir en 3D et retrouver chaque meuble, tiroir et boîte.',
@@ -67,23 +67,21 @@ function card(room, canEdit, reload) {
   const xs = room.outline.map((p) => p[0]); const zs = room.outline.map((p) => p[1]);
   const area = polygonArea(room.outline) / 1e6;
 
-  const more = canEdit && h('div', { class: 'popover-anchor' });
-  if (more) {
-    const menu = h('div', { class: 'popover', role: 'menu', hidden: true },
-      h('button', { class: 'menu-item', type: 'button', role: 'menuitem', onclick: async () => { menu.hidden = true; if (await openRoomDialog(room)) reload(); } }, icon('edit'), 'Modifier les dimensions'),
-      h('button', { class: 'menu-item', type: 'button', role: 'menuitem', onclick: async () => {
-        menu.hidden = true;
+  const more = canEdit && menuButton({
+    label: `Autres actions pour ${room.name}`,
+    items: [
+      { label: 'Modifier les dimensions', icon: 'edit', onSelect: async () => { if (await openRoomDialog(room)) reload(); } },
+      { label: 'Dupliquer', icon: 'copy', onSelect: async () => {
         try {
           const result = await api(`/rooms/${room.id}/duplicate`, { method: 'POST' });
           toast(`Salle dupliquée : « ${result.room.name} ».`);
           reload();
         } catch (error) { showError(error); }
-      } }, icon('copy'), 'Dupliquer'),
-      h('button', { class: 'menu-item menu-item-danger', type: 'button', role: 'menuitem', onclick: async () => {
-        menu.hidden = true;
+      } },
+      { label: 'Supprimer', icon: 'trash', danger: true, onSelect: async () => {
         const ok = await confirmDialog({
           title: 'Supprimer la salle',
-          message: `« ${room.name} » et ses ${plural(room.unit_count, 'rangement')} seront supprimés définitivement.`,
+          message: `« ${room.name} » et ses ${plural(room.unit_count, 'rangement')} seront supprimés définitivement. Cette action est irréversible.`,
           confirmLabel: 'Supprimer la salle', danger: true,
         });
         if (!ok) return;
@@ -92,13 +90,9 @@ function card(room, canEdit, reload) {
           toast('Salle supprimée.');
           reload();
         } catch (error) { showError(error); }
-      } }, icon('trash'), 'Supprimer'));
-    const button = h('button', { class: 'icon-btn icon-btn-bordered', type: 'button', 'aria-label': `Autres actions pour ${room.name}`, 'aria-haspopup': 'menu', 'aria-expanded': 'false',
-      onclick: () => { menu.hidden = !menu.hidden; button.setAttribute('aria-expanded', String(!menu.hidden)); } }, icon('more'));
-    document.addEventListener('pointerdown', (e) => { if (!more.contains(e.target)) { menu.hidden = true; button.setAttribute('aria-expanded', 'false'); } });
-    more.addEventListener('keydown', (e) => { if (e.key === 'Escape') { menu.hidden = true; button.focus(); } });
-    more.append(button, menu);
-  }
+      } },
+    ],
+  });
 
   return h('article', { class: 'card room-card' },
     h('div', { class: 'room-plan' }, planThumb(room)),

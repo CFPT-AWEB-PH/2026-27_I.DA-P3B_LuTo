@@ -1,9 +1,9 @@
 // Catalogue et recherche : résultats issus de la base (recherche plein texte côté serveur).
 
 import { api } from '../api.js';
-import { clear, h } from '../dom.js';
+import { append, clear, h } from '../dom.js';
 import { icon } from '../icons.js';
-import { emptyState, errorState, locationLabel, pageHeader, plural, showError, skeleton } from '../ui.js';
+import { emptyState, errorState, filterToggle, finePointer, locationLabel, pageHeader, plural, showError, skeleton } from '../ui.js';
 import { formatQuantity, itemDialog, takeDialog, unitLabel } from '../stock-dialogs.js';
 import { navigate } from '../app.js';
 
@@ -23,22 +23,15 @@ export async function render(view, session) {
   let page = Number(params.get('page') ?? 1);
 
   // Mobile : filtres repliés derrière un bouton qui indique combien sont actifs
-  const filterCount = h('span', { class: 'nav-count', hidden: true });
-  const filterToggle = h('button', { class: 'btn filter-toggle', type: 'button', 'aria-expanded': 'false', 'aria-controls': 'item-filters',
-    onclick: () => filterToggle.setAttribute('aria-expanded', String(filterToggle.getAttribute('aria-expanded') !== 'true')) },
-  icon('sliders'), 'Filtres', filterCount);
-  const syncFilterCount = () => {
-    const n = [category.value, room.value, sort.value !== 'relevance', low.checked, archived.checked].filter(Boolean).length;
-    filterCount.hidden = n === 0;
-    filterCount.textContent = String(n);
-  };
+  const filters = filterToggle('item-filters');
+  const syncFilterCount = () => filters.setCount([category.value, room.value, sort.value !== 'relevance', low.checked, archived.checked].filter(Boolean).length);
 
   const create = async () => {
     const item = await itemDialog(null, { canAddStock: session.can('stock.add') });
     if (item) navigate(`/items/${item.id}`);
   };
 
-  view.append(
+  append(view, 
     pageHeader({
       title: 'Objets',
       description: 'Cherchez par nom, référence, catégorie ou emplacement : salle, armoire, tiroir, étiquette.',
@@ -46,7 +39,7 @@ export async function render(view, session) {
     }),
     h('div', { class: 'toolbar toolbar-filters' },
       h('div', { class: 'toolbar-search' }, icon('search'), search),
-      filterToggle,
+      filters.element,
       h('div', { class: 'filter-panel', id: 'item-filters' },
         category, room, sort,
         h('label', { class: 'chip-toggle' }, low, 'Stock bas'),
@@ -75,7 +68,9 @@ export async function render(view, session) {
     if (room.value) query.set('room_id', room.value);
     if (sort.value !== 'relevance') query.set('sort', sort.value);
     if (low.checked) query.set('low', '1');
-    if (archived.checked) query.set('archived', '1');
+    // La liste ne renvoie pas is_active : le filtre « Archivés » détermine l'état des résultats
+    const archivedOnly = archived.checked;
+    if (archivedOnly) query.set('archived', '1');
     if (page > 1) query.set('page', page);
     syncFilterCount();
     history.replaceState(null, '', `/items${query.size ? `?${query}` : ''}`);
@@ -86,7 +81,7 @@ export async function render(view, session) {
       if (current !== sequence) return; // une réponse plus récente est déjà affichée
       summary.textContent = data.total ? plural(data.total, 'objet') : '';
       clear(results, data.items.length
-        ? data.items.map((item) => card(item))
+        ? data.items.map((item) => card(item, !archivedOnly))
         : h('div', { class: 'card' }, filtered()
           ? emptyState(search.value.trim() ? `Aucun objet ne correspond à « ${search.value.trim()} ». Vérifiez l’orthographe ou essayez une référence.` : 'Aucun objet ne correspond à ces filtres.', {
             title: 'Aucun résultat', iconName: 'search', action: h('button', { class: 'btn', type: 'button', onclick: reset }, 'Effacer la recherche et les filtres'),
@@ -112,9 +107,9 @@ export async function render(view, session) {
   search.addEventListener('input', () => { clearTimeout(timer); page = 1; timer = setTimeout(load, 250); });
   for (const el of [category, room, sort, low, archived]) el.addEventListener('change', () => { page = 1; load(); });
   load();
-  search.focus();
+  if (finePointer()) search.focus();
 
-  function card(item) {
+  function card(item, active) {
     const main = item.locations[0];
     const empty = Number(item.total_quantity) === 0;
     return h('article', { class: ['item-card', item.is_low && 'is-low', empty && 'is-empty'] },
@@ -127,7 +122,7 @@ export async function render(view, session) {
           h('span', { class: 'item-ref' }, item.reference),
           item.category && categoryBadge(item.category),
           item.is_low && h('span', { class: 'badge badge-warn' }, icon('alert'), empty ? 'Épuisé' : 'Stock bas'),
-          !item.is_active && h('span', { class: 'badge' }, 'Archivé')),
+          !active && h('span', { class: 'badge' }, 'Archivé')),
         item.locations.length > 0 && h('ul', { class: 'location-list', 'aria-label': 'Emplacements' },
           item.locations.slice(0, 2).map((l) => h('li', {},
             locationLabel(l.path, { href: `/rooms/${l.room_id}?unit=${l.unit_id}`, quantity: item.locations.length > 1 ? formatQuantity(l.quantity) : null }))),
@@ -138,7 +133,7 @@ export async function render(view, session) {
           h('span', { class: 'qty-unit' }, unitLabel(item.unit, item.total_quantity)),
           h('span', { class: 'sr-only' }, 'en stock')),
         h('div', { class: 'item-actions' },
-          main && session.can('stock.take') && item.is_active && h('button', {
+          main && session.can('stock.take') && active && h('button', {
             class: 'btn btn-small btn-primary', type: 'button', 'aria-label': `Prendre ${item.name}`,
             onclick: async () => { if (await takeDialog(item, main)) load(); },
           }, icon('take'), 'Prendre'))),

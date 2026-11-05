@@ -1,7 +1,7 @@
 // Emprunts et retours : mes emprunts, ou tous les emprunts avec la permission history.view.
 
 import { api } from '../api.js';
-import { clear, formatDate, h } from '../dom.js';
+import { append, clear, formatDate, h } from '../dom.js';
 import { icon } from '../icons.js';
 import { emptyState, errorState, locationLabel, pageHeader, skeleton } from '../ui.js';
 import { formatQuantity, returnDialog } from '../stock-dialogs.js';
@@ -24,7 +24,7 @@ export function render(view, session) {
   const scope = canAll ? segmented('Emprunts affichés', [['mine', 'Les miens'], ['all', 'Tout le monde']], 'mine', () => load()) : { value: 'mine' };
   const status = segmented('Statut', [['open', 'En cours'], ['closed', 'Rendus']], 'open', () => load());
 
-  view.append(
+  append(view, 
     pageHeader({ title: 'Emprunts', description: 'Ce qui est sorti et doit revenir. Un retour partiel garde l’emprunt ouvert pour la quantité restante.' }),
     h('div', { class: 'toolbar' }, scope.element, status.element),
     list,

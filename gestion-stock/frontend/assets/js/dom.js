@@ -20,11 +20,12 @@ export function h(tag, props = {}, ...children) {
       el.setAttribute(key, value === true ? '' : String(value));
     }
   }
-  append(el, children);
+  append(el, ...children);
   return el;
 }
 
-function append(el, children) {
+/** Ajoute des enfants en ignorant null, undefined et false (contrairement à Element.append). */
+export function append(el, ...children) {
   for (const child of children.flat(Infinity)) {
     if (child === null || child === undefined || child === false) continue;
     el.append(child instanceof Node ? child : document.createTextNode(String(child)));
@@ -33,7 +34,7 @@ function append(el, children) {
 
 export function clear(el, ...children) {
   el.replaceChildren();
-  append(el, children);
+  append(el, ...children);
   return el;
 }
 

@@ -1,6 +1,6 @@
 import { api } from '../api.js';
-import { clear, formatDate, h } from '../dom.js';
-import { busy, confirmDialog, emptyState, errorState, field, pageHeader, skeleton, showError, toast } from '../ui.js';
+import { append, clear, formatDate, h } from '../dom.js';
+import { busy, emptyState, errorState, field, pageHeader, skeleton, showError, toast } from '../ui.js';
 import { icon } from '../icons.js';
 
 export function render(view) {
@@ -13,7 +13,7 @@ export function render(view) {
   );
   const list = h('div', { class: 'list-container' }, skeleton('row', 3));
 
-  view.append(
+  append(view, 
     pageHeader({ title: 'Accès autorisés', description: 'Seules les adresses et domaines listés ici peuvent se connecter. Retirer une entrée bloque les prochaines connexions ; pour couper un accès tout de suite, désactivez le compte.' }),
     form,
     list,
@@ -33,22 +33,23 @@ export function render(view) {
           h('td', { 'data-label': 'Ajoutée' }, formatDate(entry.created_at, false), entry.created_by && ` par ${entry.created_by}`),
           h('td', { class: 'cell-actions' }, h('button', {
             class: 'btn btn-small btn-danger-ghost', type: 'button',
-            onclick: async () => {
-              const ok = await confirmDialog({
-                title: 'Retirer de la liste',
-                message: `« ${entry.value} » ne pourra plus se connecter. Les sessions ouvertes restent actives jusqu'à leur expiration.`,
-                confirmLabel: 'Retirer l’accès',
-                danger: true,
-              });
-              if (!ok) return;
+            'aria-label': `Retirer ${entry.value}`,
+            // Retrait immédiat, annulable : l'entrée peut être recréée à l'identique
+            onclick: (event) => busy(event.currentTarget, async () => {
               try {
                 await api(`/allowlist/${entry.id}`, { method: 'DELETE' });
-                toast('Entrée retirée.');
-                load();
-              } catch (error) {
-                showError(error);
-              }
-            },
+              } catch (error) { return showError(error); }
+              toast(`« ${entry.value} » ne pourra plus se connecter.`, 'success', {
+                action: { label: 'Annuler', run: async () => {
+                  try {
+                    await api('/allowlist', { method: 'POST', body: { value: entry.value, note: entry.note ?? '' } });
+                    toast(`Accès rétabli pour « ${entry.value} ».`);
+                    load();
+                  } catch (error) { showError(error); }
+                } },
+              });
+              load();
+            }),
           }, 'Retirer')),
         ))),
       )) : h('div', { class: 'card' }, emptyState("Ajoutez une adresse ou un domaine ci-dessus. En attendant, seul l'administrateur initial peut se connecter.", { title: 'Personne d’autre n’a accès', iconName: 'listCheck' })));

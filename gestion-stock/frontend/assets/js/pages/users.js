@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { clear, formatDate, h } from '../dom.js';
+import { append, clear, formatDate, h } from '../dom.js';
 import { confirmDialog, emptyState, errorState, pageHeader, skeleton, showError, toast } from '../ui.js';
 import { icon } from '../icons.js';
 
@@ -13,7 +13,7 @@ export async function render(view, session) {
   );
   const list = h('div', { class: 'list-container' }, skeleton('row', 4));
 
-  view.append(
+  append(view, 
     pageHeader({ title: 'Utilisateurs', description: 'Un compte est créé à la première connexion, avec le rôle par défaut. Qui peut se connecter se règle dans Accès autorisés.' }),
     h('div', { class: 'toolbar' }, h('div', { class: 'toolbar-search' }, icon('search'), search), roleFilter, activeFilter),
     list,
@@ -64,25 +64,28 @@ function row(user, roles, session, reload) {
   const roleSelect = h('select', { 'aria-label': `Rôle de ${user.email}` },
     roles.map((r) => h('option', { value: r.id, selected: r.id === user.role.id }, r.name)));
 
-  roleSelect.addEventListener('change', async () => {
-    const role = roles.find((r) => r.id === Number(roleSelect.value));
-    const ok = await confirmDialog({
-      title: 'Changer le rôle',
-      message: `Attribuer le rôle « ${role.name} » à ${user.display_name || user.email} ?`,
-      confirmLabel: 'Attribuer ce rôle',
-    });
-    if (!ok) {
-      roleSelect.value = user.role.id;
-      return;
-    }
+  // Changement immédiat, annulable depuis la notification (plutôt qu'une confirmation à chaque fois)
+  const setRole = async (role, previous) => {
     try {
       await api(`/users/${user.id}`, { method: 'PATCH', body: { role_id: role.id } });
-      toast(`Rôle « ${role.name} » attribué.`);
-      reload();
+      return true;
     } catch (error) {
-      roleSelect.value = user.role.id;
+      roleSelect.value = previous.id;
       showError(error);
+      return false;
     }
+  };
+  roleSelect.addEventListener('change', async () => {
+    const previous = user.role;
+    const role = roles.find((r) => r.id === Number(roleSelect.value));
+    roleSelect.disabled = true;
+    const ok = await setRole(role, previous);
+    roleSelect.disabled = false;
+    if (!ok) return;
+    user.role = role;
+    toast(`${user.display_name || user.email} a maintenant le rôle « ${role.name} ».`, 'success', {
+      action: { label: 'Annuler', run: async () => { if (await setRole(previous, role)) { toast('Rôle précédent rétabli.'); reload(); } } },
+    });
   });
 
   const toggle = h('button', {

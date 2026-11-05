@@ -3,7 +3,7 @@
 import { api } from '../api.js';
 import { clear, formatDate, h } from '../dom.js';
 import { icon } from '../icons.js';
-import { busy, confirmDialog, emptyState, errorState, locationLabel, plural, showError, skeleton, toast } from '../ui.js';
+import { busy, confirmDialog, emptyState, errorState, locationLabel, menuButton, plural, showError, skeleton, toast } from '../ui.js';
 import { addDialog, adjustDialog, formatQuantity, itemDialog, moveDialog, returnDialog, takeDialog } from '../stock-dialogs.js';
 import { navigate, setTitle } from '../app.js';
 import { movementRow } from './movements.js';
@@ -38,7 +38,7 @@ export async function render(view, session, params) {
     clear(view,
       back,
       h('header', { class: 'item-header' },
-        item.photo_url && h('img', { class: 'item-photo', src: item.photo_url, alt: `Photo : ${item.name}` }),
+        item.photo_url && h('img', { class: 'item-photo', src: item.photo_url, alt: `Photo : ${item.name}`, width: 132, height: 132, decoding: 'async' }),
         h('div', { class: 'item-header-main' },
           h('h1', {}, item.name),
           h('div', { class: 'item-meta' },
@@ -51,16 +51,14 @@ export async function render(view, session, params) {
             !item.is_consumable && stat('Emprunté', formatQuantity(item.on_loan, item.unit)),
             item.min_quantity !== null && stat('Alerte sous', formatQuantity(item.min_quantity, item.unit))),
           h('div', { class: 'detail-actions' },
+            // Une seule action principale : prendre (s'il n'y a qu'un emplacement, sinon depuis la liste ci-dessous)
             can('stock.take') && item.is_active && mainLocation && item.locations.length === 1
               && h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => { if (await takeDialog(item, mainLocation)) after(); } }, icon('take'), 'Prendre'),
             can('stock.add') && item.is_active && h('button', { class: 'btn', type: 'button', onclick: async () => { if (await addDialog(item)) after(); } }, icon('plus'), 'Ajouter du stock'),
+            // Objet archivé : la restauration devient l'action principale
+            can('items.edit') && !item.is_active && h('button', { class: 'btn btn-primary', type: 'button', onclick: (e) => busy(e.currentTarget, () => restore(item, after)) }, icon('undo'), 'Restaurer l’objet'),
             can('items.edit') && h('button', { class: 'btn', type: 'button', onclick: async () => { if (await itemDialog(item)) after(); } }, icon('edit'), 'Modifier'),
-            can('items.edit') && photoButton(item, after),
-            can('items.edit') && (item.is_active
-              ? h('button', { class: 'btn btn-danger-ghost', type: 'button', onclick: () => remove(item) }, icon('trash'), 'Supprimer')
-              : h('button', { class: 'btn', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
-                try { await api(`/items/${item.id}/restore`, { method: 'POST' }); toast('Objet restauré.'); after(); } catch (err) { showError(err); }
-              }) }, icon('undo'), 'Restaurer')),
+            can('items.edit') && moreMenu(item, after),
           ),
         ),
       ),
@@ -109,35 +107,54 @@ export async function render(view, session, params) {
     return h('div', { class: ['stat', tone && `stat-${tone}`] }, h('div', { class: 'stat-label' }, label), h('div', { class: 'stat-value' }, value));
   }
 
-  function photoButton(item, after) {
-    const input = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', class: 'sr-only' });
-    const label = h('label', { class: 'btn' }, input, icon('image'), h('span', {}, item.photo_url ? 'Changer la photo' : 'Ajouter une photo'));
+  /** Actions rares regroupées : photo, suppression ou restauration. */
+  function moreMenu(item, after) {
+    const input = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', hidden: true });
+    const menu = menuButton({
+      label: 'Autres actions sur l’objet',
+      items: [
+        { label: item.photo_url ? 'Changer la photo' : 'Ajouter une photo', icon: 'image', onSelect: () => input.click() },
+        item.is_active && { label: 'Supprimer l’objet', icon: 'trash', danger: true, onSelect: () => remove(item) },
+      ],
+    });
+    const trigger = menu.querySelector('button');
     input.addEventListener('change', () => {
       const file = input.files[0];
+      input.value = '';
       if (!file) return;
-      if (file.size > 5 * 1024 * 1024) return showError(new Error('Photo trop lourde : 5 Mo au maximum.'));
+      if (file.size > 5 * 1024 * 1024) return showError(new Error('Photo trop lourde : 5 Mo au maximum. Réduisez-la ou choisissez-en une autre.'));
       const form = new FormData();
       form.append('photo', file);
-      busy(label, async () => {
+      busy(trigger, async () => {
         try {
           const res = await fetch(`/api/items/${item.id}/photo`, { method: 'POST', body: form, headers: { 'X-CSRF-Token': session.me.csrf_token }, credentials: 'same-origin' });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data?.error?.fields?.photo ?? data?.error?.message ?? 'La photo n’a pas pu être envoyée.');
+          if (!res.ok) throw new Error(data?.error?.fields?.photo ?? data?.error?.message ?? 'La photo n’a pas pu être envoyée. Réessayez.');
           toast('Photo enregistrée.');
           after();
         } catch (error) { showError(error); }
       });
     });
-    // Le libellé n'est pas focalisable : Entrée ou Espace ouvrent le sélecteur de fichier
-    input.addEventListener('focus', () => label.classList.add('is-focused'));
-    input.addEventListener('blur', () => label.classList.remove('is-focused'));
-    return label;
+    menu.append(input);
+    return menu;
+  }
+
+  async function restore(item, after) {
+    try {
+      await api(`/items/${item.id}/restore`, { method: 'POST' });
+      toast('Objet restauré : il réapparaît dans le catalogue.');
+      after();
+    } catch (error) { showError(error); }
   }
 
   async function remove(item) {
+    // Le serveur refuse la suppression tant qu'il reste du stock : on le dit avant plutôt qu'après
+    if (Number(item.total_quantity) > 0) {
+      return showError(new Error(`Il reste ${formatQuantity(item.total_quantity, item.unit)} en stock. Ramenez chaque emplacement à zéro avec « Corriger la quantité », puis supprimez l’objet.`));
+    }
     const ok = await confirmDialog({
       title: 'Supprimer l’objet',
-      message: 'S’il a un historique, il sera archivé et l’historique restera consultable. Son stock doit être à zéro.',
+      message: 'S’il a un historique, il sera archivé : il disparaîtra du catalogue mais son historique restera consultable, et vous pourrez le restaurer.',
       confirmLabel: 'Supprimer l’objet', danger: true,
     });
     if (!ok) return;
@@ -152,7 +169,7 @@ export async function render(view, session, params) {
     const body = h('div', {}, skeleton('text', 4));
     const loadHistory = () => api(`/movements?item_id=${item.id}&per_page=10`).then((data) => {
       clear(body, data.movements.length
-        ? [h('table', { class: 'data-table' },
+        ? [h('table', { class: 'data-table movements-table' },
           h('thead', {}, h('tr', {}, ['Date', 'Mouvement', 'Quantité', 'Emplacement', 'Par'].map((t) => h('th', { scope: 'col' }, t)))),
           h('tbody', {}, data.movements.map((m) => movementRow(m, false))))]
         : emptyState('Aucun mouvement enregistré pour cet objet.', { iconName: 'history' }));

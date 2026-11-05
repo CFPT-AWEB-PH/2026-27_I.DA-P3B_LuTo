@@ -1,7 +1,7 @@
 // Catégories et champs personnalisés du catalogue.
 
 import { api } from '../api.js';
-import { clear, h } from '../dom.js';
+import { append, clear, h } from '../dom.js';
 import { busy, checkbox, confirmDialog, emptyState, errorState, field, openDialog, pageHeader, plural, showError, skeleton, toast } from '../ui.js';
 import { icon } from '../icons.js';
 import { categoryBadge } from './items.js';
@@ -13,7 +13,7 @@ export function render(view) {
   const fields = h('div', { class: 'list-container' }, skeleton('text', 3));
   let categoryList = [];
 
-  view.append(
+  append(view, 
     pageHeader({ title: 'Catégories et champs', description: 'Classez les objets et ajoutez les informations utiles à votre inventaire (marque, date d’achat…).' }),
     h('section', { class: 'card' },
       h('div', { class: 'section-header' }, h('h2', {}, 'Catégories'),
