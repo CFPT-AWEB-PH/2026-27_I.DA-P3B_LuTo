@@ -117,7 +117,7 @@ $iconesFlash = ['success' => 'check', 'error' => 'alert-triangle', 'warning' => 
                         <div class="menu-sep" role="separator"></div>
                         <?php if ($peutArbitrer): ?><a role="menuitem" href="<?= BASE_URL ?>arbitrage/index.php"><?= icon('target') ?>Espace arbitrage</a><?php endif; ?>
                         <?php if ($peutAdmin): ?><a role="menuitem" href="<?= BASE_URL ?>admin/index.php"><?= icon('dashboard') ?>Administration</a><?php endif; ?>
-                        <a role="menuitem" href="<?= BASE_URL ?>compte.php"<?= navCurrent('compte.php') ?>><?= icon('lock') ?>Changer de mot de passe</a>
+                        <a role="menuitem" href="<?= BASE_URL ?>compte.php"<?= navCurrent('compte.php') ?>><?= icon('user') ?>Mon compte</a>
                         <a role="menuitem" href="<?= BASE_URL ?>ecran.php"><?= icon('monitor') ?>Écran de salle</a>
                         <a role="menuitem" href="<?= BASE_URL ?>aide.php"<?= navCurrent('aide.php') ?>><?= icon('help') ?>Aide et guide</a>
                         <div class="menu-sep" role="separator"></div>

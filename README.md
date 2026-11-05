@@ -19,8 +19,8 @@ cd 2026-27_I.DA-P3B_LuTo/app
 ./install.sh
 ```
 
-Le site s'ouvre sur **http://localhost:8080** · compte `admin` / `admin123`
-(le changement du mot de passe est imposé à la première connexion).
+Le site s'ouvre sur **http://localhost:8080** · compte système `admin` / `Super`
+(mot de passe imposé et non modifiable, à ne pas exposer sur internet).
 
 Installation sans Docker, Raspberry Pi (Wi-Fi, écran), sabres Bluetooth, télécommandes :
 voir le **[guide d'installation](docs/installation.md)**.

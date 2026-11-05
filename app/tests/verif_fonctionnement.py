@@ -242,7 +242,7 @@ def verifier(args):
         cl, reussi, lieu = connexion(base, args.admin, demander_mdp(args.admin))
         if ok('Connexion', reussi, lieu or 'refusée : identifiant ou mot de passe'):
             if 'compte.php' in lieu:
-                avert('Ce compte doit d\'abord changer son mot de passe (page Mon compte) : les pages admin sont bloquées.')
+                avert('Ce compte doit d\'abord renouveler son mot de passe (page Mon compte) : les pages admin sont bloquées.')
             else:
                 for f in ['index.php', 'combats.php', 'combats.php?filtre=tous', 'combats.php?action=new',
                           'combats.php?action=generer', 'joueurs.php', 'users.php', 'sabres.php', 'roles.php',
@@ -264,7 +264,7 @@ def verifier(args):
         cl, reussi, lieu = connexion(base, args.arbitre, demander_mdp(args.arbitre))
         if ok('Connexion', reussi, lieu or 'refusée : identifiant ou mot de passe'):
             if 'compte.php' in lieu:
-                avert('Ce compte doit d\'abord changer son mot de passe (page Mon compte).')
+                avert('Ce compte doit d\'abord renouveler son mot de passe (page Mon compte).')
             else:
                 ok_, rp = page_ok(cl, 'arbitrage/index.php', 'Espace arbitrage')
                 pupitres = sorted(set(re.findall(r'saisie\.php\?combat_id=(\d+)', rp['texte'])), key=int)

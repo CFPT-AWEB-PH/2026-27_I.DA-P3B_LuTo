@@ -12,7 +12,7 @@
  *          [perm, …]   → au moins une de ces permissions
  *
  * Dans les textes : {1}, {2}… = repère numéroté sur la capture d'écran,
- * {base} = BASE_URL. Le HTML des textes est écrit ici (jamais saisi par un visiteur).
+ * {base} = BASE_URL, {identifiant} = identifiant du compte connecté. Le HTML des textes est écrit ici (jamais saisi par un visiteur).
  */
 
 /** Sections du guide, dans l'ordre d'affichage : clé => [titre, icône, intro]. */
@@ -51,7 +51,7 @@ function guideFiches(): array
                 '{2} L\'<strong>heure du serveur</strong> : tous les horaires de l\'application s\'y réfèrent, même si l\'heure de votre téléphone est fausse.',
                 '{3} Les espaces de travail (<strong>Arbitrage</strong>, <strong>Admin</strong>) n\'apparaissent que si votre compte y a accès.',
                 '{4} L\'icône écran ouvre l\'<strong>écran de salle</strong> (pour la TV).',
-                '{5} Votre <strong>compte</strong> : changer de mot de passe, se déconnecter, ouvrir ce guide. Sans compte, c\'est le bouton <strong>Connexion</strong>.',
+                '{5} Votre <strong>compte</strong> : voir votre identifiant, se déconnecter, ouvrir ce guide. Sans compte, c\'est le bouton <strong>Connexion</strong>.',
             ],
             'astuces' => ['Le bouton <strong>Aide</strong> <svg class="icon" aria-hidden="true"><use href="#icon-help"></use></svg> en haut de chaque page ouvre directement la fiche du guide qui correspond à la page où vous êtes.'],
             'voir' => ['suivre-direct', 'se-connecter'],
@@ -194,9 +194,9 @@ function guideFiches(): array
             'etapes' => [
                 'Touchez <a href="{base}login.php">Connexion</a> en haut à droite.',
                 '{1} Entrez votre <strong>nom d\'utilisateur</strong> et votre <strong>mot de passe</strong> (l\'œil affiche le mot de passe tapé).',
-                '{2} Touchez <strong>Se connecter</strong>. À la première connexion, l\'application vous demande de choisir votre propre mot de passe.',
+                '{2} Touchez <strong>Se connecter</strong>.',
             ],
-            'astuces' => ['Après 5 essais ratés, le compte est bloqué 15 minutes par sécurité.', 'Mot de passe oublié ? Demandez à un responsable de l\'organisation de le réinitialiser.'],
+            'astuces' => ['Après 5 essais ratés, le compte est bloqué 15 minutes par sécurité.', 'Mot de passe oublié ? Demandez-le à un administrateur.'],
             'voir' => ['mot-de-passe', 'creer-compte'],
             'mots' => 'connexion login se connecter identifiant mot de passe oublié bloqué',
         ],
@@ -207,8 +207,9 @@ function guideFiches(): array
             'page' => 'register.php',
             'etapes' => [
                 'Ouvrez <a href="{base}register.php">Créer un compte joueur</a> (lien sur la page de connexion).',
-                'Choisissez un nom d\'utilisateur, éventuellement votre nom de combat, puis un mot de passe de 8 caractères minimum.',
+                'Choisissez un nom d\'utilisateur et, éventuellement, votre nom de combat.',
                 'Touchez <strong>Créer mon compte</strong> : votre fiche joueur est créée automatiquement.',
+                'Votre <strong>mot de passe est généré</strong> et s\'affiche à l\'écran : notez-le.',
             ],
             'astuces' => ['Les comptes d\'arbitre sont créés par l\'organisation, pas par cette page.'],
             'voir' => ['se-connecter'],
@@ -216,18 +217,17 @@ function guideFiches(): array
         ],
         [
             'id' => 'mot-de-passe', 'section' => 'compte', 'acces' => 'connecte',
-            'titre' => 'Changer mon mot de passe',
-            'resume' => 'Choisir un nouveau mot de passe ; vos autres appareils sont déconnectés.',
+            'titre' => 'Mon identifiant et mon mot de passe',
+            'resume' => 'Votre identifiant, et que faire si vous oubliez votre mot de passe.',
             'page' => 'compte.php',
-            'capture' => 'compte.webp', 'legende' => 'Mon compte : changement de mot de passe.',
+            'capture' => 'compte.webp', 'legende' => 'La page Mon compte.',
             'etapes' => [
-                'Touchez votre initiale en haut à droite, puis <a href="{base}compte.php">Changer de mot de passe</a>.',
-                '{1} Tapez votre mot de passe <strong>actuel</strong>.',
-                '{2} Tapez le <strong>nouveau</strong> deux fois : 8 caractères minimum, sans votre nom d\'utilisateur.',
-                '{3} Touchez <strong>Enregistrer le nouveau mot de passe</strong>. Vos autres sessions (autres téléphones, ordinateurs) sont déconnectées.',
+                'Votre identifiant est <code>{identifiant}</code>. Il est rappelé en haut de ce guide, avec votre mot de passe.',
+                'Votre mot de passe a été généré à la création du compte : il ne peut pas être changé.',
+                'Oublié ? Demandez-le à un <strong>administrateur</strong>, qui peut aussi en générer un nouveau.',
             ],
             'voir' => ['se-deconnecter'],
-            'mots' => 'mot de passe changer modifier sécurité compte',
+            'mots' => 'identifiant mot de passe changer oublié modifier sécurité compte',
         ],
         [
             'id' => 'se-deconnecter', 'section' => 'compte', 'acces' => 'connecte',
@@ -358,6 +358,8 @@ function guideFiches(): array
                 ['joueurs-importer',   'Importer la liste des joueurs (ou les ajouter un par un).'],
                 ['joueurs-ajouter',    'Ajouter les retardataires à la main.'],
                 ['wifi-acces',         'Créer les accès Wi-Fi pour les arbitres et le public.'],
+                ['raspberry-installer', 'Installer les autres Raspberry avec leur commande toute faite.'],
+                ['raspberrys',         'Attribuer un Raspberry à chaque compte qui doit s\'afficher sur un écran.'],
                 ['sabres-ajouter',     'Enregistrer les sabres et les associer aux joueurs.'],
                 ['combats-generer',    'Générer l\'arbre et le planning.'],
                 ['combats-demarrer',   'Démarrer les combats (ou laisser le démarrage automatique).'],
@@ -555,11 +557,10 @@ function guideFiches(): array
             'capture' => 'compte-form.webp', 'legende' => 'Le formulaire « Nouvel utilisateur ».',
             'etapes' => [
                 'Ouvrez <a href="{base}admin/users.php">Admin › Comptes</a> puis <a href="{base}admin/users.php?action=new">Nouveau compte</a>.',
-                '{1} Choisissez le <strong>nom d\'utilisateur</strong>. Laissez le mot de passe vide pour en générer un automatiquement.',
-                '{2} Choisissez le <strong>rôle</strong> (par exemple <em>Arbitre</em>).',
-                '{3} Touchez <strong>Créer le compte</strong>. Le mot de passe généré s\'affiche une seule fois : notez-le et transmettez-le.',
+                'Choisissez le <strong>nom d\'utilisateur</strong> et le <strong>rôle</strong> (par exemple <em>Arbitre</em>).',
+                'Touchez <strong>Créer le compte</strong>. Le mot de passe est généré automatiquement et s\'affiche : transmettez-le à la personne.',
             ],
-            'astuces' => ['À sa première connexion, la personne doit choisir son propre mot de passe.'],
+            'astuces' => ['La personne ne peut pas changer ce mot de passe. Les administrateurs retrouvent tous les mots de passe en haut du guide.'],
             'voir' => ['comptes-modifier', 'roles'],
             'mots' => 'créer compte utilisateur arbitre accès login nouveau',
         ],
@@ -573,7 +574,7 @@ function guideFiches(): array
                 'Ouvrez <a href="{base}admin/users.php">Admin › Comptes</a>.',
                 '{1} Filtrez par rôle avec les onglets en haut de la liste.',
                 '{2} Menu <strong>⋯</strong> › <strong>Modifier</strong> sur la ligne du compte.',
-                'Dans la fiche : <strong>nouveau mot de passe</strong> (vide = inchangé), <strong>rôle</strong>, interrupteur <strong>actif</strong> (désactivé = la personne ne peut plus se connecter).',
+                'Dans la fiche : <strong>générer un nouveau mot de passe</strong>, <strong>rôle</strong>, <strong>Raspberry</strong> qui affichent ce compte (administrateurs), interrupteur <strong>actif</strong> (désactivé = la personne ne peut plus se connecter).',
             ],
             'astuces' => [
                 'Réinitialiser un mot de passe déconnecte la personne de tous ses appareils.',
@@ -581,6 +582,17 @@ function guideFiches(): array
             ],
             'voir' => ['roles'],
             'mots' => 'modifier compte rôle désactiver mot de passe oublié réinitialiser supprimer',
+        ],
+        [
+            'id' => 'compte-systeme', 'section' => 'comptes', 'acces' => [PERM_RASPBERRY],
+            'titre' => 'Le compte système',
+            'resume' => 'Un compte administrateur au mot de passe imposé.',
+            'etapes' => [
+                'Le compte système est <code>' . COMPTE_SYSTEME . '</code>. Son mot de passe est affiché en haut de ce guide, à côté de votre identifiant.',
+                'Ce mot de passe ne peut pas être modifié, et le compte ne peut être ni supprimé, ni désactivé, ni changer de rôle.',
+            ],
+            'voir' => ['comptes-modifier'],
+            'mots' => 'compte système admin mot de passe imposé bloqué super',
         ],
         [
             'id' => 'roles', 'section' => 'comptes', 'acces' => ['roles.voir', 'roles.gerer'],
@@ -702,6 +714,50 @@ function guideFiches(): array
             'mots' => 'wifi état statut point accès',
         ],
 
+        [
+            'id' => 'raspberrys', 'section' => 'wifi', 'acces' => [PERM_RASPBERRY],
+            'titre' => 'Attribuer un Raspberry à un compte',
+            'resume' => 'Afficher l\'identifiant et le mot de passe d\'un compte sur le fond d\'écran d\'un Raspberry.',
+            'page' => 'admin/users.php',
+            'capture' => 'raspberry-attribuer.webp', 'legende' => 'La fiche d\'un compte : les Raspberry qui l\'affichent.',
+            'etapes' => [
+                'Ouvrez <a href="{base}admin/users.php">Admin › Comptes</a>, puis menu <strong>⋯</strong> › <strong>Modifier</strong> sur le compte (ou <strong>Nouveau compte</strong>).',
+                'Dans <strong>Afficher ce compte sur l\'écran de</strong>, activez le ou les Raspberry voulus.',
+                'Touchez <strong>Enregistrer</strong> : en 15 secondes environ, le fond d\'écran affiche l\'identifiant et le mot de passe, sous les infos du Wi-Fi. Rien à lancer sur le Raspberry.',
+                'Pour retirer le compte de l\'écran, désactivez le Raspberry dans la fiche.',
+                'Image de fond : <a href="{base}admin/raspberrys.php">Admin › Raspberry</a>, menu <strong>⋯</strong> › <strong>Modifier</strong>.',
+            ],
+            'astuces' => [
+                'Un Raspberry affiche un seul compte à la fois : en attribuer un nouveau remplace le précédent.',
+                'Toute personne devant l\'écran peut lire le mot de passe affiché : évitez d\'y mettre un compte administrateur.',
+            ],
+            'voir' => ['raspberry-installer', 'wifi-acces'],
+            'mots' => 'raspberry attribuer compte écran fond d\'écran image affiché identifiant mot de passe',
+        ],
+        [
+            'id' => 'raspberry-installer', 'section' => 'wifi', 'acces' => [PERM_RASPBERRY],
+            'titre' => 'Installer un autre Raspberry',
+            'resume' => 'Une commande à copier-coller : il rejoint le Wi-Fi et son écran se met à jour tout seul.',
+            'page' => 'admin/raspberrys.php',
+            'capture' => 'raspberry-installer.webp', 'legende' => 'Admin › Raspberry : la commande à copier-coller.',
+            'etapes' => [
+                'Allumez le nouveau Raspberry et reliez-le à <strong>internet</strong> (câble réseau ou Wi-Fi), sur un réseau d\'où il peut joindre ce site. Il faut une session de bureau ouverte pour voir le fond d\'écran.',
+                'Dans <a href="{base}admin/raspberrys.php">Admin › Raspberry</a>, touchez <strong>Ajouter un Raspberry</strong>, donnez-lui un nom (ex. <em>Table A</em>), puis <strong>Ajouter</strong>.',
+                'Sa <strong>commande toute faite</strong> s\'affiche en haut de la page : copiez-la.',
+                'Sur le nouveau Raspberry, ouvrez un <strong>terminal</strong>, collez la commande et validez. Tapez son mot de passe si <code>sudo</code> le demande. Aucun fichier à copier avant.',
+                'Il rejoint le Wi-Fi de la salle et passe le portail tout seul. Dans la liste, son état passe à <strong>Connecté</strong> en moins d\'une minute.',
+                'Attribuez-lui un compte : voir la fiche <em>Attribuer un Raspberry à un compte</em>.',
+            ],
+            'astuces' => [
+                'Le Raspberry principal n\'a rien à installer : son écran se met à jour automatiquement.',
+                'La commande reste disponible sur la page, et sert aussi à réinstaller. Elle contient un jeton secret : ne la donnez qu\'à ceux qui installent le Raspberry.',
+                'Commande divulguée ? Menu <strong>⋯</strong> › <strong>Nouvelle commande d\'installation</strong> : l\'ancienne ne marche plus, et il faut relancer la nouvelle sur ce Raspberry.',
+                'Le Raspberry reste sur « Jamais connecté » ? Vérifiez sur lui avec <code>journalctl -u sabre-fond-ecran -n 20</code>. Le point d\'accès Wi-Fi du Raspberry principal doit être à portée.',
+            ],
+            'voir' => ['raspberrys', 'wifi-acces'],
+            'mots' => 'installer ajouter autre raspberry commande terminal curl sudo procédure jeton',
+        ],
+
         // ── Paramètres et apparence ───────────────────────────────────────
         [
             'id' => 'parametres', 'section' => 'reglages', 'acces' => ['parametres.voir', 'parametres.modifier'],
@@ -760,6 +816,19 @@ function guideFiches(): array
             ],
             'astuces' => ['Le logo remplace aussi l\'icône de l\'application installée et le favicon.', '« Lame d\'origine » revient au logo de départ.'],
             'mots' => 'thème couleur logo apparence design personnaliser club',
+        ],
+        [
+            'id' => 'guide-images', 'section' => 'reglages', 'acces' => ['parametres.modifier'],
+            'titre' => 'Choisir les images de ce guide',
+            'resume' => 'Mettre l\'image que vous voulez sur chaque fiche.',
+            'etapes' => [
+                'En haut du guide, <strong>Images : Noir / Blanc</strong> choisit la version de toutes les captures, pour tout le monde.',
+                'Pour une image précise : ouvrez la fiche à modifier, puis, en bas de la fiche, <strong>Changer l\'image</strong>.',
+                'Choisissez une image (PNG, JPEG ou WebP, 2 Mo maximum), puis touchez <strong>Enregistrer cette image</strong>.',
+                '<strong>Aucune image</strong> retire l\'image de la fiche. <strong>Image d\'origine</strong> remet la capture fournie.',
+            ],
+            'astuces' => ['Le changement s\'applique tout de suite pour tous ceux qui peuvent lire cette fiche. Une image que vous avez envoyée reste la même en noir et en blanc.'],
+            'mots' => 'image photo capture guide aide changer choisir illustration',
         ],
 
         // ── Bilan ─────────────────────────────────────────────────────────
@@ -852,6 +921,34 @@ function guideFiches(): array
     ];
 }
 
+/** Images choisies par les administrateurs : id de fiche => version (null = aucune image). */
+function guideImagesChoisies(PDO $pdo): array
+{
+    return $pdo->query('SELECT fiche_id, version FROM guide_images')->fetchAll(PDO::FETCH_KEY_PAIR);
+}
+
+/**
+ * Image à afficher sur une fiche : celle choisie par un administrateur, sinon la capture
+ * d'origine, en version $mode (blanc : assets/guide/, noir : assets/guide/noir/).
+ * Retourne ['url', 'legende', 'choisie'] ou null s'il n'y a pas d'image.
+ */
+function guideImageFiche(array $f, array $choisies, string $mode = 'blanc'): ?array
+{
+    if (array_key_exists($f['id'], $choisies)) {
+        if ($choisies[$f['id']] === null) return null;
+        return ['url' => BASE_URL . 'guide_image.php?id=' . rawurlencode($f['id']) . '&v=' . $choisies[$f['id']],
+                'legende' => $f['titre'] . '.', 'choisie' => true];
+    }
+    if (empty($f['capture']) || !is_file(__DIR__ . '/../assets/guide/' . $f['capture'])) return null;
+    $legende = $f['legende'] ?? $f['titre'];
+    // Repères rouges : seulement si les étapes de la fiche y renvoient
+    if (preg_match('/\{\d+\}/', implode(' ', $f['etapes'] ?? []))) {
+        $legende .= ' Les repères rouges correspondent à ceux des étapes.';
+    }
+    $noir = $mode === 'noir' && is_file(__DIR__ . '/../assets/guide/noir/' . $f['capture']);
+    return ['url' => asset('guide/' . ($noir ? 'noir/' : '') . $f['capture']), 'legende' => $legende, 'choisie' => false];
+}
+
 /** La fiche est-elle accessible au visiteur actuel ? */
 function guideFicheAccessible(array $fiche, PDO $pdo): bool
 {
@@ -879,7 +976,7 @@ function guideFichesVisibles(PDO $pdo): array
 /** Remplace {base} et les repères {1}, {2}… d'un texte de fiche. */
 function guideTexte(string $html): string
 {
-    $html = str_replace('{base}', BASE_URL, $html);
+    $html = str_replace(['{base}', '{identifiant}'], [BASE_URL, e(currentUser()['username'] ?? '')], $html);
     return preg_replace('/\{(\d{1,2})\}/', '<span class="guide-pin" aria-label="repère $1">$1</span>', $html);
 }
 
@@ -909,6 +1006,7 @@ function guideFichePourPage(PDO $pdo, string $script, string $dossier): ?string
         'admin/roles.php'      => ['roles'],
         'admin/sabres.php'     => ['sabres-ajouter', 'sabres-tester'],
         'admin/wifi.php'       => ['wifi-acces', 'wifi-voir'],
+        'admin/raspberrys.php' => ['raspberry-installer', 'raspberrys'],
         'admin/parametres.php' => ['parametres', 'grades'],
         'admin/apparence.php'  => ['apparence'],
         'admin/bilan.php'      => ['bilan'],

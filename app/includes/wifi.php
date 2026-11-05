@@ -61,14 +61,23 @@ function ensureWifiSchema(PDO $pdo): void
     // Compte affiché sur le fond d'écran du Raspberry (raspberry/sabre-fond-ecran.py) : seul
     // ce compte garde son mot de passe en clair, puisqu'il est de toute façon affiché.
     $pdo->exec("ALTER TABLE wifi_comptes ADD COLUMN IF NOT EXISTS ecran_mdp VARCHAR(64) DEFAULT NULL");
+    // Mot de passe chiffré, relisible par les administrateurs dans le guide (includes/identifiants.php)
+    $pdo->exec("ALTER TABLE wifi_comptes ADD COLUMN IF NOT EXISTS mdp_chiffre TEXT DEFAULT NULL");
+}
+
+/** Change le mot de passe d'un compte Wi-Fi (hachage du portail + copie chiffrée). */
+function wifiDefinirMotDePasse(PDO $pdo, int $id, string $mdp): void
+{
+    $pdo->prepare('UPDATE wifi_comptes SET nt_hash = ?, mdp_chiffre = ? WHERE id = ?')
+        ->execute([wifiNtHash($mdp), chiffrerMotDePasse($mdp), $id]);
 }
 
 /** Affiche ce compte (et ce mot de passe) sur l'écran du Raspberry, à la place du précédent. */
 function wifiAfficherSurEcran(PDO $pdo, int $id, string $mdp): void
 {
     $pdo->prepare('UPDATE wifi_comptes SET ecran_mdp = NULL WHERE id <> ?')->execute([$id]);
-    $pdo->prepare('UPDATE wifi_comptes SET ecran_mdp = ?, nt_hash = ? WHERE id = ?')
-        ->execute([$mdp, wifiNtHash($mdp), $id]);
+    $pdo->prepare('UPDATE wifi_comptes SET ecran_mdp = ? WHERE id = ?')->execute([$mdp, $id]);
+    wifiDefinirMotDePasse($pdo, $id, $mdp);
 }
 
 function wifiRetirerDeEcran(PDO $pdo, ?int $id = null): void
@@ -81,19 +90,6 @@ function wifiRetirerDeEcran(PDO $pdo, ?int $id = null): void
 function wifiNtHash(string $mdp): string
 {
     return hash('md4', mb_convert_encoding($mdp, 'UTF-16LE', 'UTF-8'));
-}
-
-/** Mot de passe facile à taper sur un téléphone : xxxx-xxxx-xxxx (≈ 62 bits). */
-function wifiGenererMotDePasse(): string
-{
-    $alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';   // sans l, i, o, 0, 1 (ambigus)
-    $groupes = [];
-    for ($g = 0; $g < 3; $g++) {
-        $s = '';
-        for ($i = 0; $i < 4; $i++) $s .= $alphabet[random_int(0, strlen($alphabet) - 1)];
-        $groupes[] = $s;
-    }
-    return implode('-', $groupes);
 }
 
 function wifiErreurMotDePasse(string $mdp): ?string

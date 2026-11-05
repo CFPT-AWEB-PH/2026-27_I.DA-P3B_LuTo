@@ -4,8 +4,9 @@
 #
 #   - Met à jour le système (apt full-upgrade), sauf avec --sans-maj
 #   - Fond d'écran : nom + mot de passe du Wi-Fi, identifiant du portail,
-#     QR code « rejoindre le Wi-Fi » et QR code « ouvrir le site »
-#     (régénéré au démarrage et dès que le nom/mot de passe du Wi-Fi change)
+#     QR code « rejoindre le Wi-Fi » et QR code « ouvrir le site », plus le compte et
+#     l'image choisis dans Admin › Raspberry (régénéré dès qu'une de ces infos change)
+#     Autres Raspberry, connectés au Wi-Fi : raspberry/install_ecran_client.sh
 #   - Site lancé au démarrage du Pi (service sabre-app : docker compose up -d)
 #
 # Usage (après install_wifi.sh) :  sudo bash raspberry/install_ecran.sh [--sans-maj]

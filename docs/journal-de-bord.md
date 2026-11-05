@@ -43,6 +43,8 @@ timeline
             : Choix dans Admin → Wi-Fi de l'accès affiché sur l'écran du Raspberry (Lucas)
             : Guide d'utilisation intégré au site, adapté au rôle, avec captures annotées (Tom)
             : Impression / PDF du guide et déploiement sur le Raspberry (Tom)
+    05 Nov  : Mots de passe générés, compte système, écrans des Raspberry (Tom)
+            : Images du guide en noir ou en blanc, au choix (Tom)
 ```
 
 ---
@@ -500,5 +502,34 @@ Bouton « Imprimer le guide » : tout le guide accessible au rôle s'imprime (ou
 
 **Déploiement sur le Raspberry**
 Avant de copier les fichiers, comparaison de chaque fichier du Raspberry avec celui du PC, pour vérifier que rien de ce qui était sur le Raspberry n'était écrasé. Envoi avec `scp` ; le code étant monté directement dans le conteneur, le site est à jour sans redémarrage. La version des fichiers CSS/JS (`ASSETS_VERSION` et `sw.js`) est passée à 16 pour que les téléphones téléchargent le nouveau style.
+
+Ce travail a été réalisé avec l'aide de l'IA (Claude).
+
+---
+
+### 05.11 — Comptes, écrans des Raspberry et images du guide
+
+**Tom :**
+
+**Mots de passe générés**
+Plus personne ne choisit ni ne change son mot de passe : il est généré (`xxxx-xxxx-xxxx`) et affiché à la création, y compris à l'inscription publique. Chacun retrouve le sien dans le guide, et les administrateurs y voient tous les identifiants et mots de passe (comptes et Wi-Fi). Ils sont gardés chiffrés en base en plus du hachage ; ceux des comptes existants sont enregistrés à leur prochaine connexion.
+
+**Compte système**
+Le compte `admin` a un mot de passe imposé : il ne peut être ni modifié, ni supprimé, ni désactivé. Ce choix et ses risques sont notés dans `docs/securite.md` (M5c).
+
+**Écrans des Raspberry**
+Nouvelle page Admin › Raspberry : le compte affiché sur chaque écran, attribué aussi depuis la fiche du compte, et une image de fond. Le Raspberry principal se met à jour tout seul en 15 s. Les autres s'installent avec une commande toute faite : ils rejoignent le Wi-Fi, passent le portail et lisent leurs infos avec un jeton.
+
+**Images du guide**
+Captures refaites en deux versions, noir et blanc (thème Orange · blanc · bleu), au choix avec un bouton. Elles passent en pleine largeur, avec une miniature dans la liste, et chaque fiche peut recevoir l'image de son choix.
+
+**Problèmes rencontrés :**
+- Le disque du Raspberry était plein, ce qui bloquait le déploiement : cache de construction Docker vidé (950 Mo).
+- Le test réel du script d'installation a montré une erreur en fin d'exécution (variable locale utilisée par un `trap`) : corrigée avant le déploiement.
+- Les combats de démonstration paraissaient terminés sur les captures : la base d'essai n'était pas dans le même fuseau horaire que l'application.
+
+**Tests :** copie isolée de l'application avec Docker (parcours complets, droits d'accès, faux fichiers), script d'installation exécuté dans un conteneur, puis essai réel du fond d'écran sur le Raspberry principal avec un compte temporaire.
+
+⚠️ Pas encore testé : l'installation sur un vrai deuxième Raspberry.
 
 Ce travail a été réalisé avec l'aide de l'IA (Claude).

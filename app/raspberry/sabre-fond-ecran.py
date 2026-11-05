@@ -6,26 +6,34 @@
 #   - nom du Wi-Fi + mot de passe (ou « ouvert »), ceux d'Admin › Wi-Fi
 #   - identifiant + mot de passe du portail : l'accès coché « Afficher sur l'écran
 #     du Raspberry » dans Admin › Wi-Fi
+#   - identifiant + mot de passe du compte choisi pour ce Raspberry, et son image de
+#     fond : Admin › Raspberry
 #   - QR code pour rejoindre le Wi-Fi, QR code pour ouvrir le site
 #
 # Lancé (root) toutes les 15 s par sabre-fond-ecran.timer : l'image n'est redessinée
 # que si une de ces informations a changé (--forcer : toujours).
+# Raspberry principal : infos lues en local dans le conteneur de l'app.
+# Autres Raspberry (/etc/sabre/client.env, écrit par install_ecran_client.sh) : lues
+# sur le Wi-Fi avec leur jeton, en passant le portail si besoin.
 # Aucun accès coché dans l'app : compte de /etc/sabre/ecran-compte (identifiant:mot de
 # passe), sinon un compte de secours « invite » est créé avec sabre-wifi.
 # =============================================================================
-import hashlib, os, re, shlex, subprocess, sys
+import hashlib, json, os, re, shlex, subprocess, sys, urllib.parse, urllib.request
 
 import qrcode
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 CONF = "/etc/sabre/ap.env"
 COMPTE = "/etc/sabre/ecran-compte"
+CLIENT = "/etc/sabre/client.env"         # SERVEUR, JETON, WIFI_ID, WIFI_MDP : autres Raspberry seulement
 ECRAN = "/etc/sabre/ecran.env"           # ECRAN_USER : utilisateur du bureau (écrit par install_ecran.sh)
 SORTIE = "/var/lib/sabre-ecran/fond.png"
 SIGNATURE = "/var/lib/sabre-ecran/signature"
-CACHE_APP = "/var/lib/sabre-ecran/compte-app"   # dernier accès lu dans l'app (base arrêtée : on le garde)
-DB_CONTAINER = "sabre_db"
-POLICE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+CACHE_APP = "/var/lib/sabre-ecran/infos-app"    # dernières infos lues dans l'app (app arrêtée : on les garde)
+IMAGE_PERSO = "/var/lib/sabre-ecran/image-fond" # image de fond téléchargée (Admin › Raspberry)
+WEB_CONTAINER = "sabre_web"
+SCRIPT_INFOS = "/var/www/html/raspberry/infos_ecran.php"
+POLICE ="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 POLICE_GRAS = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 POLICE_MONO = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
 
@@ -59,33 +67,77 @@ def ecrire_prive(chemin, contenu):
         os.umask(old)
 
 
-def compte_app():
-    """Accès coché « sur l'écran » dans Admin › Wi-Fi : (identifiant, mdp), ("", "") si aucun.
-    Base injoignable : le dernier accès connu (None s'il n'y en a jamais eu)."""
-    sql = ("SELECT identifiant, ecran_mdp FROM wifi_comptes "
-           "WHERE actif = 1 AND ecran_mdp IS NOT NULL ORDER BY updated_at DESC LIMIT 1;")
+def demander_serveur(client, suffixe=""):
+    """Réponse de l'app à un Raspberry connecté au Wi-Fi."""
+    req = urllib.request.Request(f"http://{client['SERVEUR']}/api/raspberry_infos.php{suffixe}",
+                                 headers={"X-Sabre-Jeton": client["JETON"]})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return r.read()
+
+
+def passer_portail(client):
+    donnees = urllib.parse.urlencode({"identifiant": client["WIFI_ID"], "mdp": client["WIFI_MDP"]}).encode()
+    urllib.request.urlopen(f"http://{client['SERVEUR'].split('/')[0]}/connexion", donnees, timeout=15).close()
+
+
+def lire_infos_serveur(client):
+    # Pas encore identifié sur le portail : c'est sa page de connexion qui répond, pas du JSON
     try:
-        # Identifiants de la base lus DANS le conteneur, comme raspberry/sabre-wifi
-        r = subprocess.run(["docker", "exec", "-i", DB_CONTAINER, "sh", "-c",
-                            'MYSQL_PWD="$MARIADB_PASSWORD" exec mariadb -u"$MARIADB_USER" -D"$MARIADB_DATABASE" -N -B'],
-                           input=sql, capture_output=True, text=True, timeout=20)
-        if r.returncode == 0:
-            ident, _, mdp = r.stdout.rstrip("\n").partition("\t")
-            ecrire_prive(CACHE_APP, f"{ident}\t{mdp}\n")
-            return ident, mdp
-    except (OSError, subprocess.SubprocessError):
-        pass
+        return json.loads(demander_serveur(client))
+    except ValueError:
+        passer_portail(client)
+        return json.loads(demander_serveur(client))
+
+
+def lire_infos_local():
+    # Identifiants de la base et clé des mots de passe : lus DANS le conteneur, rien en clair ici
+    r = subprocess.run(["docker", "exec", WEB_CONTAINER, "php", SCRIPT_INFOS],
+                       capture_output=True, text=True, timeout=20, check=True)
+    return json.loads(r.stdout)
+
+
+def lire_infos(client):
+    """Ce que l'app veut sur cet écran. App injoignable : les dernières infos connues ({} sinon)."""
     try:
-        ident, _, mdp = open(CACHE_APP).read().rstrip("\n").partition("\t")
-        return ident, mdp
-    except OSError:
+        infos = lire_infos_serveur(client) if client else lire_infos_local()
+        ecrire_prive(CACHE_APP, json.dumps(infos))
+        return infos
+    except (OSError, ValueError, subprocess.SubprocessError) as e:
+        print(f"Infos de l'app indisponibles : {e}", file=sys.stderr)
+    try:
+        return json.load(open(CACHE_APP))
+    except (OSError, ValueError):
+        return {}
+
+
+def image_fond(client, version):
+    """Chemin de l'image de fond de ce Raspberry (téléchargée si elle a changé), None s'il n'y en a pas."""
+    if not version:
         return None
+    if os.path.exists(f"{IMAGE_PERSO}.{version}"):
+        return f"{IMAGE_PERSO}.{version}"
+    try:
+        if client:
+            contenu = demander_serveur(client, "?fond=1")
+        else:
+            contenu = subprocess.run(["docker", "exec", WEB_CONTAINER, "php", SCRIPT_INFOS, "--fond"],
+                                     capture_output=True, timeout=30, check=True).stdout
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"Image de fond indisponible : {e}", file=sys.stderr)
+        return None
+    dossier = os.path.dirname(IMAGE_PERSO)
+    for nom in os.listdir(dossier):
+        if nom.startswith(os.path.basename(IMAGE_PERSO) + "."):
+            os.remove(os.path.join(dossier, nom))
+    with open(f"{IMAGE_PERSO}.{version}", "wb") as f:
+        f.write(contenu)
+    return f"{IMAGE_PERSO}.{version}"
 
 
-def lire_compte():
-    app = compte_app()
-    if app and app[0] and app[1]:
-        return app
+def lire_compte(infos):
+    app = infos.get("portail") or {}
+    if app.get("identifiant") and app.get("mdp"):
+        return app["identifiant"], app["mdp"]
     try:
         with open(COMPTE) as f:
             ident, _, mdp = f.read().strip().partition(":")
@@ -154,18 +206,45 @@ def appliquer():
                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
 
 
+def image_de_base(W, H, chemin):
+    """Fond uni, ou image choisie assombrie pour que le texte par-dessus reste lisible."""
+    fond = Image.new("RGB", (W, H), FOND)
+    if not chemin:
+        return fond
+    try:
+        return Image.blend(ImageOps.fit(Image.open(chemin).convert("RGB"), (W, H)), fond, 0.55)
+    except OSError as e:
+        print(f"Image de fond illisible : {e}", file=sys.stderr)
+        return fond
+
+
+def texte_ajuste(d, xy, texte, chemin_police, taille, largeur, fill):
+    """Écrit le texte en réduisant la police s'il dépasse la largeur disponible."""
+    while taille > 10:
+        police = ImageFont.truetype(chemin_police, int(taille))
+        if d.textlength(texte, font=police) <= largeur:
+            break
+        taille -= 1
+    d.text(xy, texte, font=ImageFont.truetype(chemin_police, int(max(taille, 10))), fill=fill)
+
+
 def main():
     conf = lire_conf()
-    ssid = conf.get("SSID", "Sabre-Arbitrage")
-    mdp_wifi = conf.get("WIFI_MDP", "")
-    domaine = conf.get("DOMAINE", "sabre.lan")
-    ident, mdp = lire_compte()
+    client = lire_conf_fichier(CLIENT)
+    infos = lire_infos(client)
+    ssid = conf.get("SSID") or infos.get("ssid") or "Sabre-Arbitrage"
+    mdp_wifi = conf.get("WIFI_MDP") or infos.get("mdp_wifi") or ""
+    domaine = conf.get("DOMAINE") or infos.get("domaine") or "sabre.lan"
+    ident, mdp = lire_compte(infos)
+    compte = infos.get("compte") or {}
+    compte_ident, compte_mdp = compte.get("identifiant"), compte.get("mdp")
+    version_image = infos.get("fond_version")
     url = f"http://{domaine}"
     W, H = taille_ecran()
 
     # Rien n'a changé depuis la dernière image : on ne redessine pas
-    signature = hashlib.sha256(repr((ssid, mdp_wifi, domaine, ident, mdp, W, H,
-                                     os.path.getmtime(__file__))).encode()).hexdigest()
+    signature = hashlib.sha256(repr((ssid, mdp_wifi, domaine, ident, mdp, compte_ident, compte_mdp, version_image,
+                                     W, H, os.path.getmtime(__file__))).encode()).hexdigest()
     try:
         deja = open(SIGNATURE).read().strip() == signature and os.path.exists(SORTIE)
     except OSError:
@@ -174,7 +253,7 @@ def main():
         return 0
 
     u = H / 1080                               # unité : tout est proportionnel à la hauteur
-    img = Image.new("RGB", (W, H), FOND)
+    img = image_de_base(W, H, image_fond(client, version_image))
     d = ImageDraw.Draw(img)
     f = lambda chemin, t: ImageFont.truetype(chemin, max(10, int(t * u)))
     titre, sous, label, valeur, petit = f(POLICE_GRAS, 64), f(POLICE, 30), f(POLICE, 28), f(POLICE_MONO, 46), f(POLICE, 25)
@@ -194,21 +273,32 @@ def main():
                                                        ("Mot de passe", mdp or "voir l'organisateur")]),
         ("3", "Ouvrir le site", [("Adresse", url)]),
     ]
+    if compte_ident:
+        etapes.append(("4", "Se connecter au site", [("Identifiant", compte_ident),
+                                                     ("Mot de passe", compte_mdp or "voir l'organisateur")]))
+    # Quatre cartes : identifiant et mot de passe côte à côte, pour que tout tienne à l'écran
+    compact = len(etapes) > 3
     larg_g = int(W * 0.56) - marge
-    y = int(220 * u)
+    x_texte = marge + int(95 * u)
+    larg_texte = marge + larg_g - x_texte - int(20 * u)
+    y = int((190 if compact else 220) * u)
     for num, titre_etape, lignes in etapes:
-        h_carte = int((90 + 95 * len(lignes)) * u)
+        rangees = 1 if compact else len(lignes)
+        h_carte = int((90 + 95 * rangees) * u)
         d.rounded_rectangle((marge, y, marge + larg_g, y + h_carte), radius=int(18 * u), fill=CARTE)
         r = int(26 * u); cx, cy = marge + int(50 * u), y + int(48 * u)
         d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=ACCENT)
         d.text((cx, cy), num, font=f(POLICE_GRAS, 30), fill=FOND, anchor="mm")
-        d.text((marge + int(95 * u), cy), titre_etape, font=f(POLICE_GRAS, 34), fill=TEXTE, anchor="lm")
+        d.text((x_texte, cy), titre_etape, font=f(POLICE_GRAS, 34), fill=TEXTE, anchor="lm")
         ly = y + int(95 * u)
-        for lab, val in lignes:
-            d.text((marge + int(95 * u), ly), lab, font=label, fill=DISCRET)
-            d.text((marge + int(95 * u), ly + int(32 * u)), val, font=valeur, fill=TEXTE)
-            ly += int(95 * u)
-        y += h_carte + int(28 * u)
+        larg_col = larg_texte // len(lignes) - int(10 * u) if compact else larg_texte
+        for i, (lab, val) in enumerate(lignes):
+            lx = x_texte + (i * (larg_texte // len(lignes)) if compact else 0)
+            d.text((lx, ly), lab, font=label, fill=DISCRET)
+            texte_ajuste(d, (lx, ly + int(32 * u)), val, POLICE_MONO, max(10, int(46 * u)), larg_col, TEXTE)
+            if not compact:
+                ly += int(95 * u)
+        y += h_carte + int((18 if compact else 28) * u)
 
     # ── Colonne de droite : QR codes ─────────────────────────────────────────
     securite = "WPA" if mdp_wifi else "nopass"
@@ -224,8 +314,9 @@ def main():
         img.paste(qr(contenu, cote), (x0, qy))
         d.text((x0 + cote // 2, qy + cote + int(40 * u)), legende, font=petit, fill=TEXTE, anchor="mm")
 
-    d.text((marge, H - int(50 * u)), "Pas d'internet sur ce réseau : seul le site du tournoi est accessible.",
-           font=petit, fill=DISCRET)
+    if not compact:
+        d.text((marge, H - int(50 * u)), "Pas d'internet sur ce réseau : seul le site du tournoi est accessible.",
+               font=petit, fill=DISCRET)
 
     os.makedirs(os.path.dirname(SORTIE), exist_ok=True)
     tmp = SORTIE + ".tmp.png"

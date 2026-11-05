@@ -99,6 +99,10 @@ function attemptLogin(PDO $pdo, string $username, string $password): array
     if (estMotDePasseParDefaut($password) && !(int)($user['doit_changer_mdp'] ?? 0)) {
         $pdo->prepare('UPDATE users SET doit_changer_mdp = 1 WHERE id = ?')->execute([$user['id']]);
     }
+    // Compte créé avant les mots de passe générés : les administrateurs pourront désormais le relire
+    if (dechiffrerMotDePasse($user['mdp_chiffre'] ?? null) === null) {
+        $pdo->prepare('UPDATE users SET mdp_chiffre = ? WHERE id = ?')->execute([chiffrerMotDePasse($password), $user['id']]);
+    }
     try {
         $pdo->prepare('UPDATE users SET derniere_connexion = NOW() WHERE id = ?')->execute([$user['id']]);
     } catch (PDOException $e) { /* colonne absente avant migration */ }
@@ -141,10 +145,10 @@ function registerUser(PDO $pdo, string $username, string $password, string $nom 
     $hash = password_hash($password, PASSWORD_DEFAULT);
 
     $stmt = $pdo->prepare(
-        'INSERT INTO users (username, password_hash, role, nom, prenom) VALUES (?, ?, ?, ?, ?)'
+        'INSERT INTO users (username, password_hash, mdp_chiffre, role, nom, prenom) VALUES (?, ?, ?, ?, ?, ?)'
     );
     try {
-        $stmt->execute([$username, $hash, $role, $nom ?: null, $prenom ?: null]);
+        $stmt->execute([$username, $hash, chiffrerMotDePasse($password), $role, $nom ?: null, $prenom ?: null]);
     } catch (PDOException $e) {
         if ($e->getCode() === '23000') {
             return ['success' => false, 'error' => 'Ce nom d\'utilisateur est déjà pris.'];

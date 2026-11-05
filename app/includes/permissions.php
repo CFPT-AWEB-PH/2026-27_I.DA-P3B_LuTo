@@ -12,6 +12,7 @@
  */
 
 const ROLE_SUPER_ADMIN = 'admin';
+const PERM_RASPBERRY = 'raspberry.admin';
 
 /**
  * Catalogue de toutes les permissions de l'application, regroupées par section.
@@ -38,7 +39,7 @@ function permissionsCatalogue(): array
             'users.creer'            => ['Créer des utilisateurs', 'Créer un nouveau compte.'],
             'users.modifier'         => ['Modifier des utilisateurs', 'Modifier nom, prénom, statut actif d\'un compte.'],
             'users.changer_role'     => ['Changer le rôle d\'un utilisateur', 'Attribuer un autre rôle à un compte.'],
-            'users.mot_de_passe'     => ['Réinitialiser les mots de passe', 'Définir un nouveau mot de passe pour un autre compte.'],
+            'users.mot_de_passe'     => ['Réinitialiser les mots de passe', 'Générer un nouveau mot de passe pour un autre compte.'],
             'users.supprimer'        => ['Supprimer des utilisateurs', 'Supprimer définitivement un compte.'],
         ],
         'Rôles & permissions' => [
@@ -271,6 +272,8 @@ function adminOnglets(): array
         ['sabres.php',     'saber',     'Sabres',                   ['sabres.voir']],
         ['roles.php',      'lock',      'Rôles',                    ['roles.voir', 'roles.gerer']],
         ['wifi.php',       'wifi',      'Wi-Fi',                    ['wifi.voir', 'wifi.gerer']],
+        // PERM_RASPBERRY n'est pas au catalogue : seuls les administrateurs l'ont (la page affiche des mots de passe)
+        ['raspberrys.php', 'monitor',   'Raspberry',                [PERM_RASPBERRY]],
         ['bilan.php',      'printer',   'Bilan',                    ['bilan.voir']],
         ['parametres.php', 'settings',  'Paramètres',               ['parametres.voir', 'parametres.modifier', 'grades.gerer', 'joueurs.champs']],
         ['apparence.php',  'sliders',   'Apparence',                ['parametres.voir', 'parametres.modifier']],

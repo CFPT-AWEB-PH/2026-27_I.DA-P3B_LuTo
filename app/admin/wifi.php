@@ -21,11 +21,10 @@ function chargerCompteWifi(PDO $pdo, int $id): ?array
     return $st->fetch() ?: null;
 }
 
-/** Message affiché une seule fois : le mot de passe n'est jamais relisible ensuite. */
+/** Message affiché une fois (les administrateurs le retrouvent ensuite dans le guide). */
 function flashMotDePasseWifi(string $identifiant, string $mdp, string $intro): void
 {
-    flash('success', $intro . ' Identifiant : ' . $identifiant . ' · Mot de passe : ' . $mdp
-        . ' (notez-le maintenant, il ne sera plus affiché).', true);
+    flashIdentifiants($intro, $identifiant, $mdp);
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -57,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $description = texteBorne($_POST['description'] ?? '', 100) ?? '';
         $mdp = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
         $genere = $mdp === '';
-        if ($genere) $mdp = wifiGenererMotDePasse();
+        if ($genere) $mdp = genererMotDePasse();
 
         $erreur = null;
         if (!preg_match(WIFI_IDENTIFIANT_REGEX, $identifiant)) {
@@ -74,8 +73,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             stashOldInput(['identifiant' => $identifiant, 'description' => $description]);
             redirect('admin/wifi.php?action=new');
         }
-        $pdo->prepare('INSERT INTO wifi_comptes (identifiant, nt_hash, description, created_by) VALUES (?, ?, ?, ?)')
-            ->execute([$identifiant, wifiNtHash($mdp), $description ?: null, (int)currentUser()['id']]);
+        $pdo->prepare('INSERT INTO wifi_comptes (identifiant, nt_hash, mdp_chiffre, description, created_by) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$identifiant, wifiNtHash($mdp), chiffrerMotDePasse($mdp), $description ?: null, (int)currentUser()['id']]);
         if (isset($_POST['ecran'])) wifiAfficherSurEcran($pdo, (int)$pdo->lastInsertId(), $mdp);
         error_log('[Sabre][wifi] compte ' . $identifiant . ' créé par ' . $moi);
         if ($genere) flashMotDePasseWifi($identifiant, $mdp, 'Accès Wi-Fi créé.');
@@ -98,14 +97,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->prepare('UPDATE wifi_comptes SET description = ?, actif = ? WHERE id = ?')
             ->execute([$description ?: null, $actif, $cible['id']]);
         if ($mdp !== '') {
-            $pdo->prepare('UPDATE wifi_comptes SET nt_hash = ? WHERE id = ?')->execute([wifiNtHash($mdp), $cible['id']]);
+            wifiDefinirMotDePasse($pdo, (int)$cible['id'], $mdp);
             error_log('[Sabre][wifi] mot de passe de ' . $cible['identifiant'] . ' changé par ' . $moi);
         }
         // Écran du Raspberry : il faut le mot de passe en clair. Sans nouveau mot de passe,
         // on garde celui déjà affiché, sinon on en génère un (l'ancien n'est pas relisible).
         $genere = false;
         if (isset($_POST['ecran']) && $actif) {
-            if ($mdp === '' && $cible['ecran_mdp'] === null) { $mdp = wifiGenererMotDePasse(); $genere = true; }
+            if ($mdp === '' && $cible['ecran_mdp'] === null) {
+                // Mot de passe déjà relisible : on le garde, l'accès continue de marcher sur les appareils
+                $mdp = dechiffrerMotDePasse($cible['mdp_chiffre']) ?? '';
+                if ($mdp === '') { $mdp = genererMotDePasse(); $genere = true; }
+            }
             if ($mdp !== '') wifiAfficherSurEcran($pdo, (int)$cible['id'], $mdp);
         } else {
             wifiRetirerDeEcran($pdo, (int)$cible['id']);
@@ -117,8 +120,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ---- NOUVEAU MOT DE PASSE GÉNÉRÉ ----
     if ($fa === 'regen') {
-        $mdp = wifiGenererMotDePasse();
-        $pdo->prepare('UPDATE wifi_comptes SET nt_hash = ? WHERE id = ?')->execute([wifiNtHash($mdp), $cible['id']]);
+        $mdp = genererMotDePasse();
+        wifiDefinirMotDePasse($pdo, (int)$cible['id'], $mdp);
         if ($cible['ecran_mdp'] !== null) wifiAfficherSurEcran($pdo, (int)$cible['id'], $mdp);
         error_log('[Sabre][wifi] mot de passe de ' . $cible['identifiant'] . ' régénéré par ' . $moi);
         flashMotDePasseWifi($cible['identifiant'], $mdp, 'Nouveau mot de passe Wi-Fi.');
@@ -280,7 +283,7 @@ require __DIR__ . '/_tabs.php';
                 <div class="field">
                     <label for="password">Mot de passe <span class="req">(facultatif)</span></label>
                     <input type="text" id="password" name="password" minlength="8" maxlength="64" autocomplete="new-password" aria-describedby="password-hint">
-                    <small class="hint" id="password-hint">Laissez vide pour en générer un (facile à taper) : il s'affichera une seule fois.</small>
+                    <small class="hint" id="password-hint">Laissez vide pour en générer un (facile à taper) : il s'affichera après la création.</small>
                 </div>
             <?php else: ?>
                 <div class="field">
@@ -299,7 +302,7 @@ require __DIR__ . '/_tabs.php';
             </div>
             <div class="field">
                 <label class="switch">
-                    <span class="switch-text"><strong>Afficher sur l'écran du Raspberry</strong><span class="hint">L'identifiant et le mot de passe apparaissent sur le fond d'écran (avec le nom du Wi-Fi et les QR codes), à la place de l'accès affiché jusqu'ici.<?= $action === 'edit' && ($editCompte['ecran_mdp'] ?? null) === null ? ' Sans nouveau mot de passe ci-dessus, un mot de passe est généré.' : '' ?></span></span>
+                    <span class="switch-text"><strong>Afficher sur l'écran du Raspberry</strong><span class="hint">L'identifiant et le mot de passe apparaissent sur le fond d'écran (avec le nom du Wi-Fi et les QR codes), à la place de l'accès affiché jusqu'ici.<?= $action === 'edit' && ($editCompte['ecran_mdp'] ?? null) === null && dechiffrerMotDePasse($editCompte['mdp_chiffre'] ?? null) === null ? ' Sans nouveau mot de passe ci-dessus, un mot de passe est généré.' : '' ?></span></span>
                     <input type="checkbox" name="ecran" role="switch" <?= ($editCompte['ecran_mdp'] ?? null) !== null ? 'checked' : '' ?>>
                 </label>
             </div>

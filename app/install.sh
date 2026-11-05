@@ -28,7 +28,7 @@ echo "⏳ Démarrage de l'application…"
 for _ in $(seq 1 60); do
     if curl -fs -o /dev/null "$URL/login.php"; then
         echo "✅ Application prête : $URL"
-        echo "   Compte par défaut : admin / admin123 (changement imposé à la 1re connexion)"
+        echo "   Compte système : admin / Super (mot de passe imposé, non modifiable)"
         exit 0
     fi
     sleep 2

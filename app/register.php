@@ -16,19 +16,14 @@ if ($ouvert && $_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!limiteDebit($pdo, 'inscription', ipClient(), 5, 3600)) {
         $error = 'Trop de comptes créés depuis cette connexion. Réessayez plus tard.';
     } else {
-        $mdp = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
-        $confirm = is_string($_POST['password_confirm'] ?? null) ? $_POST['password_confirm'] : '';
-        if (!hash_equals($mdp, $confirm)) {
-            $error = 'Les deux mots de passe ne correspondent pas.';
-        } else {
-            // Rôle imposé côté serveur : une inscription publique ne crée jamais que des comptes « joueur »
-            $result = registerUser($pdo, $old['username'], $mdp, '', '', 'joueur', ['pseudo' => $old['pseudo']]);
-            if ($result['success']) {
-                flash('success', 'Compte créé. Vous pouvez maintenant vous connecter.');
-                redirect('login.php');
-            }
-            $error = $result['error'];
+        // Rôle imposé côté serveur : une inscription publique ne crée jamais que des comptes « joueur »
+        $mdp = genererMotDePasse($old['username']);
+        $result = registerUser($pdo, $old['username'], $mdp, '', '', 'joueur', ['pseudo' => $old['pseudo']]);
+        if ($result['success']) {
+            flashIdentifiants('Compte créé.', $old['username'], $mdp);
+            redirect('login.php');
         }
+        $error = $result['error'];
     }
 }
 
@@ -69,19 +64,7 @@ require __DIR__ . '/includes/header.php';
                 <small class="hint" id="pseudo-hint">Affiché sur les écrans et dans le classement.</small>
             </div>
 
-            <div class="field">
-                <label for="password">Mot de passe</label>
-                <div class="input-with-btn">
-                    <input type="password" id="password" name="password" required minlength="8" maxlength="200" autocomplete="new-password" aria-describedby="password-hint">
-                    <button type="button" class="password-toggle-btn" data-target="password" aria-label="Afficher le mot de passe"><?= icon('eye') ?></button>
-                </div>
-                <small class="hint" id="password-hint">8 caractères minimum.</small>
-            </div>
-
-            <div class="field">
-                <label for="password_confirm">Confirmer le mot de passe</label>
-                <input type="password" id="password_confirm" name="password_confirm" required minlength="8" maxlength="200" autocomplete="new-password" data-match="password">
-            </div>
+            <p class="hint">Votre mot de passe est généré automatiquement et s'affiche après la création du compte : notez-le.</p>
 
             <button type="submit" class="btn btn-lg btn-block">Créer mon compte</button>
         </form>

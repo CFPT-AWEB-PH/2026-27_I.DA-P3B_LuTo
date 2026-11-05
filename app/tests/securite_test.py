@@ -4,7 +4,7 @@ Tests de sécurité défensifs (non destructifs pour une base de test).
 
 Usage :  python3 tests/securite_test.py http://127.0.0.1:8080
 Pré-requis : base de test avec les comptes admin / arb1 / arb2 / arb3
-(mot de passe « test123 »), les combats 1 (en cours, arb1-3), 3 (à venir,
+(mot de passe « test123 », sauf le compte système admin : « Super »), les combats 1 (en cours, arb1-3), 3 (à venir,
 arb1 seul). NE PAS lancer sur la base de production : crée des comptes et
 déclenche des verrouillages de connexion.
 """
@@ -96,7 +96,7 @@ ok('Arbitre ne peut pas modifier les permissions (POST direct)', r.status_code i
 # ---------------------------------------------------------------- CSRF
 r = arb2.post(B + 'api/points.php', data={'combat_id': 1, 'action': 'ajouter', 'joueur': 1, 'valeur': 3})
 ok('POST sans jeton CSRF refusé (API)', r.status_code == 400 and r.json().get('ok') is False)
-admin = connexion('admin')
+admin = connexion('admin', 'Super')
 r = admin.post(B + 'admin/combats.php', data={'form_action': 'lot', 'lot_action': 'supprimer', 'ids[]': [1]}, allow_redirects=False)
 ok('POST sans jeton CSRF refusé (admin)', 'combat.php?id=1' in admin.get(B + 'admin/combats.php?filtre=tous').text)
 r = admin.get(B + 'admin/combats.php?action=delete&id=1&csrf=' + csrf_de(admin, 'admin/combats.php'), allow_redirects=False)
@@ -134,13 +134,13 @@ admin.post(B + 'admin/roles.php', data={'csrf': tR, 'form_action': 'create', 'no
 admin.post(B + 'admin/roles.php', data={'csrf': tR, 'form_action': 'update', 'slug': 'chef', 'nom': 'Chef equipe', 'couleur': '#123456', 'ordre': 5,
                                         'permissions[]': ['users.voir', 'users.creer', 'users.modifier', 'users.changer_role', 'users.mot_de_passe']})
 tU = csrf_de(admin, 'admin/users.php?action=new')
-admin.post(B + 'admin/users.php', data={'csrf': tU, 'form_action': 'create', 'username': 'chef1', 'password': 'Chef-Mdp-2026!', 'role': 'chef'})
-import pymysql  # noqa : ajustement direct de la base de test (mot de passe provisoire)
+r = admin.post(B + 'admin/users.php', data={'csrf': tU, 'form_action': 'create', 'username': 'chef1', 'password': 'Chef-Mdp-2026!', 'role': 'chef'})
+MDP_GENERE = r'Mot de passe : ([a-z0-9-]{14})'
+m = re.search(MDP_GENERE, r.text)
+ok('Création de compte : mot de passe saisi ignoré, mot de passe généré affiché', bool(m))
+import pymysql  # noqa : lecture directe de la base de test
 db = pymysql.connect(unix_socket='/run/mysqld/mysqld.sock', user='root', database='sabre_arbitrage', autocommit=True)
-with db.cursor() as c:
-    c.execute("UPDATE users SET doit_changer_mdp = 0 WHERE username = 'chef1'")
-db.commit()
-chef = connexion('chef1', 'Chef-Mdp-2026!')
+chef = connexion('chef1', m.group(1))
 tc = csrf_de(chef, 'admin/users.php')
 with db.cursor() as c:
     c.execute("SELECT id FROM users WHERE username='chef1'"); chef_id = c.fetchone()[0]
@@ -149,7 +149,7 @@ with db.cursor() as c:
 chef.post(B + 'admin/users.php', data={'csrf': tc, 'form_action': 'update', 'id': chef_id, 'role': 'admin', 'nom': '', 'prenom': '', 'actif': 'on'})
 chef.post(B + 'admin/users.php', data={'csrf': tc, 'form_action': 'update', 'id': arb3_id, 'role': 'admin', 'nom': '', 'prenom': '', 'actif': 'on'})
 chef.post(B + 'admin/users.php', data={'csrf': tc, 'form_action': 'create', 'username': 'faux_admin', 'password': 'Faux-Admin-2026!', 'role': 'admin'})
-chef.post(B + 'admin/users.php', data={'csrf': tc, 'form_action': 'update', 'id': admin_id, 'role': 'public', 'new_password': 'Pris-En-Main-2026!', 'nom': '', 'prenom': '', 'actif': 'on'})
+chef.post(B + 'admin/users.php', data={'csrf': tc, 'form_action': 'update', 'id': admin_id, 'role': 'public', 'regenerer_mdp': 'on', 'nom': '', 'prenom': '', 'actif': 'on'})
 db.commit()
 with db.cursor() as c:
     c.execute("SELECT username, role FROM users WHERE username IN ('chef1','arb3','faux_admin','admin')")
@@ -158,29 +158,43 @@ ok('Non-admin ne peut pas se donner le rôle admin', roles.get('chef1') == 'chef
 ok('Non-admin ne peut pas promouvoir quelqu\'un admin', roles.get('arb3') == 'arbitre', str(roles))
 ok('Non-admin ne peut pas créer un compte admin', roles.get('faux_admin') in (None, 'joueur', 'arbitre', 'public'), str(roles))
 ok('Non-admin ne peut pas modifier le compte administrateur', roles.get('admin') == 'admin')
-ok('Mot de passe admin inchangé par un non-admin', connexion('admin').get(B + 'admin/index.php', allow_redirects=False).status_code == 200)
+ok('Mot de passe admin inchangé par un non-admin', connexion('admin', 'Super').get(B + 'admin/index.php', allow_redirects=False).status_code == 200)
 
 # ---------------------------------------------------------------- révocation des sessions
 autre = connexion('arb3')
 ok('Session arb3 valide', autre.get(B + 'arbitrage/index.php', allow_redirects=False).status_code == 200)
 tU = csrf_de(admin, 'admin/users.php')
-admin.post(B + 'admin/users.php', data={'csrf': tU, 'form_action': 'update', 'id': arb3_id, 'role': 'arbitre', 'nom': '', 'prenom': '', 'actif': 'on', 'new_password': 'Nouveau-Mdp-2026!'})
+r = admin.post(B + 'admin/users.php', data={'csrf': tU, 'form_action': 'update', 'id': arb3_id, 'role': 'arbitre', 'nom': '', 'prenom': '', 'actif': 'on', 'regenerer_mdp': 'on'})
+m = re.search(MDP_GENERE, r.text)
+ok('Réinitialisation : nouveau mot de passe généré affiché', bool(m))
 r = autre.get(B + 'arbitrage/index.php', allow_redirects=False)
 ok('Réinitialisation du mot de passe : anciennes sessions déconnectées', r.status_code == 302, str(r.status_code))
-nouvelle = connexion('arb3', 'Nouveau-Mdp-2026!')
+nouvelle = connexion('arb3', m.group(1))
 r = nouvelle.get(B + 'arbitrage/index.php', allow_redirects=False)
-ok('Mot de passe réinitialisé : changement obligatoire', r.status_code == 302 and 'compte.php' in r.headers.get('Location', ''), r.headers.get('Location', ''))
+ok('Mot de passe réinitialisé : utilisable tout de suite', r.status_code == 200, r.headers.get('Location', ''))
+
+# ---------------------------------------------------------------- mot de passe non modifiable, relisible par les admins
+tt = csrf_de(nouvelle, 'compte.php')
+nouvelle.post(B + 'compte.php', data={'csrf': tt, 'mdp_actuel': m.group(1), 'mdp_nouveau': 'Autre-Mdp-2026!', 'mdp_confirm': 'Autre-Mdp-2026!'})
+ok('Mon compte : le mot de passe ne se change pas', connexion('arb3', m.group(1)).get(B + 'arbitrage/index.php', allow_redirects=False).status_code == 200)
+ok('Guide : un administrateur voit tous les mots de passe', m.group(1) in admin.get(B + 'aide.php').text)
+page = nouvelle.get(B + 'aide.php').text
+ok('Guide : un arbitre voit son identifiant, pas les mots de passe', 'arb3' in page and m.group(1) not in page)
+for u in ['admin/raspberrys.php']:
+    ok('Page Raspberry interdite à un non-admin : ' + u, nouvelle.get(B + u, allow_redirects=False).status_code == 403)
+r = requests.get(B + 'api/raspberry_infos.php', headers={'X-Sabre-Jeton': 'faux'})
+ok('Infos d\'écran : jeton invalide refusé', r.status_code == 403 and 'mdp' not in r.text)
+r = requests.get(B + 'raspberry/infos_ecran.php')
+ok('Script interne du Raspberry non servi', r.status_code == 403, str(r.status_code))
 
 # ---------------------------------------------------------------- inscription publique
 reg = requests.Session()
 tt = csrf_de(reg, 'register.php')
-reg.post(B + 'register.php', data={'csrf': tt, 'username': 'nouveau1', 'password': 'Joueur-Mdp-2026', 'password_confirm': 'Joueur-Mdp-2026', 'role': 'admin'})
+r = reg.post(B + 'register.php', data={'csrf': tt, 'username': 'nouveau1', 'password': 'Joueur-Mdp-2026', 'password_confirm': 'Joueur-Mdp-2026', 'role': 'admin'})
 with db.cursor() as c:
     c.execute("SELECT role FROM users WHERE username='nouveau1'"); row = c.fetchone()
 ok('Inscription publique : rôle forcé « joueur »', row and row[0] == 'joueur', str(row))
-tt = csrf_de(reg, 'register.php')
-r = reg.post(B + 'register.php', data={'csrf': tt, 'username': 'nouveau2', 'password': '123', 'password_confirm': '123'})
-ok('Mot de passe trop court refusé', '8 caractères' in r.text)
+ok('Inscription publique : mot de passe généré affiché', bool(re.search(MDP_GENERE, r.text)))
 
 # ---------------------------------------------------------------- force brute
 bf = requests.Session()

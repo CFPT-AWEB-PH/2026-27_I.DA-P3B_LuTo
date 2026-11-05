@@ -20,6 +20,23 @@ function peutGererCompte(?array $cible): bool
     return roleSubordonne($pdo, $cible['role']);
 }
 
+/**
+ * Enregistre les Raspberry cochés dans la fiche d'un compte : leur écran affiche ce compte d'ici 15 s.
+ * Réservé aux administrateurs, comme la page Raspberry : le mot de passe devient lisible sur l'écran.
+ */
+function enregistrerRaspberrysDuCompte(PDO $pdo, int $userId, string $username): void
+{
+    if (!can(PERM_RASPBERRY) || !isset($_POST['raspberrys_form'])) return;
+    $ids = is_array($_POST['raspberrys'] ?? null) ? $_POST['raspberrys'] : [];
+    raspberryAttribuerCompte($pdo, $userId, $ids);
+    if (!$ids) return;
+    $st = $pdo->prepare('SELECT mdp_chiffre FROM users WHERE id = ?');
+    $st->execute([$userId]);
+    if (dechiffrerMotDePasse($st->fetchColumn() ?: null) === null) {
+        flash('warning', 'Le mot de passe de ' . $username . ' n\'est pas encore connu : l\'écran l\'affichera après sa prochaine connexion, ou générez-en un nouveau.', true);
+    }
+}
+
 function chargerUser(PDO $pdo, int $id): ?array
 {
     $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ?');
@@ -35,21 +52,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') === '
         redirect('admin/users.php');
     }
     $username = texteBorne($_POST['username'] ?? '', 30) ?? '';
-    $password = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
-    $defaut = in_array('joueur', $slugsAttribuables, true) ? 'joueur' : ($slugsAttribuables[0] ?? 'public');
+    $defaut =in_array('joueur', $slugsAttribuables, true) ? 'joueur' : ($slugsAttribuables[0] ?? 'public');
     $role = (can('users.changer_role') && in_array($_POST['role'] ?? '', $slugsAttribuables, true)) ? $_POST['role'] : $defaut;
     $nom = texteBorne($_POST['nom'] ?? '', 100) ?? '';
     $prenom = texteBorne($_POST['prenom'] ?? '', 100) ?? '';
 
-    // Mot de passe provisoire : aléatoire (12 caractères), à changer à la 1re connexion
-    $motDePasseGenere = $password === '' ? substr(strtr(base64_encode(random_bytes(12)), '+/', 'kx'), 0, 12) : null;
-    $result = registerUser($pdo, $username, $password ?: $motDePasseGenere, $nom, $prenom, $role);
+    $mdp = genererMotDePasse($username);
+    $result = registerUser($pdo, $username, $mdp, $nom, $prenom, $role);
     if ($result['success']) {
-        // Tout mot de passe fixé par un tiers doit être changé par son titulaire
-        $pdo->prepare('UPDATE users SET doit_changer_mdp = 1 WHERE id = ?')->execute([$result['user_id']]);
-        $msg = 'Utilisateur "' . $username . '" créé (rôle : ' . nomRole($pdo, $role) . ').';
-        if ($motDePasseGenere) $msg .= ' Mot de passe provisoire : ' . $motDePasseGenere . ' (à changer à la première connexion).';
-        flash('success', $msg, (bool)$motDePasseGenere);
+        enregistrerRaspberrysDuCompte($pdo, (int)$result['user_id'], $username);
+        flashIdentifiants('Compte créé (rôle : ' . nomRole($pdo, $role) . ').', $username, $mdp);
         redirect('admin/users.php');
     } else {
         flash('error', $result['error']);
@@ -83,6 +95,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') === '
     $prenom = texteBorne($_POST['prenom'] ?? '', 100) ?? '';
     $actif = isset($_POST['actif']) ? 1 : 0;
 
+    // Compte système : toujours actif et administrateur
+    $estSysteme = estCompteSysteme($cible['username']);
+    if ($estSysteme) { $role = ROLE_SUPER_ADMIN; $actif = 1; }
+
     // Garde-fous : ne pas se retirer soi-même le rôle admin / se désactiver
     if ($editId === (int)currentUser()['id']) {
         if ($cible['role'] === ROLE_SUPER_ADMIN && $role !== ROLE_SUPER_ADMIN) {
@@ -115,25 +131,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') === '
         }
     }
 
-    $nouveauMdp = is_string($_POST['new_password'] ?? null) ? $_POST['new_password'] : '';
-    if ($nouveauMdp !== '') {
-        if (!can('users.mot_de_passe')) {
+    if (isset($_POST['regenerer_mdp'])) {
+        if ($estSysteme) {
+            flash('error', 'Le mot de passe du compte système ne peut pas être modifié.');
+        } elseif (!can('users.mot_de_passe')) {
             flash('error', 'Mot de passe non modifié : permission « Réinitialiser les mots de passe » manquante.');
-        } elseif ($err = erreurMotDePasse($nouveauMdp, $cible['username'])) {
-            flash('error', 'Mot de passe non modifié : ' . $err);
         } else {
-            // Réinitialisation : sessions révoquées + changement obligatoire à la prochaine connexion
-            $pdo->prepare('UPDATE users SET password_hash = ?, doit_changer_mdp = ?, session_version = session_version + 1 WHERE id = ?')
-                ->execute([password_hash($nouveauMdp, PASSWORD_DEFAULT), $estMoi ? 0 : 1, $editId]);
+            // Réinitialisation : nouveau mot de passe généré, sessions révoquées
+            $nouveauMdp = definirMotDePasseCompte($pdo, $editId, $cible['username']);
             error_log('[Sabre][admin] mot de passe de ' . $cible['username'] . ' réinitialisé par ' . currentUser()['username']);
             if ($estMoi) {
                 $st = $pdo->prepare('SELECT * FROM users WHERE id = ?');
                 $st->execute([$editId]);
                 ouvrirSessionUtilisateur($st->fetch());
             }
+            flashIdentifiants('Nouveau mot de passe généré.', $cible['username'], $nouveauMdp);
         }
     }
 
+    enregistrerRaspberrysDuCompte($pdo, $editId, $cible['username']);
     flash('success', 'Utilisateur mis à jour.');
     redirect('admin/users.php');
 }
@@ -146,6 +162,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') === '
         $cible = chargerUser($pdo, $id);
         if ($id === (int)currentUser()['id']) {
             flash('error', 'Vous ne pouvez pas supprimer votre propre compte.');
+        } elseif (estCompteSysteme($cible['username'] ?? null)) {
+            flash('error', 'Le compte système ne peut pas être supprimé.');
         } elseif (!peutGererCompte($cible)) {
             flash('error', 'Seul un administrateur peut supprimer un compte administrateur.');
         } else {
@@ -188,6 +206,18 @@ if ($filtreRole !== '' && in_array($filtreRole, $slugsRoles, true)) {
 } else {
     $filtreRole = '';
     $users = $pdo->query('SELECT u.* FROM users u LEFT JOIN roles r ON r.slug = u.role ORDER BY COALESCE(r.ordre, 999), u.username ASC')->fetchAll();
+}
+
+// Raspberry attribués : leur écran affiche l'identifiant et le mot de passe du compte
+$raspberrys = [];
+$raspberrysParCompte = [];
+$nomsComptes = array_column($pdo->query('SELECT id, username FROM users')->fetchAll(), 'username', 'id');
+if (can(PERM_RASPBERRY)) {
+    ensureRaspberrySchema($pdo);
+    $raspberrys = $pdo->query('SELECT id, nom, user_id FROM raspberrys ORDER BY principal DESC, nom ASC')->fetchAll();
+    foreach ($raspberrys as $r) {
+        if ($r['user_id']) $raspberrysParCompte[(int)$r['user_id']][] = $r['nom'];
+    }
 }
 
 $pageTitle = 'Gestion des utilisateurs';
@@ -234,26 +264,28 @@ require __DIR__ . '/_tabs.php';
                     <label for="username">Nom d'utilisateur</label>
                     <input type="text" id="username" name="username" required minlength="3" autocomplete="username" value="<?= e($editUser['username'] ?? '') ?>">
                 </div>
-                <div class="field">
-                    <label for="password">Mot de passe <span class="req">(facultatif)</span></label>
-                    <input type="text" id="password" name="password" minlength="8" maxlength="200" autocomplete="new-password" aria-describedby="password-hint">
-                    <small class="hint" id="password-hint">Laissez vide pour en générer un : il s'affichera une fois après l'enregistrement.</small>
-                </div>
+                <div class="field"><p class="hint">Le mot de passe est généré automatiquement et s'affiche après la création du compte.</p></div>
             <?php else: ?>
                 <div class="field">
                     <label>Nom d'utilisateur</label>
                     <input type="text" value="<?= e($editUser['username']) ?>" disabled>
                 </div>
-                <?php if (can('users.mot_de_passe')): ?>
+                <?php if (estCompteSysteme($editUser['username'])): ?>
+                <div class="field"><p class="hint">Compte système : son mot de passe, son rôle et son état ne peuvent pas être modifiés.</p></div>
+                <?php elseif (can('users.mot_de_passe')): ?>
                 <div class="field">
-                    <label for="new_password">Nouveau mot de passe <span class="req">(vide = inchangé)</span></label>
-                    <input type="text" id="new_password" name="new_password" minlength="8" maxlength="200" autocomplete="new-password">
+                    <label class="switch">
+                        <span class="switch-text"><strong>Générer un nouveau mot de passe</strong><span class="hint">Il s'affiche après l'enregistrement. L'ancien ne marche plus et la personne est déconnectée de ses appareils.</span></span>
+                        <input type="checkbox" name="regenerer_mdp" role="switch">
+                    </label>
                 </div>
                 <?php endif; ?>
             <?php endif; ?>
             <div class="field">
                 <label for="role">Rôle</label>
-                <?php if (can('users.changer_role')): ?>
+                <?php if (estCompteSysteme($editUser['username'] ?? null)): ?>
+                    <p><?= badgeRole($pdo, ROLE_SUPER_ADMIN) ?></p>
+                <?php elseif (can('users.changer_role')): ?>
                     <select id="role" name="role">
                         <?php foreach ($rolesAttribuables as $r): ?>
                             <option value="<?= e($r['slug']) ?>" <?= (($editUser['role'] ?? 'joueur') === $r['slug']) ? 'selected' : '' ?>><?= e($r['nom']) ?></option>
@@ -274,7 +306,23 @@ require __DIR__ . '/_tabs.php';
                     <input type="text" id="nom" name="nom" value="<?= e($editUser['nom'] ?? '') ?>">
                 </div>
             </div>
-            <?php if ($action === 'edit' && $editUser): ?>
+            <?php if ($raspberrys): ?>
+                <fieldset class="field">
+                    <legend>Afficher ce compte sur l'écran de</legend>
+                    <input type="hidden" name="raspberrys_form" value="1">
+                    <?php foreach ($raspberrys as $r):
+                        $coche = !empty($editUser['id']) && (int)$r['user_id'] === (int)$editUser['id'];
+                        $autreCompte = $r['user_id'] && !$coche ? ($nomsComptes[(int)$r['user_id']] ?? null) : null;
+                    ?>
+                        <label class="switch">
+                            <span class="switch-text"><strong><?= e($r['nom']) ?></strong><?php if ($autreCompte): ?><span class="hint">Affiche <?= e($autreCompte) ?> : ce compte le remplacera.</span><?php endif; ?></span>
+                            <input type="checkbox" name="raspberrys[]" value="<?= (int)$r['id'] ?>" role="switch" <?= $coche ? 'checked' : '' ?>>
+                        </label>
+                    <?php endforeach; ?>
+                    <small class="hint">L'identifiant et le mot de passe apparaissent sur le fond d'écran en 15 secondes environ, lisibles par toute personne devant l'écran. <a href="raspberrys.php">Gérer les Raspberry</a></small>
+                </fieldset>
+            <?php endif; ?>
+            <?php if ($action === 'edit' && $editUser && !estCompteSysteme($editUser['username'])): ?>
                 <div class="field">
                     <label class="switch">
                         <span class="switch-text"><strong>Compte actif</strong><span class="hint">Désactivé, le compte ne peut plus se connecter.</span></span>
@@ -304,14 +352,14 @@ require __DIR__ . '/_tabs.php';
         <?php foreach ($users as $u): $gerable = peutGererCompte($u); $nomComplet = trim(($u['prenom'] ?? '') . ' ' . ($u['nom'] ?? ''));
             $menu = '';
             if ($gerable && can('users.modifier')) $menu .= '<a role="menuitem" href="users.php?action=edit&id=' . (int)$u['id'] . '">' . icon('edit') . 'Modifier</a>';
-            if ($gerable && can('users.supprimer') && (int)$u['id'] !== (int)currentUser()['id']) {
+            if ($gerable && can('users.supprimer') && (int)$u['id'] !== (int)currentUser()['id'] && !estCompteSysteme($u['username'])) {
                 $menu .= ($menu ? '<div class="menu-sep" role="separator"></div>' : '') . boutonPost('users.php', 'delete', ['id' => (int)$u['id']], 'Supprimer le compte', 'trash', ['class' => 'is-danger', 'data-confirm' => 'Supprimer le compte ' . $u['username'] . ' ?', 'data-confirm-text' => 'Cette personne ne pourra plus se connecter. Action définitive.', 'data-confirm-label' => 'Supprimer']);
             }
         ?>
             <tr class="<?= $u['actif'] ? '' : 'row-inactive' ?>">
                 <td class="cell-primary"><div class="player-cell"><strong><?= e($u['username']) ?></strong><span class="hint"><?= $nomComplet !== '' ? e($nomComplet) : 'Nom non renseigné' ?></span></div></td>
                 <td data-label=""><?= badgeRole($pdo, $u['role']) ?></td>
-                <td data-label=""><?= $u['actif'] ? '<span class="hint">Actif</span>' : '<span class="badge badge-neutral">Désactivé</span>' ?><?= !empty($u['doit_changer_mdp']) ? ' <span class="badge badge-warning" title="Devra choisir un nouveau mot de passe à la prochaine connexion">Mot de passe à changer</span>' : '' ?></td>
+                <td data-label=""><?= $u['actif'] ? '<span class="hint">Actif</span>' : '<span class="badge badge-neutral">Désactivé</span>' ?><?= estCompteSysteme($u['username']) ? ' <span class="badge badge-neutral">Compte système</span>' : '' ?><?php foreach ($raspberrysParCompte[(int)$u['id']] ?? [] as $nomR): ?> <span class="badge badge-neutral" title="Affiché sur l'écran de ce Raspberry"><?= e($nomR) ?></span><?php endforeach; ?><?= !empty($u['doit_changer_mdp']) ? ' <span class="badge badge-warning" title="Recevra un mot de passe généré à sa prochaine connexion">Mot de passe à renouveler</span>' : '' ?></td>
                 <td data-label="Dernière connexion :" class="tabular"><?= !empty($u['derniere_connexion']) ? formatDateFr($u['derniere_connexion']) : '<span class="muted">jamais</span>' ?></td>
                 <td class="cell-actions">
                     <?php if ($menu): ?><?= menuActions($menu, 'Actions pour ' . $u['username']) ?>

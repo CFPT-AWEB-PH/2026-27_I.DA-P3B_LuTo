@@ -4,7 +4,7 @@
  * historique des touches et petites fonctions d'affichage des durées.
  */
 
-const SCHEMA_TOURNOI_VERSION = 8;
+const SCHEMA_TOURNOI_VERSION = 12;
 
 /**
  * Migrations automatiques (une seule fois, suivies par le paramètre schema_tournoi).
@@ -117,6 +117,35 @@ function ensureSchemaTournoi(PDO $pdo): void
         // v8 : mise en pause d'un combat en cours (chrono arrêté)
         if ($version < 8) {
             $pdo->exec("ALTER TABLE combats ADD COLUMN IF NOT EXISTS en_pause_depuis DATETIME DEFAULT NULL AFTER temps_fin");
+        }
+
+        // v9 : mots de passe générés, relisibles par les administrateurs (includes/identifiants.php)
+        if ($version < 9) {
+            $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS mdp_chiffre TEXT DEFAULT NULL AFTER password_hash");
+        }
+
+        // v10 : mot de passe imposé du compte système (includes/identifiants.php)
+        if ($version < 10) {
+            definirMotDePasseCompte($pdo, (int)$pdo->query("SELECT id FROM users WHERE username = " . $pdo->quote(COMPTE_SYSTEME))->fetchColumn(), COMPTE_SYSTEME);
+            $pdo->prepare('UPDATE users SET role = ?, actif = 1 WHERE username = ?')->execute([ROLE_SUPER_ADMIN, COMPTE_SYSTEME]);
+        }
+
+        // v11 : commande d'installation des Raspberry toujours disponible (jeton relisible par les admins)
+        if ($version < 11) {
+            ensureRaspberrySchema($pdo);
+            $pdo->exec("ALTER TABLE raspberrys ADD COLUMN IF NOT EXISTS jeton_chiffre TEXT DEFAULT NULL AFTER jeton_hash");
+        }
+
+        // v12 : images du guide choisies par les administrateurs (image NULL = aucune image sur la fiche)
+        if ($version < 12) {
+            $pdo->exec(
+                "CREATE TABLE IF NOT EXISTS guide_images (
+                    fiche_id   VARCHAR(60) NOT NULL PRIMARY KEY,
+                    image      MEDIUMBLOB  DEFAULT NULL,
+                    version    CHAR(16)    DEFAULT NULL,
+                    updated_at DATETIME    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+            );
         }
 
         // v4 : descriptions de paramètres sans tiret long

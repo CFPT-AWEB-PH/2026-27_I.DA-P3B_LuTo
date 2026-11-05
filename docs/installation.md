@@ -30,13 +30,14 @@ cp .env.example .env        # puis remplacer les valeurs « change-moi »
 docker compose up -d --build
 ```
 
-### Compte admin par défaut
+### Compte système
 
 | Identifiant | Mot de passe |
 |-------------|--------------|
-| `admin`     | `admin123`   |
+| `admin`     | `Super`   |
 
-> **À la première connexion, l'application impose de changer ce mot de passe** (page « Mon compte »).
+> Ce mot de passe est imposé et ne peut pas être modifié dans l'application : voir `docs/securite.md` (M5c) avant d'exposer le site sur internet.
+> Les autres comptes reçoivent un mot de passe généré à leur création : chacun le retrouve dans le guide, et les administrateurs voient tous les mots de passe.
 
 ### Données de démonstration (facultatif, base de TEST uniquement)
 
@@ -112,6 +113,15 @@ bouton **« Installer l'application »** en bas de page (Android / Chrome / Edge
   de `sw.js` (et `VERSION` pour vider les anciens caches).
 - ⚠️ Une PWA exige **HTTPS** (ou `localhost`). En `http://<IP>:8080` l'app marche, mais n'est pas installable :
   sur le Raspberry, le HTTPS est fourni par le point d'accès Wi-Fi ci-dessous.
+
+---
+
+## 🖼️ Images du guide (`aide.php`)
+
+Les captures fournies existent en deux versions : `assets/guide/` (blanc, thème Orange · blanc · bleu) et
+`assets/guide/noir/` (noir, thème Basique). Le bouton *Images : Noir / Blanc* en haut du guide choisit la version
+pour tout le monde (paramètre `guide_images_mode`). Sur chaque fiche, un compte qui peut modifier les paramètres peut
+choisir une autre image (*Changer l'image*) : elle est gardée en base (table `guide_images`).
 
 ---
 
@@ -194,6 +204,21 @@ sudo bash raspberry/install_wifi.sh --desinstaller   # retirer le point d'accès
 
 Fichiers : `raspberry/install_wifi.sh`, `raspberry/sabre-portail.py` (portail), `raspberry/sabre-wifi`
 (synchro des comptes), `raspberry/Caddyfile`, `raspberry/accueil/`, `admin/wifi.php`, `includes/wifi.php`.
+
+---
+
+### Écran de chaque Raspberry (Admin › Raspberry, administrateurs seulement)
+
+Pour chaque Raspberry : le **compte** dont l'identifiant et le mot de passe s'affichent sur le fond d'écran
+(attribué depuis la fiche du compte, dans Admin › Comptes, ou ici) et une **image de fond** facultative.
+L'écran se met à jour en 15 s environ.
+
+- **Raspberry principal** : automatique. Si `raspberry/sabre-fond-ecran.py` change, le recopier une fois :
+  `sudo install -m 755 raspberry/sabre-fond-ecran.py /usr/local/sbin/sabre-fond-ecran`
+- **Autre Raspberry** : bouton *Ajouter un Raspberry*, puis coller sur lui sa commande toute faite, qui reste affichée
+  sur la page. Elle télécharge tout (`api/raspberry_installation.php`, qui embarque `raspberry/install_ecran_client.sh`) :
+  il rejoint le Wi-Fi, passe le portail et lit ses infos avec son jeton.
+  NetworkManager est nécessaire, et internet le temps d'installer les paquets.
 
 ---
 

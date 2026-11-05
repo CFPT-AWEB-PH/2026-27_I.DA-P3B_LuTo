@@ -9,6 +9,48 @@ require_once __DIR__ . '/config/config.php';
 $user = currentUser();
 $fiches = guideFichesVisibles($pdo);
 $sections = guideSections();
+$peutChangerImages = can('parametres.modifier');
+
+// ---- IMAGE D'UNE FICHE : envoyer, retirer, ou revenir à la capture d'origine ----
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Version des captures, pour tout le monde : noir ou blanc
+    if (isset($_POST['images_mode'])) {
+        if (!$peutChangerImages) redirect('aide.php');
+        if (!checkCsrf($_POST['csrf'] ?? null)) {
+            flash('error', 'Session expirée, merci de réessayer.');
+        } else {
+            $modeChoisi = $_POST['images_mode'] === 'noir' ? 'noir' : 'blanc';
+            setParametre($pdo, 'guide_images_mode', $modeChoisi);
+            flash('success', 'Images du guide en ' . $modeChoisi . '.');
+        }
+        redirect('aide.php');
+    }
+    $ficheId =is_string($_POST['fiche_id'] ?? null) ? $_POST['fiche_id'] : '';
+    if (!$peutChangerImages || !isset($fiches[$ficheId])) {
+        redirect('aide.php');
+    }
+    if (!checkCsrf($_POST['csrf'] ?? null)) {
+        flash('error', 'Session expirée, merci de réessayer.');
+    } elseif (($_POST['image_action'] ?? '') === 'origine') {
+        $pdo->prepare('DELETE FROM guide_images WHERE fiche_id = ?')->execute([$ficheId]);
+        flash('success', 'Image d\'origine remise sur la fiche.');
+    } elseif (($_POST['image_action'] ?? '') === 'aucune') {
+        $pdo->prepare('REPLACE INTO guide_images (fiche_id, image, version) VALUES (?, NULL, NULL)')->execute([$ficheId]);
+        flash('success', 'Image retirée de la fiche.');
+    } else {
+        $res = preparerImageJpeg($_FILES['image'] ?? [], 1920, 2400);
+        if ($res['ok']) {
+            $pdo->prepare('REPLACE INTO guide_images (fiche_id, image, version) VALUES (?, ?, ?)')
+                ->execute([$ficheId, $res['image'], substr(hash('sha256', $res['image']), 0, 16)]);
+            flash('success', 'Image enregistrée sur la fiche.');
+        } else {
+            flash('error', 'Image non enregistrée : ' . $res['erreur']);
+        }
+    }
+    redirect('aide.php#' . $ficheId);
+}
+$imagesChoisies = guideImagesChoisies($pdo);
+$imagesMode = getParametre($pdo, 'guide_images_mode', 'blanc') === 'noir' ? 'noir' : 'blanc';
 
 // Fiches regroupées par section (sections vides masquées)
 $parSection = [];
@@ -32,6 +74,23 @@ $raccourcis = array_slice(array_values(array_filter($raccourcisVoulus, fn($id) =
 
 $q = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']), 0, 80) : '';
 
+// Administrateurs : tous les identifiants et mots de passe (comptes de l'application et Wi-Fi)
+$tousComptes = $tousWifi = [];
+$monMdp = null;
+if ($user) {
+    // La page contient au moins le mot de passe du compte connecté : jamais gardée en cache
+    header('Cache-Control: no-store');
+    $st = $pdo->prepare('SELECT mdp_chiffre FROM users WHERE id = ?');
+    $st->execute([$user['id']]);
+    $monMdp = estCompteSysteme($user['username']) ? MDP_COMPTE_SYSTEME : dechiffrerMotDePasse($st->fetchColumn() ?: null);
+}
+if (estSuperAdmin()) {
+    require_once __DIR__ . '/includes/wifi.php';
+    ensureWifiSchema($pdo);
+    $tousComptes = $pdo->query('SELECT username, role, actif, mdp_chiffre FROM users ORDER BY username ASC')->fetchAll();
+    $tousWifi = $pdo->query('SELECT identifiant, description, actif, mdp_chiffre, ecran_mdp FROM wifi_comptes ORDER BY identifiant ASC')->fetchAll();
+}
+
 $pageTitle = 'Aide et guide';
 require __DIR__ . '/includes/header.php';
 ?>
@@ -48,6 +107,15 @@ require __DIR__ . '/includes/header.php';
         </p>
     </div>
     <div class="btn-row no-print">
+        <?php if ($peutChangerImages): ?>
+            <form method="post" action="aide.php" class="btn-row" aria-label="Couleur des images du guide">
+                <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+                <span class="hint">Images :</span>
+                <?php foreach (['noir' => 'Noir', 'blanc' => 'Blanc'] as $valeur => $libelle): ?>
+                    <button type="submit" name="images_mode" value="<?= $valeur ?>" class="btn <?= $imagesMode === $valeur ? '' : 'btn-secondary' ?>" aria-pressed="<?= $imagesMode === $valeur ? 'true' : 'false' ?>"><?= $libelle ?></button>
+                <?php endforeach; ?>
+            </form>
+        <?php endif; ?>
         <button type="button" class="btn btn-secondary" id="guide-imprimer" title="Imprimer tout le guide, ou l'enregistrer en PDF (Ctrl+P)"><?= icon('printer') ?>Imprimer le guide</button>
     </div>
 </div>
@@ -92,6 +160,51 @@ require __DIR__ . '/includes/header.php';
     <?php endif; ?>
 </section>
 
+<?php if ($user): ?>
+<section class="card mb-5" aria-labelledby="h-mon-identifiant">
+    <h2 id="h-mon-identifiant" class="h-inline"><?= icon('user') ?> Mon identifiant : <code><?= e($user['username']) ?></code></h2>
+    <p class="no-print"><strong>Mon mot de passe :</strong> <?= $monMdp !== null ? '<code>' . e($monMdp) . '</code>' : '<span class="muted">pas encore connu : il s\'affichera après votre prochaine connexion</span>' ?></p>
+    <p class="hint">Rôle <?= e(nomRole($pdo, $user['role'])) ?>. Le mot de passe est donné par l'organisation et ne se change pas.</p>
+    <?php if (estSuperAdmin()): ?>
+    <p class="no-print"><strong>Compte système :</strong> identifiant <code><?= e(COMPTE_SYSTEME) ?></code> · mot de passe <code><?= e(MDP_COMPTE_SYSTEME) ?></code> <span class="hint">(imposé, il ne peut pas être modifié)</span></p>
+    <details class="wifi-guide no-print" open>
+        <summary>Tous les identifiants et mots de passe (administrateurs seulement)</summary>
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">Comptes de l'application</caption>
+                <thead><tr><th scope="col">Compte</th><th scope="col">Rôle</th><th scope="col">Mot de passe</th></tr></thead>
+                <tbody>
+                <?php foreach ($tousComptes as $c): $mdp = estCompteSysteme($c['username']) ? MDP_COMPTE_SYSTEME : dechiffrerMotDePasse($c['mdp_chiffre']); ?>
+                    <tr class="<?= $c['actif'] ? '' : 'row-inactive' ?>">
+                        <td><code><?= e($c['username']) ?></code></td>
+                        <td><?= badgeRole($pdo, $c['role']) ?></td>
+                        <td><?= $mdp !== null ? '<code>' . e($mdp) . '</code>' : '<span class="muted">Connu après sa prochaine connexion, ou à générer dans <a href="' . BASE_URL . 'admin/users.php">Comptes</a></span>' ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">Accès Wi-Fi</caption>
+                <thead><tr><th scope="col">Accès Wi-Fi</th><th scope="col">Description</th><th scope="col">Mot de passe</th></tr></thead>
+                <tbody>
+                <?php foreach ($tousWifi as $c): $mdp = $c['ecran_mdp'] ?? dechiffrerMotDePasse($c['mdp_chiffre']); ?>
+                    <tr class="<?= $c['actif'] ? '' : 'row-inactive' ?>">
+                        <td><code><?= e($c['identifiant']) ?></code></td>
+                        <td><?= e($c['description'] ?? '') ?></td>
+                        <td><?= $mdp !== null ? '<code>' . e($mdp) . '</code>' : '<span class="muted">Inconnu : à générer dans <a href="' . BASE_URL . 'admin/wifi.php">Wi-Fi</a></span>' ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (!$tousWifi): ?><tr><td colspan="3" class="muted">Aucun accès Wi-Fi.</td></tr><?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </details>
+    <?php endif; ?>
+</section>
+<?php endif; ?>
+
 <div class="guide-layout">
     <nav class="guide-toc" aria-label="Sommaire du guide">
         <p class="guide-toc-titre">Sommaire</p>
@@ -120,7 +233,7 @@ require __DIR__ . '/includes/header.php';
             </header>
 
             <?php foreach ($parSection[$cle] as $f):
-                $capture = !empty($f['capture']) && is_file(__DIR__ . '/assets/guide/' . $f['capture']) ? $f['capture'] : null;
+                $image = guideImageFiche($f, $imagesChoisies, $imagesMode);
                 $voir = array_values(array_filter($f['voir'] ?? [], fn($id) => isset($fiches[$id])));
             ?>
             <details class="card guide-fiche" id="<?= e($f['id']) ?>" data-search="<?= e(texteRechercheFiche($f)) ?>">
@@ -129,18 +242,18 @@ require __DIR__ . '/includes/header.php';
                         <span class="guide-fiche-titre"><?= e($f['titre']) ?></span>
                         <span class="guide-fiche-resume"><?= e($f['resume']) ?></span>
                     </span>
-                    <?php if ($capture): ?><span class="guide-fiche-tag" title="Avec capture d'écran"><?= icon('eye') ?></span><?php endif; ?>
+                    <?php if ($image): ?><img class="guide-fiche-miniature" src="<?= e($image['url']) ?>" alt="" loading="lazy" decoding="async"><?php endif; ?>
                     <span class="summary-arrow" aria-hidden="true"><?= icon('chevron-down') ?></span>
                 </summary>
 
-                <div class="guide-fiche-corps<?= $capture ? ' avec-capture' : '' ?>">
-                    <?php if ($capture): ?>
+                <div class="guide-fiche-corps<?= $image ? ' avec-capture' : '' ?>">
+                    <?php if ($image): ?>
                         <figure class="guide-capture">
-                            <button type="button" class="guide-capture-btn" data-zoom="<?= e(asset('guide/' . $capture)) ?>" data-zoom-alt="<?= e($f['legende'] ?? $f['titre']) ?>" aria-label="Agrandir la capture : <?= e($f['legende'] ?? $f['titre']) ?>">
-                                <img src="<?= e(asset('guide/' . $capture)) ?>" alt="<?= e($f['legende'] ?? $f['titre']) ?>" loading="lazy" decoding="async">
+                            <button type="button" class="guide-capture-btn" data-zoom="<?= e($image['url']) ?>" data-zoom-alt="<?= e($f['legende'] ?? $f['titre']) ?>" aria-label="Agrandir l'image : <?= e($f['legende'] ?? $f['titre']) ?>">
+                                <img src="<?= e($image['url']) ?>" alt="<?= e($f['legende'] ?? $f['titre']) ?>" loading="lazy" decoding="async">
                                 <span class="guide-capture-zoom" aria-hidden="true"><?= icon('maximize') ?></span>
                             </button>
-                            <?php if (!empty($f['legende'])): ?><figcaption><?= e($f['legende']) ?> Les repères rouges correspondent à ceux des étapes.</figcaption><?php endif; ?>
+                            <figcaption><?= e($image['legende']) ?></figcaption>
                         </figure>
                     <?php endif; ?>
 
@@ -183,6 +296,25 @@ require __DIR__ . '/includes/header.php';
                             <?php endif; ?>
                             <button type="button" class="btn btn-sm btn-ghost" data-copier-lien="<?= e($f['id']) ?>"><?= icon('link') ?>Copier le lien</button>
                         </div>
+
+                        <?php if ($peutChangerImages): ?>
+                            <details class="wifi-guide no-print">
+                                <summary>Changer l'image</summary>
+                                <form method="post" action="aide.php" enctype="multipart/form-data" novalidate>
+                                    <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+                                    <input type="hidden" name="fiche_id" value="<?= e($f['id']) ?>">
+                                    <div class="field">
+                                        <label for="image-<?= e($f['id']) ?>">Image <span class="req">(PNG, JPEG ou WebP, 2 Mo maximum)</span></label>
+                                        <input type="file" id="image-<?= e($f['id']) ?>" name="image" accept="image/png,image/jpeg,image/webp">
+                                    </div>
+                                    <div class="btn-row">
+                                        <button type="submit" class="btn btn-sm"><?= icon('upload') ?>Enregistrer cette image</button>
+                                        <?php if ($image): ?><button type="submit" name="image_action" value="aucune" class="btn btn-sm btn-ghost">Aucune image</button><?php endif; ?>
+                                        <?php if (array_key_exists($f['id'], $imagesChoisies)): ?><button type="submit" name="image_action" value="origine" class="btn btn-sm btn-ghost">Image d'origine</button><?php endif; ?>
+                                    </div>
+                                </form>
+                            </details>
+                        <?php endif; ?>
 
                         <?php if ($voir): ?>
                             <p class="guide-voir"><span>Voir aussi :</span>

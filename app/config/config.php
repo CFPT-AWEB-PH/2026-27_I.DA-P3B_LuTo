@@ -13,6 +13,7 @@ refuserRequeteTropGrosse();    // corps de requête > 4 Mo
 
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/identifiants.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/permissions.php';
 require_once __DIR__ . '/../includes/tournoi.php';
@@ -22,6 +23,7 @@ require_once __DIR__ . '/../includes/arbre.php';
 require_once __DIR__ . '/../includes/apparence.php';
 require_once __DIR__ . '/../includes/champs_joueur.php';
 require_once __DIR__ . '/../includes/guide.php';
+require_once __DIR__ . '/../includes/raspberry.php';
 
 // Sous-dossier éventuel de l'application (lettres, chiffres, - _ / uniquement)
 $__base = trim((string)(getenv('BASE_URL') ?: ''), '/');
@@ -36,14 +38,14 @@ ensureRolesSchema($pdo);
 ensureSchemaTournoi($pdo);
 rafraichirUtilisateurSession($pdo);
 
-// Mot de passe par défaut ou réinitialisé : changement obligatoire avant toute autre action
+// Mot de passe par défaut ou à renouveler : nouveau mot de passe généré avant toute autre action
 if (!empty($_SESSION['doit_changer_mdp'])) {
     $script = basename($_SERVER['SCRIPT_NAME'] ?? '');
     if (!in_array($script, ['compte.php', 'logout.php'], true)) {
         if (str_contains($_SERVER['SCRIPT_NAME'] ?? '', '/api/')) {
             http_response_code(403);
             header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['ok' => false, 'message' => 'Changez d\'abord votre mot de passe.']);
+            echo json_encode(['ok' => false, 'message' => 'Renouvelez d\'abord votre mot de passe (page Mon compte).']);
             exit;
         }
         header('Location: ' . BASE_URL . 'compte.php');
