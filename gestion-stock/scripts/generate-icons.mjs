@@ -1,9 +1,9 @@
 // Génère les icônes PWA (PNG) sans dépendance : node scripts/generate-icons.mjs
-// Motif : une armoire à trois tiroirs (le logo de l'application) sur le vert de la marque.
+// Motif : une armoire à trois tiroirs (le logo de l'application) sur l'indigo de la marque.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 
-const BRAND = [28, 106, 81]; // --primary
+const BRAND = [79, 70, 229]; // --primary
 const WHITE = [255, 255, 255];
 const OUT = new URL('../frontend/assets/icons/', import.meta.url);
 

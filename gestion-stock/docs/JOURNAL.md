@@ -283,3 +283,26 @@ Demande de l'utilisateur : importer une liste Excel dans les utilisateurs, avec 
 
 **Limites** : les étiquettes illisibles sur les photos sont approchées ; les bacs sont en grille régulière, pas à la disposition exacte de chaque tiroir. Une personne perdant sa fiche doit en demander une nouvelle.
 
+
+## Nouveau style, repris du site Trello 2.0 (2026-11-05)
+
+Demande de l'utilisateur : le même style que les pages du site fourni (`trello2.0.tastytom.ch`). Seule son apparence est reprise : ni code, ni fonction.
+
+**Fait**
+- `app.css` : neutres froids et accent indigo en clair comme en sombre, corps de 14 px, contrôles de 36 px, badges en pastilles, tableaux et fenêtres (pied en retrait) du site de référence. Mêmes noms de classes : aucune page modifiée.
+- Coque : le menu latéral occupe toute la hauteur et porte la marque, la barre supérieure est à sa droite. Page de connexion en carte centrée.
+- Icônes PWA, manifeste et `theme-color` en indigo. Nouveau jeton `--primary-ink` pour le texte coloré.
+- `DESIGN.md` mis à jour.
+
+**Écarts volontaires avec la référence**
+- Accessibilité conservée : contour des contrôles foncé pour rester à 3:1, cibles de 40 et 44 px au toucher, fondu court au changement de page.
+- Inter n'est pas chargée depuis Google Fonts, que la CSP interdit : elle est hébergée dans `frontend/vendor/inter/` (licence OFL, intégrité du paquet npm vérifiée).
+- Pas de sélecteur de thème, de palette de commandes ni de menu réductible : ce sont des fonctions, pas du style.
+
+**Tests** : banc local avec fausse API et CSP réelle : accueil, catalogue, fiche, salles, éditeur 3D, plan, utilisateurs, rôles, historique, connexion, fenêtres en clair ; accueil et éditeur en sombre ; profil Élève et 375 px sans débordement ; tiroir à 768 px.
+
+Avec Inter, contrôle automatique à 375 px : 14 pages en Administrateur et 7 en Élève, sans débordement ; police chargée sous la CSP réelle, sans erreur.
+
+**Corrigé au passage** : à 375 px en Administrateur, la page de l'éditeur 3D débordait (470 px), car les libellés masqués des boutons segmentés échappaient à la barre défilante. Ce bug existait avant le changement de style et n'était pas visible avec le profil Élève. Les filtres des emprunts, plus larges avec Inter, sont désormais empilés sur mobile.
+
+**Limites** : pas vérifié sur le serveur réel ni sur un vrai téléphone. Le précache de la police par le service worker a été déduit de la commande du `Dockerfile`, pas essayé sur un déploiement. Catégories, Types de rangement, Accès autorisés et Paramètres n'ont fait l'objet que du contrôle de débordement, sans relecture visuelle.

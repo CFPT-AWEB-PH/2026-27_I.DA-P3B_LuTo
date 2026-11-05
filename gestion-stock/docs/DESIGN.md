@@ -2,15 +2,17 @@
 
 Ce document décrit la direction visuelle, les jetons de design (implémentés dans `frontend/assets/css/app.css`), les composants communs (`frontend/assets/js/ui.js`) et l'audit de la deuxième passe de refonte (2026-11-03). Il sert de référence pour toute nouvelle page.
 
+Le style actuel (2026-11-05) reprend celui du site Trello 2.0 fourni par l'utilisateur : neutres froids et accent indigo. Il remplace le « vert tableau » : les sections 1 à 3 décrivent le style actuel, les sections 4 à 7 sont l'historique des audits et citent parfois l'ancien style.
+
 ## 1. Direction
 
-**Un outil d'atelier, pas une vitrine.** L'application sert à retrouver un objet en quelques secondes, souvent debout devant une armoire, téléphone en main. Personnalité : calme, précise, fiable. Ton : direct, concret, sans jargon.
+**Un outil d'atelier, pas une vitrine.** L'application sert à retrouver un objet en quelques secondes, souvent debout devant une armoire, téléphone en main. « Calme, précis, dense quand il le faut. » Ton : direct, concret, sans jargon.
 
-- **Vert tableau sur fond béton** : une seule couleur de marque, réservée aux actions principales et à l'état « actif ». Tout le reste est neutre.
-- **L'étiquette d'emplacement** (`Salle › Armoire › Tiroir`, filet vert à gauche, dernier niveau en gras) est l'élément signature : la réponse à « où est-ce ? » a toujours la même forme, partout.
+- **Neutres froids, un seul accent indigo** : la couleur de marque est réservée aux actions principales, à la sélection et au focus. Les couleurs vives ne servent qu'aux statuts, alertes et catégories.
+- **L'étiquette d'emplacement** (`Salle › Armoire › Tiroir`, filet indigo à gauche, dernier niveau en gras) est l'élément signature : la réponse à « où est-ce ? » a toujours la même forme, partout.
 - **Les chiffres comptent** : quantités en chiffres tabulaires, plus grands que leur unité.
-- **Pas de décoration** : ni dégradé, ni verre dépoli décoratif, ni ombre portée sur les cartes. Les ombres expriment uniquement l'élévation (menus, boîtes de dialogue, notifications).
-- Polices système (la CSP n'autorise que des polices locales, et elles s'affichent instantanément, sans décalage de mise en page).
+- **La profondeur passe par la bordure** : pas d'ombre sur les cartes au repos, pas de verre dépoli décoratif. Les ombres expriment l'élévation (survol, menus, boîtes de dialogue, notifications). Seul dégradé : le halo discret de la page de connexion.
+- **Inter**, hébergée dans `frontend/vendor/inter/` : la CSP n'autorise que les polices du site, donc Google Fonts est exclu. Sous-ensemble latin de 48 Ko, préchargé et disponible hors connexion ; les caractères qu'il ne couvre pas (Ω, →) passent par la police système.
 
 ## 2. Jetons
 
@@ -20,19 +22,21 @@ Tous définis dans `:root` (thème clair) et redéfinis sous `prefers-color-sche
 
 | Rôle | Jeton | Clair | Sombre |
 |---|---|---|---|
-| Fond | `--bg` | #f3f4f1 | #0e1311 |
-| Surface (cartes) | `--surface` | #ffffff | #151b18 |
-| Surface creusée (champs de recherche, en-têtes) | `--surface-2` | #eceeea | #1b2320 |
-| Survol | `--surface-hover` | #f5f6f3 | #1a211e |
-| Élément posé (segment actif) | `--raised` | #ffffff | #2b3631 |
-| Séparateurs | `--line` / `--line-strong` | #dde1db / #c3c9c2 | #26302b / #36423c |
-| Contour des contrôles (≥ 3:1) | `--line-control` | #878f89 | #5d6a63 |
-| Texte principal / secondaire / indication | `--ink` / `--ink-2` / `--ink-3` | 16:1 / 7:1 / ≥ 4,8:1 | 14:1 / 8:1 / ≥ 4,9:1 |
-| Marque | `--primary` (+ `-hover`, `-press`, `-fg`, `-soft`, `-soft-ink`) | #1c6a51 | #4fbf93 |
+| Fond | `--bg` | #eceff4 | #0c0d10 |
+| Surface (cartes) | `--surface` | #ffffff | #15171c |
+| Zone en retrait (en-têtes, pieds de fenêtre) | `--surface-2` | #e6e9ef | #1b1d23 |
+| Survol sur fond, contrôle segmenté | `--surface-3` | #d9dee6 | #252830 |
+| Survol sur carte | `--surface-hover` | #f1f3f7 | #1b1d23 |
+| Élément posé (segment actif) | `--raised` | #ffffff | #15171c |
+| Séparateurs | `--line` / `--line-strong` | #d3d8e0 / #b3bac6 | #262931 / #363a44 |
+| Contour des contrôles (≥ 3:1 sur fond et cartes) | `--line-control` | #7f8796 | #5f6673 |
+| Texte principal / secondaire / indication | `--ink` / `--ink-2` / `--ink-3` | ≥ 13:1 / ≥ 8:1 / ≥ 5,1:1 | ≥ 12:1 / ≥ 7:1 / ≥ 4,9:1 |
+| Marque (fonds, contours) | `--primary` (+ `-hover`, `-press`, `-fg`, `-soft`, `-soft-ink`) | #4f46e5 | #5b5bf0 |
+| Liens et texte coloré | `--primary-ink` (l'indigo de marque n'est pas lisible en texte sur le thème sombre) | #3730a3 | #a9abff |
 | Succès, avertissement, erreur, info | `--success`, `--warning`, `--danger`, `--info` (+ `-soft`) | | |
-| Texte sur rouge | `--danger-fg` | blanc | #2a0b08 (le blanc n'atteint que 2,7:1 sur le rouge clair du thème sombre) |
-| Focus | `--focus` | #2457a6 (6,4:1) | #7fa8ee (7,8:1) |
-| Voile, notifications | `--overlay`, `--toast-bg`, `--toast-fg`, `--toast-icon` | | |
+| Fond et texte des boutons destructifs | `--danger-solid`, `--danger-fg` | #c81e1e, blanc (5,7:1) | #dc2626, blanc (4,8:1) |
+| Focus | `--focus` | #4f46e5 (6,3:1) | #8b8dff (6,3:1) |
+| Voile, notifications (toujours sombres, l'icône porte l'état) | `--overlay`, `--toast-bg`, `--toast-fg`, `--toast-line`, `--toast-icon`, `--toast-icon-error` | | |
 
 États : survol = `--surface-hover` ou teinte `-hover` ; appui = `-press` + `translateY(1px) scale(.985)` ; focus = contour 2 px `--focus` décalé de 2 px ; désactivé = opacité 0,5 et curseur interdit ; erreur = bordure `--danger` + message sous le champ.
 
@@ -42,14 +46,15 @@ Deux familles système : `--font` (texte) et `--font-display` (titres).
 
 | Niveau | Taille | Interligne | Graisse | Approche |
 |---|---|---|---|---|
-| Display (accueil, connexion) | `--text-2xl` 32 px | `--lh-tight` 1,2 | `--fw-bold` 680 | `--tracking-display` −0,02em |
-| H1 (titre de page) | `--text-xl` 26 px (24 px mobile) | 1,2 | 680 | −0,02em |
-| H2 (section) | `--text-lg` 20 px ; titres de carte `--text-md` 17 px | `--lh-snug` 1,35 | `--fw-semibold` 620 | `--tracking-title` −0,01em |
-| H3 | `--text-base` 15 px | 1,35 | 620 | – |
-| Corps | `--text-base` 15 px (16 px mobile) | `--lh-body` 1,55 | `--fw-regular` 400 | – |
+| Display (chiffres clés) | `--text-2xl` 28 px | `--lh-tight` 1,25 | `--fw-bold` 650 | `--tracking-display` −0,02em |
+| H1 (titre de page) | `--text-xl` 22 px (20 px mobile) | 1,25 | 650 | `--tracking-title` −0,01em |
+| H2 (section) | `--text-lg` 17 px ; titres de carte `--text-md` 15 px | `--lh-snug` 1,4 | `--fw-semibold` 600 | −0,01em |
+| H3 | `--text-base` 14 px | 1,4 | 600 | – |
+| Corps | `--text-base` 14 px (15 px mobile, champs 16 px) | `--lh-body` 1,43 | `--fw-regular` 400 | – |
 | Corps petit, métadonnées | `--text-sm` 13 px | 1,45 | 400 | – |
 | Légende | `--text-xs` 12 px | 1,4 | 400–620 | – |
-| Libellé (champ, bouton, navigation) | `--text-sm` / `--text-base` | 1,2 | `--fw-medium` 550 | – |
+| Libellé (champ, bouton, navigation) | `--text-sm` / `--text-base` | 1,2 | `--fw-medium` 500 | – |
+| Titre de groupe du menu | 11 px, majuscules | 16 px | 600 | +0,06em |
 
 Quatre graisses seulement (`--fw-regular`, `--fw-medium`, `--fw-semibold`, `--fw-bold`) ; aucune valeur numérique dans les composants.
 
@@ -59,16 +64,17 @@ Base 4 px : `--s0` 2 · `--s1` 4 · `--s1-5` 6 · `--s2` 8 · `--s3` 12 · `--s4
 
 ### Rayons
 
-`--r-xs` 4 (pastilles, cases) · `--r-sm` 6 (badges, éléments d'arbre) · `--r-md` 8 (boutons, champs) · `--r-lg` 12 (cartes, panneaux) · `--r-xl` 16 (boîtes de dialogue). Élément imbriqué : rayon intérieur = rayon extérieur − marge (ex. segment `calc(var(--r-md) - 2px)` dans un groupe à 3 px de marge).
+`--r-xs` 4 (puces) · `--r-sm` 6 (petits boutons, éléments de menu et d'arbre) · `--r-md` 8 (boutons, champs) · `--r-lg` 12 (cartes, panneaux) · `--r-xl` 16 (boîtes de dialogue) · `--r-full` (badges). Élément imbriqué : rayon intérieur = rayon extérieur − marge (ex. segment `calc(var(--r-md) - 2px)` dans un groupe à 3 px de marge).
 
 ### Ombres
 
-`--shadow-sm` (élément sélectionné, carte survolée) et `--shadow-pop` (menus, suggestions, boîtes de dialogue, notifications). Rien d'autre.
+`--shadow-xs` (boutons, élément sélectionné), `--shadow-sm` (carte survolée), `--shadow-md` (menus, suggestions, carte de connexion), `--shadow-lg` (boîtes de dialogue, notifications, tiroir). Rien d'autre. Pas de déplacement au survol des cartes : leur `transform` passerait les menus « … » sous la carte suivante.
 
 ### Mise en page
 
-- Coque : barre supérieure `--topbar-h` 60 px (56 mobile), menu latéral `--sidebar-w` 248 px, barre d'onglets mobile `--tabbar-h` 64 px.
-- Contenu : `--content-max` 1120 px (1240 au-delà de 1600 px).
+- Coque : menu latéral `--sidebar-w` 248 px sur toute la hauteur, avec la marque ; barre supérieure `--topbar-h` 56 px à sa droite ; barre d'onglets mobile `--tabbar-h` 64 px.
+- Contenu : `--content-max` 1280 px (1440 au-delà de 1600 px), centré par les marges de `.view`.
+- Contrôles : 36 px (petits 30 px), 40 px au toucher, 44 px sur mobile.
 - Points de rupture : mobile < 768 px (barre d'onglets, panneaux glissants, tableaux en cartes) · tablette 768–1023 px (menu en tiroir) · bureau ≥ 1024 px · grand écran ≥ 1600 px.
 
 ### Mouvement
@@ -156,7 +162,7 @@ La première refonte (commit c31bb0b) avait posé un socle solide. Cet audit a �
 
 Revue menée avec le skill [dickwu/apple-design-skill](https://github.com/dickwu/apple-design-skill) (pages HIG d'Apple). L'application est une PWA web : les principes et fondamentaux s'appliquent (accessibilité, couleur, typographie, mise en page, rédaction), les conventions iOS comme principes pour l'usage sur téléphone. Les majuscules suivent l'usage français (casse de phrase), appliqué partout : c'est un choix assumé, pas un écart.
 
-**Résumé** : Bien. Thèse : retrouver un objet et son emplacement exact en quelques secondes. Élément signature : l'étiquette d'emplacement à filet vert. Aucun point critique après correction.
+**Résumé** : Bien. Thèse : retrouver un objet et son emplacement exact en quelques secondes. Élément signature : l'étiquette d'emplacement à filet coloré. Aucun point critique après correction.
 
 | Constat | Référence HIG | Correction | Priorité |
 |---|---|---|---|
