@@ -83,7 +83,7 @@ final class ItemSearch
             default => $q === '' ? 'i.name, i.reference' : 'score DESC, i.name',
         };
         $stmt = $pdo->prepare(
-            "SELECT i.id, i.reference, i.name, i.description, i.unit, i.min_quantity, i.is_consumable, i.photo_path, i.updated_at,
+            "SELECT i.id, i.reference, i.name, i.description, i.unit, i.min_quantity, i.is_consumable, i.photo_path, i.visual, i.visual_color, i.updated_at,
                     c.id AS category_id, c.name AS category_name, c.color AS category_color,
                     {$totalSql} AS total_quantity, {$scoreSql} AS score
              FROM items i LEFT JOIN categories c ON c.id = i.category_id
@@ -143,6 +143,8 @@ final class ItemSearch
             'category' => $r['category_id'] === null ? null : ['id' => (int) $r['category_id'], 'name' => $r['category_name'], 'color' => $r['category_color']],
             'min_quantity' => Quantity::out($r['min_quantity']),
             'is_consumable' => (bool) $r['is_consumable'],
+            'visual' => $r['visual'],
+            'visual_color' => $r['visual_color'],
             'total_quantity' => Quantity::out($r['total_quantity']),
             'is_low' => $r['min_quantity'] !== null && Quantity::toMilli($r['total_quantity']) < Quantity::toMilli($r['min_quantity']),
             'photo_url' => $r['photo_path'] ? "/api/items/{$r['id']}/photo?v=" . substr(md5($r['photo_path']), 0, 8) : null,

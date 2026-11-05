@@ -339,6 +339,26 @@ final class RoomController
             foreach ($stmt->fetchAll() as $row) {
                 $payload['stock'][(string) $row['unit_id']] = ['quantity' => Quantity::out($row['quantity']), 'items' => (int) $row['items']];
             }
+            // Objets de chaque rangement, pour les afficher dans la vue 3D
+            $stmt = $pdo->prepare(
+                'SELECT s.unit_id, s.item_id, s.quantity, i.name, i.unit, i.visual, i.visual_color, c.name AS category
+                 FROM stock_levels s
+                 JOIN storage_units u ON u.id = s.unit_id
+                 JOIN items i ON i.id = s.item_id
+                 LEFT JOIN categories c ON c.id = i.category_id
+                 WHERE u.room_id = ? AND s.quantity > 0'
+            );
+            $stmt->execute([$id]);
+            $payload['contents'] = array_map(static fn (array $r): array => [
+                'unit_id' => (int) $r['unit_id'],
+                'item_id' => (int) $r['item_id'],
+                'quantity' => Quantity::out($r['quantity']),
+                'name' => $r['name'],
+                'unit' => $r['unit'],
+                'visual' => $r['visual'],
+                'visual_color' => $r['visual_color'],
+                'category' => $r['category'],
+            ], $stmt->fetchAll());
         }
         return $payload;
     }

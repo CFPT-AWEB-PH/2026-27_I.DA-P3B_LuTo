@@ -2,6 +2,7 @@
 // création ou modification d'un objet. Toutes les vérifications sont refaites par le serveur.
 
 import { api } from './api.js';
+import { VISUALS } from './visuals.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
 import { busy, checkbox, emptyState, field, locationLabel, openDialog, showError, skeleton, stepper, toast } from './ui.js';
@@ -270,6 +271,9 @@ export async function itemDialog(item = null, { canAddStock = false, location = 
     const min = h('input', { name: 'min_quantity', type: 'number', step: 'any', min: 0, value: item?.min_quantity ?? '' });
     const consumable = h('input', { type: 'checkbox', checked: item?.is_consumable ?? false });
     const custom = h('div', { class: 'custom-fields' });
+    const visual = h('select', { name: 'visual' }, Object.entries(VISUALS).map(([v, t]) => h('option', { value: v, selected: v === (item?.visual ?? 'auto') }, t)));
+    const useColor = h('input', { type: 'checkbox', checked: Boolean(item?.visual_color) });
+    const visualColor = h('input', { name: 'visual_color', type: 'color', value: item?.visual_color ?? '#8b909a' });
     const initialQuantity = h('input', { name: 'initial_stock', type: 'number', step: 'any', min: 0, placeholder: '0' });
     const initialUnit = !item && canAddStock ? unitField('Emplacement initial', location) : null;
 
@@ -298,6 +302,10 @@ export async function itemDialog(item = null, { canAddStock = false, location = 
         units,
         checkbox(consumable, 'Consommable', 'Une prise ne crée pas d’emprunt (papier, piles…).'),
         field('Description', description),
+        h('div', { class: 'form-grid' },
+          field('Apparence en 3D', visual, 'Les cotes du nom sont utilisées : « Vis M3 x 12 ».'),
+          field('Couleur en 3D', visualColor)),
+        checkbox(useColor, 'Utiliser cette couleur', 'Sinon, la couleur habituelle de ce type d’objet.'),
         custom,
         initialUnit && h('fieldset', { class: 'form-section' }, h('legend', {}, 'Stock de départ (facultatif)'),
           h('div', { class: 'form-grid' }, initialUnit.element, field('Quantité', initialQuantity))),
@@ -307,6 +315,7 @@ export async function itemDialog(item = null, { canAddStock = false, location = 
           name: name.value, reference: reference.value, description: description.value, unit: unit.value,
           category_id: Number(category.value) || null, is_consumable: consumable.checked,
           min_quantity: min.value === '' ? null : Number(min.value),
+          visual: visual.value, visual_color: useColor.checked ? visualColor.value : null,
           fields: Object.fromEntries([...custom.querySelectorAll('[data-field-id]')].map((el) => [el.dataset.fieldId, el.value])),
         };
         if (initialUnit?.value && Number(initialQuantity.value) > 0) {

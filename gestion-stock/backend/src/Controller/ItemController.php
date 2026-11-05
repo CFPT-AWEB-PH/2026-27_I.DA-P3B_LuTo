@@ -19,6 +19,9 @@ use PDO;
 /** Catalogue des objets : recherche, fiche, création, modification, archivage, photo. */
 final class ItemController
 {
+    /** Modèles 3D disponibles (voir frontend/assets/js/visuals.js). */
+    public const VISUALS = ['auto', 'screw', 'nut', 'washer', 'resistor', 'capacitor', 'chip', 'wire', 'screwdriver', 'pliers', 'wrench', 'hammer', 'beam', 'wheel', 'box'];
+
     private const PHOTO_DIR = '/app/storage/uploads/items';
     private const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
     private const PHOTO_MAX_SIDE = 1200;
@@ -307,6 +310,8 @@ final class ItemController
             'unit' => [static fn () => $in->string('unit', 20), 'pièce'],
             'min_quantity' => [static fn () => $in->optionalQuantity('min_quantity', true), false],
             'is_consumable' => [static fn () => (int) $in->bool('is_consumable'), 0],
+            'visual' => [static fn () => $in->enum('visual', self::VISUALS), 'auto'],
+            'visual_color' => [static fn () => $in->optionalColor('visual_color'), false],
         ];
         $item = [];
         foreach ($fields as $key => [$read, $default]) {

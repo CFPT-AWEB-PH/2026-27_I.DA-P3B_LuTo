@@ -29,7 +29,7 @@ export async function render(view, session, params) {
   const tree = h('nav', { class: 'editor-tree', 'aria-label': 'Rangements de la salle' });
   const details = h('aside', { class: 'editor-details', 'aria-live': 'polite' });
   const stage = h('div', { class: 'editor-stage' });
-  const hint = h('p', { class: 'editor-hint' }, 'Clic : sélectionner  ·  Glisser : tourner  ·  Clic droit : menu d’actions  ·  Clic droit + glisser : déplacer la vue  ·  Molette : zoomer  ·  Double-clic : ouvrir un tiroir');
+  const hint = h('p', { class: 'editor-hint' }, 'Clic : sélectionner  ·  Glisser : tourner  ·  Clic droit : menu d’actions  ·  Clic droit + glisser : déplacer la vue  ·  Molette : zoomer  ·  Double-clic : ouvrir un tiroir et regarder dedans');
   // L'aide s'efface dès la première interaction : elle a servi
   stage.addEventListener('pointerdown', () => hint.classList.add('is-faded'), { once: true });
 
@@ -75,7 +75,7 @@ export async function render(view, session, params) {
     title.textContent = payload.room.name;
     setTitle(payload.room.name);
     if (state.selectedId !== null && !unitById(state.selectedId)) state.selectedId = null;
-    scene?.setData(payload.room, payload.openings, payload.units);
+    scene?.setData(payload.room, payload.openings, payload.units, payload.contents ?? []);
     applyColors();
     scene?.select(state.selectedId);
     renderTree();
@@ -252,8 +252,8 @@ export async function render(view, session, params) {
 
     const actions = h('div', { class: 'detail-actions' },
       editRight && h('button', { class: 'btn btn-small', type: 'button', onclick: () => editUnit(u, parent) }, icon('edit'), 'Modifier'),
-      u.shape === 'drawer' && h('button', { class: 'btn btn-small', type: 'button', onclick: () => { scene?.setDrawerOpen(u.id, !scene.isDrawerOpen(u.id)); setTimeout(renderDetails, 260); } },
-        icon('drawer'), scene?.isDrawerOpen(u.id) ? 'Fermer le tiroir' : 'Ouvrir le tiroir'),
+      u.shape === 'drawer' && h('button', { class: 'btn btn-small', type: 'button', onclick: () => { if (scene?.isDrawerOpen(u.id)) scene.setDrawerOpen(u.id, false); else scene?.focus(u.id); setTimeout(renderDetails, 300); } },
+        icon('drawer'), scene?.isDrawerOpen(u.id) ? 'Fermer le tiroir' : 'Ouvrir et regarder dedans'),
       h('button', { class: 'icon-btn icon-btn-small', type: 'button', title: 'Centrer la vue', 'aria-label': 'Centrer la vue sur ce rangement', onclick: () => scene?.focus(u.id) }, icon('focus')),
       h('button', { class: 'icon-btn icon-btn-small', type: 'button', title: hidden ? 'Afficher' : 'Masquer temporairement', 'aria-label': hidden ? 'Afficher ce rangement' : 'Masquer ce rangement', onclick: () => { scene?.setHidden(u.id, !hidden); renderTree(); renderDetails(); } }, icon(hidden ? 'eyeOff' : 'eye')),
       editRight && h('button', { class: 'icon-btn icon-btn-small btn-danger-ghost', type: 'button', title: 'Supprimer', 'aria-label': `Supprimer ${u.name}`, onclick: () => remove(u) }, icon('trash')),
@@ -385,9 +385,9 @@ export async function render(view, session, params) {
     return [
       { label: 'Sélectionner et centrer', icon: 'focus', onSelect: () => select(u.id, { focus: true }) },
       u.can_hold_items && can('stock.view') && { label: 'Consulter le contenu', icon: 'box', onSelect: showContents },
-      u.shape === 'drawer' && { label: scene?.isDrawerOpen(u.id) ? 'Fermer le tiroir' : 'Ouvrir le tiroir', icon: 'drawer', onSelect: () => {
-        scene?.setDrawerOpen(u.id, !scene.isDrawerOpen(u.id));
-        setTimeout(renderDetails, 260);
+      u.shape === 'drawer' && { label: scene?.isDrawerOpen(u.id) ? 'Fermer le tiroir' : 'Ouvrir et regarder dedans', icon: 'drawer', onSelect: () => {
+        if (scene?.isDrawerOpen(u.id)) scene.setDrawerOpen(u.id, false); else scene?.focus(u.id);
+        setTimeout(renderDetails, 300);
       } },
       { separator: true },
       editRight && { label: furniture ? 'Modifier les dimensions…' : 'Modifier…', icon: 'edit', onSelect: () => editUnit(u, parent) },
@@ -476,32 +476,76 @@ export async function render(view, session, params) {
 
   async function generate(u) {
     const types = state.types.filter((t) => t.shape !== 'divider');
+    const flat = ['drawer', 'box', 'bin'].includes(u.shape);
     const saved = await openDialog(`Générer l'intérieur de « ${u.name} »`, (close) => {
-      const rows = h('input', { name: 'rows', type: 'number', min: 1, max: 50, value: 4, required: true });
-      const columns = h('input', { name: 'columns', type: 'number', min: 1, max: 50, value: 1, required: true });
-      const gap = h('input', { name: 'gap_mm', type: 'number', min: 0, max: 500, value: 0 });
-      const type = h('select', { name: 'type_id' }, types.map((t) => h('option', { value: t.id, selected: t.shape === 'shelf' }, t.name)));
       const inside = unitInterior(u);
+      let mode = flat ? 'grid' : 'stack';
+      const rows = h('input', { name: 'rows', type: 'number', min: 1, max: 50, value: flat ? 2 : 4, required: true });
+      const columns = h('input', { name: 'columns', type: 'number', min: 1, max: 50, value: flat ? 4 : 1, required: true });
+      const gap = h('input', { name: 'gap_mm', type: 'number', min: 0, max: 500, value: 0 });
+      const type = h('select', { name: 'type_id' }, types.map((t) => h('option', { value: t.id, selected: t.shape === (flat ? 'bin' : 'drawer') }, t.name)));
+      const labels = h('textarea', { name: 'labels', rows: 4, placeholder: 'M3 x 12\nM3 x 16\nM4 x 6' });
+      const stack = h('textarea', { name: 'stack', rows: 7, placeholder: 'Visserie ; 75\nRésistances 1 % ; 75\nCondensateurs ; 100\nCâbles ; 200' });
+      const total = h('p', { class: 'field-hint' });
+      const parseStack = () => stack.value.split('\n').map((l) => l.trim()).filter(Boolean).map((line) => {
+        const m = line.match(/^(.*?)[;,\t]\s*(\d+)\s*(?:mm)?$/);
+        return m ? { name: m[1].trim(), height_mm: Number(m[2]) } : { name: line, height_mm: 0 };
+      });
+      const updateTotal = () => {
+        const sum = parseStack().reduce((n, e) => n + e.height_mm, 0);
+        total.textContent = `Total : ${sum} mm pour ${inside.height} mm disponibles.`;
+        total.classList.toggle('field-error', sum > inside.height);
+      };
+      stack.addEventListener('input', updateTotal);
+      updateTotal();
+      const gridFields = h('div', {},
+        h('p', { class: 'field-hint' }, flat
+          ? `Posés au fond (${formatLength(inside.width, unitLabel())} × ${formatLength(inside.depth, unitLabel())}), rangées de l'arrière vers l'avant.`
+          : `Répartis sur la hauteur (${formatLength(inside.width, unitLabel())} × ${formatLength(inside.height, unitLabel())}), de haut en bas.`),
+        h('div', { class: 'form-grid' }, field('Rangées', rows), field('Colonnes', columns)),
+        field('Étiquettes (facultatif)', labels, 'Une par ligne, dans l’ordre de lecture.'));
+      const stackFields = h('div', {},
+        field('Tiroirs, de haut en bas', stack, 'Une ligne par tiroir : nom ; hauteur en mm.'), total);
+      const sync = () => { gridFields.hidden = mode !== 'grid'; stackFields.hidden = mode !== 'stack'; };
+      sync();
+      const modeSwitch = !flat && h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Disposition' },
+        [['stack', 'Liste de tiroirs'], ['grid', 'Grille régulière']].map(([m, text]) => h('button', {
+          type: 'button', role: 'radio', class: 'segmented-option', 'aria-checked': String(m === mode),
+          onclick: (event) => {
+            mode = m;
+            event.currentTarget.parentElement.querySelectorAll('[role=radio]').forEach((b) => b.setAttribute('aria-checked', String(b === event.currentTarget)));
+            sync();
+          },
+        }, text)));
       const form = h('form', { class: 'dialog-body', novalidate: true },
-        h('p', { class: 'field-hint' }, `Divise l'intérieur utile (${formatLength(inside.width, unitLabel())} × ${formatLength(inside.height, unitLabel())}) en une grille régulière. Numérotation de haut en bas, puis de gauche à droite.`),
-        h('div', { class: 'form-grid' }, field('Type', type), field('Espacement (mm)', gap), field('Rangées (hauteur)', rows), field('Colonnes (largeur)', columns)),
+        modeSwitch,
+        h('div', { class: 'form-grid' }, field('Type', type), field('Espacement (mm)', gap)),
+        gridFields, stackFields,
         h('div', { class: 'dialog-actions' },
           h('button', { class: 'btn', type: 'button', onclick: () => close(false) }, 'Annuler'),
           h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', {}, 'Générer'))));
       form.addEventListener('submit', (event) => {
         event.preventDefault();
+        const body = { type_id: Number(type.value), gap_mm: Number(gap.value || 0) };
+        if (mode === 'stack') {
+          body.stack = parseStack();
+        } else {
+          body.rows = Number(rows.value);
+          body.columns = Number(columns.value);
+          body.labels = labels.value.split('\n').map((l) => l.trim()).slice(0, body.rows * body.columns);
+          while (body.labels.length && !body.labels.at(-1)) body.labels.pop();
+          body.labels = body.labels.map((l) => l || ' ');
+        }
         busy(event.submitter, async () => {
           try {
-            const r = await api(`/storage-units/${u.id}/generate`, { method: 'POST', body: {
-              rows: Number(rows.value), columns: Number(columns.value), gap_mm: Number(gap.value || 0), type_id: Number(type.value),
-            } });
+            const r = await api(`/storage-units/${u.id}/generate`, { method: 'POST', body });
             toast(`${plural(r.created, 'rangement créé', 'rangements créés')}.`);
             close(true);
           } catch (error) { showError(error, form); }
         });
       });
       return form;
-    });
+    }, { wide: true });
     if (saved) {
       state.expanded.add(u.id);
       await reload();
@@ -608,6 +652,7 @@ export async function render(view, session, params) {
     if (highlight && unitById(highlight)) {
       select(highlight);
       scene?.highlight(highlight);
+      renderDetails();
     }
     const query = new URLSearchParams(location.search);
     const action = query.get('action');

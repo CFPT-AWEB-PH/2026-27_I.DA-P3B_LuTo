@@ -86,6 +86,11 @@ final class Input
         return strtolower($value);
     }
 
+    public function optionalColor(string $key): ?string
+    {
+        return ($this->data[$key] ?? null) === null ? null : $this->color($key);
+    }
+
     /**
      * Liste de points [[x, z], …] en entiers.
      *

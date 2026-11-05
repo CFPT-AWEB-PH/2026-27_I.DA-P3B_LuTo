@@ -198,3 +198,20 @@ Audit écran par écran sur une copie locale complète (Docker, données réalis
 - Le navigateur intégré à l'application Claude n'enregistre pas de service worker : ces tests passent par Edge.
 - Appui long testé par événements simulés, pas sur un vrai téléphone. L'installation elle-même (fenêtre du navigateur) n'a pas été cliquée : seule l'installabilité est vérifiée.
 - La connexion réelle sur le site n'a pas été parcourue par mes soins : à vérifier à la phase 7.
+
+## Objets en 3D dans les rangements (2026-11-05)
+
+Demande de l'utilisateur, photos de l'atelier à l'appui : voir l'armoire, ses tiroirs, ses bacs et **les objets dedans**. La phase 7 passe après.
+
+**Fait**
+- Migration `0005_item_visuals` : apparence 3D sur chaque objet (`visual`, `visual_color`) et couleurs par défaut d'atelier (armoire crème, tiroir marine, bac rouge), seulement si elles n'avaient pas été personnalisées.
+- `three/item-models.js` : 14 modèles légers (vis, écrou, rondelle, résistance, condensateur, circuit, câble, tournevis, pince, clé, marteau, profilé, roue, pièce), dessinés en instances. Type déduit du nom ou choisi sur la fiche ; les cotes du nom sont utilisées (« Vis M3 x 12 »). Petites pièces en vrac, outils et profilés rangés côte à côte, à l'échelle.
+- **Le nombre de pièces visibles est une représentation** : il suit la quantité jusqu'à un plafond (70 en vrac, 36 rangés, limité aussi par la place). La quantité exacte reste celle du panneau.
+- Armoire : façades avec bandeau étiqueté, fond de tiroir perforé, étiquettes sur les bacs, ouverture quasi complète, un seul tiroir ouvert par meuble, vue plongeante (double-clic ou « Ouvrir et regarder dedans »).
+- Contenu d'un tiroir fermé construit à sa première ouverture. Mesuré sur l'armoire de test (78 rangements, tiroir plein ouvert) : 128 appels de rendu, 24 000 triangles, 43 rangements construits.
+- Génération : liste de tiroirs nommés de hauteurs différentes (`stack`), grille posée au fond pour un tiroir, une boîte ou un bac (auparavant empilée en hauteur, ce qui était faux), étiquettes dans l'ordre de lecture.
+- Un rangement divisé montre ses subdivisions : ses objets directs restent listés dans le panneau, pas dans la 3D.
+
+**Tests** : `visual_test.php` (pile, grille, apparence, contenu selon les permissions). Rendu vérifié sur le banc local avec une armoire reprenant les intitulés des photos (données fictives, pas dans la base réelle).
+
+**Pas encore fait** : disposition libre des bacs à la souris dans un tiroir (bacs de tailles variées) ; panneau de propriétés seulement pour le contenu d'un bac, pas de clic sur un objet précis. Rendu non essayé sur un vrai téléphone.

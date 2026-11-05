@@ -6,12 +6,15 @@ import * as THREE from '/vendor/three/three.module.min.js';
 import { OrbitControls } from '/vendor/three/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from '/vendor/three/CSS2DRenderer.js';
 import { containsPoint, formatLength, furnitureFits, interior, wallLength } from '../spatial.js';
+import { buildObjects } from './item-models.js';
 
 const S = 0.001;
 const SELECT_COLOR = 0xffa31a;
 const INVALID_COLOR = 0xe5484d;
 const HIGHLIGHT_COLOR = 0x2f80ff;
-const DRAWER_OPEN_RATIO = 0.6;
+const DRAWER_OPEN_RATIO = 0.97;
+const STRIP_COLOR = 0xd9dbd6; // bandeau métallique des tiroirs
+const OPEN_TOP = new Set(['drawer', 'box', 'bin']);
 
 export class RoomScene {
   /**
@@ -31,6 +34,7 @@ export class RoomScene {
     this.wallMode = 'auto';
     this.moveMode = false;
     this.materials = new Map();
+    this.contents = [];
     this.walls = [];
     this.animations = [];
     this.renderQueued = false;
@@ -54,7 +58,7 @@ export class RoomScene {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.screenSpacePanning = true;
     this.controls.maxPolarAngle = Math.PI / 2 - 0.01;
-    this.controls.minDistance = 0.2;
+    this.controls.minDistance = 0.08;
     this.controls.maxDistance = 150;
     this.controls.addEventListener('change', () => {
       this.updateWallVisibility();
@@ -83,11 +87,12 @@ export class RoomScene {
 
   // ===== Données =====
 
-  setData(room, openings, units) {
+  setData(room, openings, units, contents = []) {
     const first = !this.room;
     this.room = room;
     this.openings = openings;
     this.units = units;
+    this.contents = contents;
     const ids = new Set(units.map((u) => u.id));
     for (const id of [...this.hidden]) if (!ids.has(id)) this.hidden.delete(id);
     for (const id of [...this.openDrawers]) if (!ids.has(id)) this.openDrawers.delete(id);
@@ -242,31 +247,61 @@ export class RoomScene {
 
   buildUnits() {
     this.unitGroups.clear();
-    const children = new Map();
+    this.childrenOf = new Map();
     for (const u of this.units) {
-      const list = children.get(u.parent_id) ?? [];
+      const list = this.childrenOf.get(u.parent_id) ?? [];
       list.push(u);
-      children.set(u.parent_id, list);
+      this.childrenOf.set(u.parent_id, list);
     }
-    const build = (u, parentObject, parent) => {
-      const group = new THREE.Group();
-      group.userData.unitId = u.id;
-      if (parent) {
-        const inside = interior(parent.shape, parent.width_mm, parent.depth_mm, parent.height_mm, parent.panel_mm) ?? { x: 0, y: 0, z: 0 };
-        group.position.set((inside.x + u.pos_x_mm) * S, (inside.y + u.pos_y_mm) * S, (inside.z + u.pos_z_mm) * S);
-      } else {
-        group.position.set(u.pos_x_mm * S, u.pos_y_mm * S, u.pos_z_mm * S);
-        group.rotation.y = (u.rotation_deg * Math.PI) / 180;
-      }
-      group.userData.baseZ = group.position.z;
-      if (u.shape === 'drawer' && this.openDrawers.has(u.id)) group.position.z += u.depth_mm * DRAWER_OPEN_RATIO * S;
-      group.visible = !this.hidden.has(u.id);
-      this.buildPanels(u, group);
-      parentObject.add(group);
-      this.unitGroups.set(u.id, group);
-      for (const child of children.get(u.id) ?? []) build(child, group, u);
-    };
-    for (const u of children.get(null) ?? []) build(u, this.unitsGroup, null);
+    this.contentsOf = new Map();
+    for (const c of this.contents) {
+      const list = this.contentsOf.get(c.unit_id) ?? [];
+      list.push(c);
+      this.contentsOf.set(c.unit_id, list);
+    }
+    for (const u of this.childrenOf.get(null) ?? []) this.buildUnit(u, this.unitsGroup, null);
+  }
+
+  buildUnit(u, parentObject, parent) {
+    const group = new THREE.Group();
+    group.userData.unitId = u.id;
+    if (parent) {
+      const inside = interior(parent.shape, parent.width_mm, parent.depth_mm, parent.height_mm, parent.panel_mm) ?? { x: 0, y: 0, z: 0 };
+      group.position.set((inside.x + u.pos_x_mm) * S, (inside.y + u.pos_y_mm) * S, (inside.z + u.pos_z_mm) * S);
+    } else {
+      group.position.set(u.pos_x_mm * S, u.pos_y_mm * S, u.pos_z_mm * S);
+      group.rotation.y = (u.rotation_deg * Math.PI) / 180;
+    }
+    group.userData.baseZ = group.position.z;
+    if (u.shape === 'drawer' && this.openDrawers.has(u.id)) group.position.z += u.depth_mm * DRAWER_OPEN_RATIO * S;
+    group.visible = !this.hidden.has(u.id);
+    this.buildPanels(u, group);
+
+    const content = new THREE.Group();
+    group.add(content);
+    group.userData.content = content;
+    parentObject.add(group);
+    this.unitGroups.set(u.id, group);
+    if (u.shape !== 'drawer' || this.openDrawers.has(u.id)) this.buildContent(u);
+    else content.visible = false;
+  }
+
+  /** Sous-rangements et objets : pour un tiroir, construits à sa première ouverture (économise la mémoire et le rendu). */
+  buildContent(u) {
+    const group = this.unitGroups.get(u.id);
+    if (!group || group.userData.contentBuilt) return;
+    group.userData.contentBuilt = true;
+    const content = group.userData.content;
+    const kids = this.childrenOf.get(u.id) ?? [];
+    for (const child of kids) this.buildUnit(child, content, u);
+    const entries = this.contentsOf.get(u.id);
+    const inside = interior(u.shape, u.width_mm, u.depth_mm, u.height_mm, u.panel_mm);
+    // Un rangement divisé montre ses subdivisions : ses objets directs restent dans le panneau de propriétés
+    if (entries && inside && kids.length === 0) {
+      const objects = buildObjects(u.id, inside, entries);
+      objects.position.set(inside.x * S, inside.y * S, inside.z * S);
+      content.add(objects);
+    }
   }
 
   material(color, variant = '') {
@@ -275,9 +310,64 @@ export class RoomScene {
       const base = new THREE.Color(color);
       const options = { color: base, roughness: 0.75, metalness: 0.02 };
       if (variant === 'front') options.color = base.clone().multiplyScalar(0.85);
-      if (variant === 'handle') Object.assign(options, { color: new THREE.Color(0x555b63), metalness: 0.6, roughness: 0.35 });
+      if (variant === 'handle') Object.assign(options, { color: new THREE.Color(STRIP_COLOR), metalness: 0.25, roughness: 0.45 });
       if (variant === 'ghost') Object.assign(options, { transparent: true, opacity: 0.18, depthWrite: false });
       const material = new THREE.MeshStandardMaterial(options);
+      material.userData.shared = true;
+      this.materials.set(key, material);
+    }
+    return this.materials.get(key);
+  }
+
+  /** Étiquette imprimée : texture générée, partagée entre les étiquettes de même texte et format. */
+  labelMaterial(text, widthMm, heightMm, { align = 'center', background = '#f7f5ee' } = {}) {
+    const ratio = Math.round((widthMm / heightMm) * 2) / 2;
+    const key = `label|${text}|${ratio}|${align}|${background}`;
+    if (!this.materials.has(key)) {
+      const canvas = document.createElement('canvas');
+      canvas.height = 48;
+      canvas.width = Math.min(1024, Math.max(48, Math.round(48 * ratio)));
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      let size = 30;
+      ctx.font = `600 ${size}px system-ui, sans-serif`;
+      const room = canvas.width - 12;
+      if (ctx.measureText(text).width > room) {
+        size = Math.max(12, Math.floor((size * room) / ctx.measureText(text).width));
+        ctx.font = `600 ${size}px system-ui, sans-serif`;
+      }
+      ctx.fillStyle = '#1c1f26';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = align;
+      ctx.fillText(text, align === 'left' ? 8 : canvas.width / 2, canvas.height / 2 + 1, room);
+      const map = new THREE.CanvasTexture(canvas);
+      map.colorSpace = THREE.SRGBColorSpace;
+      map.anisotropy = 4;
+      const material = new THREE.MeshBasicMaterial({ map });
+      material.userData.shared = true;
+      this.materials.set(key, material);
+    }
+    return this.materials.get(key);
+  }
+
+  /** Fond de tiroir perforé (motif répété tous les 32 mm). */
+  perforatedMaterial(color) {
+    const key = `perforated|${color}`;
+    if (!this.materials.has(key)) {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, 64, 64);
+      ctx.fillStyle = 'rgba(232, 196, 120, .75)';
+      ctx.beginPath();
+      ctx.arc(32, 32, 6, 0, Math.PI * 2);
+      ctx.fill();
+      const map = new THREE.CanvasTexture(canvas);
+      map.wrapS = map.wrapT = THREE.RepeatWrapping;
+      map.colorSpace = THREE.SRGBColorSpace;
+      const material = new THREE.MeshStandardMaterial({ map, roughness: 0.8 });
       material.userData.shared = true;
       this.materials.set(key, material);
     }
@@ -302,6 +392,21 @@ export class RoomScene {
       group.add(edges);
     };
 
+    const plane = (planeW, planeH, cx, cy, z, mat) => {
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(planeW * S, planeH * S), mat);
+      mesh.position.set(cx * S, cy * S, z * S);
+      mesh.userData.unitId = u.id;
+      group.add(mesh);
+    };
+    // Étiquette collée sur la face avant. Sans étiquette, le nom s'il a été choisi (pas « Bac 3 » généré)
+    const sticker = () => {
+      const text = u.label || (/^\S+ [\d.]+$/.test(u.name) ? '' : u.name);
+      if (!text || w < 25 || h < 12) return;
+      const stickerW = Math.min(w * 0.8, 90);
+      const stickerH = Math.min(h * 0.32, 16);
+      plane(stickerW, stickerH, w / 2, h - stickerH / 2 - Math.min(h * 0.08, 5), d + 0.3, this.labelMaterial(text, stickerW, stickerH));
+    };
+
     switch (u.shape) {
       case 'cabinet': case 'compartment': case 'cell':
         if (p === 0) return ghost();
@@ -310,6 +415,7 @@ export class RoomScene {
         add(p, 0, 0, w - p, p, d);
         add(p, h - p, 0, w - p, h, d);
         add(p, p, 0, w - p, h - p, p);
+        if (u.shape !== 'cabinet') sticker();
         return;
       case 'drawer': case 'box': case 'bin':
         if (p === 0) return ghost();
@@ -317,11 +423,25 @@ export class RoomScene {
         add(0, p, 0, p, h, d);
         add(w - p, p, 0, w, h, d);
         add(p, p, 0, w - p, h, p);
-        add(p, p, d - p, w - p, h, d, u.shape === 'drawer' ? this.material(u.color, 'front') : this.material(u.color));
         if (u.shape === 'drawer') {
-          const half = Math.min(60, w / 6);
-          add(w / 2 - half, h * 0.6 - 6, d, w / 2 + half, h * 0.6 + 6, d + 18, this.material(u.color, 'handle'));
+          // Façade pleine avec bandeau-poignée : étiquette à gauche, métal à droite, comme une armoire d'atelier
+          add(0, 0, d - p, w, h, d);
+          const strip = Math.min(h * 0.28, Math.max(h * 0.2, 22));
+          add(0, h - strip, d, w, h, d + 8, this.material('#d9dbd6', 'handle'));
+          plane(w * 0.7, strip * 0.86, w * 0.36, h - strip / 2, d + 8.2, this.labelMaterial(u.label || u.name, w * 0.7, strip * 0.86, { align: 'left' }));
+          // Fond perforé
+          const base = new THREE.PlaneGeometry((w - 2 * p) * S, (d - 2 * p) * S);
+          const uv = base.attributes.uv;
+          for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * (w - 2 * p)) / 32, (uv.getY(i) * (d - 2 * p)) / 32);
+          const floor = new THREE.Mesh(base, this.perforatedMaterial(u.color));
+          floor.rotation.x = -Math.PI / 2;
+          floor.position.set((w / 2) * S, (p + 0.3) * S, (d / 2) * S);
+          floor.userData.unitId = u.id;
+          group.add(floor);
+          return;
         }
+        add(p, p, d - p, w - p, h, d);
+        sticker();
         return;
       case 'shelf':
         add(0, 0, 0, w, Math.max(p, 2), d);
@@ -344,12 +464,6 @@ export class RoomScene {
     const u = this.unit(id);
     if (!u) return;
     this.highlightId = id;
-    for (let cursor = u; cursor; cursor = this.unit(cursor.parent_id)) {
-      this.hidden.delete(cursor.id);
-      const g = this.unitGroups.get(cursor.id);
-      if (g) g.visible = true;
-      if (cursor.shape === 'drawer' && cursor.id !== id) this.setDrawerOpen(cursor.id, true);
-    }
     this.select(id);
     this.focus(id);
   }
@@ -432,9 +546,41 @@ export class RoomScene {
     const u = this.unit(id);
     const g = this.unitGroups.get(id);
     if (!u || !g || u.shape !== 'drawer') return;
-    if (open) this.openDrawers.add(id); else this.openDrawers.delete(id);
-    const target = g.userData.baseZ + (open ? u.depth_mm * DRAWER_OPEN_RATIO * S : 0);
-    this.animate(250, (t) => { g.position.z += (target - g.position.z) * t; });
+    if (open) {
+      // Comme sur une vraie armoire : un seul tiroir ouvert à la fois dans un meuble
+      for (const other of this.childrenOf.get(u.parent_id) ?? []) {
+        if (other.id !== id && this.openDrawers.has(other.id)) this.setDrawerOpen(other.id, false);
+      }
+      this.openDrawers.add(id);
+      this.buildContent(u);
+      g.userData.content.visible = true;
+    } else {
+      this.openDrawers.delete(id);
+    }
+    const target = this.drawerTarget(u, g);
+    this.animate(280, (t) => {
+      g.position.z += (target - g.position.z) * t;
+      if (t >= 1 && !this.openDrawers.has(id)) g.userData.content.visible = false;
+    });
+  }
+
+  drawerTarget(u, g) {
+    return g.userData.baseZ + (this.openDrawers.has(u.id) ? u.depth_mm * DRAWER_OPEN_RATIO * S : 0);
+  }
+
+  /** Rend un rangement atteignable : parents affichés, construits, et tiroirs parents ouverts. */
+  reveal(id) {
+    const chain = [];
+    for (let cursor = this.unit(id); cursor; cursor = this.unit(cursor.parent_id)) chain.unshift(cursor);
+    for (const cursor of chain) {
+      this.hidden.delete(cursor.id);
+      const g = this.unitGroups.get(cursor.id);
+      if (!g) continue;
+      g.visible = true;
+      if (cursor.shape === 'drawer' && !this.openDrawers.has(cursor.id)) this.setDrawerOpen(cursor.id, true);
+      else this.buildContent(cursor);
+    }
+    this.refreshOverlay();
   }
 
   // ===== Caméra =====
@@ -464,16 +610,51 @@ export class RoomScene {
     this.moveCamera(position, target);
   }
 
-  focus(id) {
-    const g = this.unitGroups.get(id);
-    if (!g) return;
-    // Les matrices des parents ne sont calculées qu'au rendu : les mettre à jour avant de mesurer
+  /** Boîte englobante en position finale, sans attendre la fin de l'ouverture des tiroirs. */
+  finalBox(g) {
+    const moved = [];
+    for (const u of this.units) {
+      const drawer = u.shape === 'drawer' && this.unitGroups.get(u.id);
+      if (drawer) { moved.push([drawer, drawer.position.z]); drawer.position.z = this.drawerTarget(u, drawer); }
+    }
     this.scene.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(g);
+    for (const [drawer, z] of moved) drawer.position.z = z;
+    this.scene.updateMatrixWorld(true);
+    return box;
+  }
+
+  /** Centre la vue : par-dessus pour un tiroir, une boîte ou leur contenu, sinon sous l'angle actuel. */
+  focus(id) {
+    const u = this.unit(id);
+    this.reveal(id);
+    const g = this.unitGroups.get(id);
+    if (!u || !g) return;
+    let inDrawer = false;
+    for (let cursor = u; cursor; cursor = this.unit(cursor.parent_id)) if (OPEN_TOP.has(cursor.shape)) inDrawer = true;
+    if (inDrawer) return this.lookInto(id);
+    const box = this.finalBox(g);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3()).length();
     const direction = this.camera.position.clone().sub(this.controls.target).normalize();
     const distance = Math.max(size / (2 * Math.tan((this.camera.fov * Math.PI) / 360)) * 2.2, 0.6);
+    this.moveCamera(center.clone().add(direction.multiplyScalar(distance)), center);
+  }
+
+  /** Vue plongeante : comme penché au-dessus du tiroir ouvert, avec sa façade en bas de l'écran. */
+  lookInto(id) {
+    const g = this.unitGroups.get(id);
+    const u = this.unit(id);
+    if (!g || !u) return;
+    const box = this.finalBox(g);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    // Avant du meuble dans le repère de la salle
+    const front = new THREE.Vector3(0, 0, 1).applyQuaternion(g.getWorldQuaternion(new THREE.Quaternion())).normalize();
+    const direction = new THREE.Vector3(0, 1, 0).addScaledVector(front, 0.22).normalize();
+    const vertical = Math.tan((this.camera.fov * Math.PI) / 360);
+    const fit = Math.max(Math.max(size.z, size.x * 0.1) / (2 * vertical), size.x / (2 * vertical * this.camera.aspect));
+    const distance = Math.max(fit * 1.2 + size.y, 0.15);
     this.moveCamera(center.clone().add(direction.multiplyScalar(distance)), center);
   }
 
@@ -595,7 +776,8 @@ export class RoomScene {
     this.onDoubleClick = (event) => {
       const hit = this.pick(event);
       if (!hit) return;
-      if (hit.shape === 'drawer') this.setDrawerOpen(hit.id, !this.isDrawerOpen(hit.id));
+      // Double-clic sur un tiroir : il s'ouvre et on regarde dedans ; ouvert, il se referme
+      if (hit.shape === 'drawer' && this.isDrawerOpen(hit.id)) this.setDrawerOpen(hit.id, false);
       else this.focus(hit.id);
     };
 
@@ -702,7 +884,7 @@ export class RoomScene {
     canvas.removeEventListener('contextmenu', this.onContextMenu);
     this.clearGroup(this.roomGroup);
     this.clearGroup(this.unitsGroup);
-    for (const m of this.materials.values()) m.dispose();
+    for (const m of this.materials.values()) { m.map?.dispose(); m.dispose(); }
     this.renderer.dispose();
     canvas.remove();
     this.labelRenderer.domElement.remove();
@@ -734,7 +916,8 @@ function selectionBox(u, color) {
 /** Libère géométries et matériaux ; les matériaux du cache (userData.shared) sont libérés dans dispose(). */
 function disposeObject(object) {
   object.traverse((o) => {
-    o.geometry?.dispose();
+    if (!o.geometry?.userData.shared) o.geometry?.dispose();
+    if (o.isInstancedMesh) o.dispose();
     if (o.material && !o.material.userData.shared) {
       o.material.map?.dispose();
       o.material.dispose();

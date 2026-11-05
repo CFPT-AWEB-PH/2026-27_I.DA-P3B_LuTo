@@ -136,19 +136,24 @@ final class StorageUnitController
     }
 
     /**
-     * Crée une grille régulière de rangements (lignes × colonnes) remplissant l'intérieur
-     * d'un rangement vide : étagères, compartiments, tiroirs, cases…
+     * Remplit un rangement vide, de deux façons :
+     * - grille régulière (rows × columns) : posée au fond pour un rangement ouvert par le dessus (tiroir,
+     *   boîte, bac : rangées de l'arrière vers l'avant), empilée en hauteur sinon (armoire : de haut en bas) ;
+     *   labels facultatif : étiquettes dans l'ordre de lecture ;
+     * - pile (stack) : [{ name, height_mm }] de haut en bas, par exemple les tiroirs d'une armoire.
      */
     public static function generate(Request $request, array $params): Response
     {
         $auth = $request->requirePermission('storage.edit');
         $id = (int) $params['id'];
         $input = $request->input();
-        $rows = $input->int('rows', 1, 50);
-        $columns = $input->int('columns', 1, 50);
+        $stack = $input->has('stack') ? self::readStack($request->json()['stack']) : null;
+        $rows = $stack === null ? $input->int('rows', 1, 50) : count($stack);
+        $columns = $stack === null ? $input->int('columns', 1, 50) : 1;
         $gap = $input->optionalInt('gap_mm', 0, 0, 500);
+        $labels = $input->has('labels') ? $input->stringList('labels', 2500, 50) : [];
 
-        $created = Database::transaction(static function (PDO $pdo) use ($id, $input, $rows, $columns, $gap): array {
+        $created = Database::transaction(static function (PDO $pdo) use ($id, $input, $rows, $columns, $gap, $stack, $labels): array {
             $parent = Repo::unit($pdo, $id);
             $room = Repo::room($pdo, (int) $parent['room_id'], true);
             $type = Repo::type($pdo, $input->int('type_id', 1));
@@ -163,35 +168,67 @@ final class StorageUnitController
             $inside = Geometry::interior($parent['shape'], (int) $parent['width_mm'], (int) $parent['depth_mm'], (int) $parent['height_mm'], (int) $parent['panel_mm'])
                 ?? throw new HttpException(409, "« {$parent['name']} » n'a pas de volume intérieur.");
 
-            $width = intdiv($inside['width'] - ($columns - 1) * $gap, $columns);
-            $height = intdiv($inside['height'] - ($rows - 1) * $gap, $rows);
-            if ($width < 10 || $height < 10) {
-                Input::fail('rows', 'Trop de divisions pour la taille intérieure disponible.');
-            }
-            $panel = min((int) $type['default_panel_mm'], intdiv(min($width, $height, $inside['depth']), 4));
-
             $insert = $pdo->prepare(
-                'INSERT INTO storage_units (room_id, parent_id, type_id, name, width_mm, depth_mm, height_mm, pos_x_mm, pos_y_mm, pos_z_mm, panel_mm, color, sort_order)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)'
+                'INSERT INTO storage_units (room_id, parent_id, type_id, name, label, width_mm, depth_mm, height_mm, pos_x_mm, pos_y_mm, pos_z_mm, panel_mm, color, sort_order)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
+            $panelFor = static fn (int ...$sizes): int => min((int) $type['default_panel_mm'], intdiv(min($sizes), 4));
             $ids = [];
-            // Numérotation de haut en bas puis de gauche à droite, comme on lit une armoire
-            for ($r = 0; $r < $rows; $r++) {
-                for ($c = 0; $c < $columns; $c++) {
-                    $number = $columns === 1 ? (string) ($r + 1) : ($rows === 1 ? (string) ($c + 1) : ($r + 1) . '.' . ($c + 1));
-                    $insert->execute([
-                        $room['id'], $id, $type['id'], "{$type['name']} {$number}", $width, $inside['depth'], $height,
-                        $c * ($width + $gap), ($rows - 1 - $r) * ($height + $gap), $panel, $type['default_color'], $r * $columns + $c,
-                    ]);
-                    $ids[] = (int) $pdo->lastInsertId();
+            $add = static function (string $name, string $label, int $w, int $d, int $h, int $x, int $y, int $z, int $order) use ($insert, $pdo, $room, $id, $type, $panelFor, &$ids): void {
+                $insert->execute([$room['id'], $id, $type['id'], $name, $label, $w, $d, $h, $x, $y, $z, $panelFor($w, $d, $h), $type['default_color'], $order]);
+                $ids[] = (int) $pdo->lastInsertId();
+            };
+
+            if ($stack !== null) {
+                $total = array_sum(array_column($stack, 'height_mm')) + (count($stack) - 1) * $gap;
+                if ($total > $inside['height']) {
+                    Input::fail('stack', "Hauteur totale de {$total} mm, pour {$inside['height']} mm disponibles à l'intérieur.");
+                }
+                $top = $inside['height'];
+                foreach ($stack as $i => $entry) {
+                    $top -= $entry['height_mm'];
+                    $add($entry['name'], $entry['label'], $inside['width'], $inside['depth'], $entry['height_mm'], 0, $top, 0, $i);
+                    $top -= $gap;
+                }
+            } else {
+                $flat = in_array($parent['shape'], ['drawer', 'box', 'bin'], true);
+                $width = intdiv($inside['width'] - ($columns - 1) * $gap, $columns);
+                $depth = $flat ? intdiv($inside['depth'] - ($rows - 1) * $gap, $rows) : $inside['depth'];
+                $height = $flat ? min((int) $type['default_height_mm'], $inside['height']) : intdiv($inside['height'] - ($rows - 1) * $gap, $rows);
+                if ($width < 10 || $height < 10 || $depth < 10) {
+                    Input::fail('rows', 'Trop de divisions pour la taille intérieure disponible.');
+                }
+                for ($r = 0; $r < $rows; $r++) {
+                    for ($c = 0; $c < $columns; $c++) {
+                        $number = $columns === 1 ? (string) ($r + 1) : ($rows === 1 ? (string) ($c + 1) : ($r + 1) . '.' . ($c + 1));
+                        $order = $r * $columns + $c;
+                        $add(
+                            "{$type['name']} {$number}", trim($labels[$order] ?? ''), $width, $depth, $height,
+                            $c * ($width + $gap), $flat ? 0 : ($rows - 1 - $r) * ($height + $gap), $flat ? $r * ($depth + $gap) : 0, $order,
+                        );
+                    }
                 }
             }
             Repo::rebuildPaths($pdo, (int) $room['id']);
             return $ids;
         });
 
-        Audit::log($auth->userId, 'unit.generated', 'storage_unit', $id, ['rows' => $rows, 'columns' => $columns, 'created' => count($created)], $request->ip);
+        Audit::log($auth->userId, 'unit.generated', 'storage_unit', $id, ['rows' => $rows, 'columns' => $columns, 'stack' => $stack !== null, 'created' => count($created)], $request->ip);
         return Response::json(['created' => count($created)], 201);
+    }
+
+    /** @return list<array{name: string, label: string, height_mm: int}> */
+    private static function readStack(mixed $raw): array
+    {
+        if (!is_array($raw) || !array_is_list($raw) || $raw === [] || count($raw) > 50) {
+            Input::fail('stack', 'Liste de 1 à 50 rangements attendue.');
+        }
+        $stack = [];
+        foreach ($raw as $entry) {
+            $in = new Input(is_array($entry) ? $entry : []);
+            $stack[] = ['name' => $in->string('name', 120), 'label' => $in->optionalString('label', 50), 'height_mm' => $in->int('height_mm', 10, 5000)];
+        }
+        return $stack;
     }
 
     /**
