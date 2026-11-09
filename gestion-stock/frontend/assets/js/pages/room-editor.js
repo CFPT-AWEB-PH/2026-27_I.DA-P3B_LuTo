@@ -11,7 +11,7 @@ import {
 import { openOpeningsDialog, openRoomDialog } from './room-form.js';
 import { formatQuantity, itemDialog, moveDialog, storeItemsDialog, takeDialog } from '../stock-dialogs.js';
 import { contextMenu, openContextMenu } from '../context-menu.js';
-import { itemMenuItems } from '../item-menu.js';
+import { itemMenuItems, recordReturn } from '../item-menu.js';
 import { clipboard, History, MOD, typingOrDialog } from '../history.js';
 import { createUnitActions, shortcutsDialog, templateSummary, templateThumb, withoutIds } from '../unit-actions.js';
 
@@ -35,7 +35,7 @@ export async function render(view, session, params) {
   const history = new History({ onChange: () => refreshHistoryButtons() });
   const details = h('aside', { class: 'editor-details', 'aria-live': 'polite' });
   const stage = h('div', { class: 'editor-stage' });
-  const hint = h('p', { class: 'editor-hint' }, 'Glisser : tourner  ·  Double-clic : ouvrir un tiroir  ·  Clic droit : menu  ·  ? : raccourcis');
+  const hint = h('p', { class: 'editor-hint' }, 'Glisser : tourner  ·  Double-clic : regarder dedans  ·  Clic droit : menu  ·  ? : raccourcis');
   // L'aide s'efface dès la première interaction : elle a servi
   stage.addEventListener('pointerdown', () => hint.classList.add('is-faded'), { once: true });
 
@@ -55,6 +55,12 @@ export async function render(view, session, params) {
     scene?.setGizmoMode(mode);
   }
   const hud = h('div', { class: 'gizmo-hud', hidden: true, role: 'status' });
+  // Bandeau du mode « regarder dedans » : où l'on est, et comment en sortir
+  const focusName = h('strong', {});
+  const focusBar = h('div', { class: 'focus-bar', hidden: true, role: 'status' },
+    icon('focus'), h('span', { class: 'focus-bar-text' }, 'Dans ', focusName),
+    h('button', { class: 'btn btn-small', type: 'button', title: 'Revenir à la salle (Échap)', onclick: () => scene?.exitFocus() }, icon('arrowLeft'), 'Sortir'));
+  const enterFocus = (id) => { select(id); scene?.enterFocus(id); };
   const colorSelect = can('stock.view') ? h('select', { class: 'select-small', 'aria-label': 'Couleurs des rangements' },
     h('option', { value: 'original' }, "Couleurs d'origine"), h('option', { value: 'fill' }, 'Couleurs de remplissage')) : null;
   const legend = h('div', { class: 'fill-legend', hidden: true });
@@ -94,7 +100,7 @@ export async function render(view, session, params) {
         can('rooms.edit') && h('button', { class: 'btn btn-small btn-ghost', type: 'button', title: 'Dimensions, porte et apparence', onclick: () => openSettings() }, icon('sliders'), label('Salle')),
         can('furniture.edit') && h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: () => editUnit(null, null) }, icon('plus'), 'Meuble'))),
     ),
-    tree, h('div', { class: 'editor-canvas' }, stage, hint, legend, hud), details,
+    tree, h('div', { class: 'editor-canvas' }, stage, hint, focusBar, legend, hud), details,
   ));
 
   const history_replace = (url) => window.history.replaceState(null, '', url);
@@ -118,7 +124,9 @@ export async function render(view, session, params) {
       history_replace(url);
     }
     if (state.selectedOpening !== null && !openingById(state.selectedOpening)) state.selectedOpening = null;
-    scene?.setData(payload.room, payload.openings, payload.units, payload.contents ?? []);
+    // Objets empruntés : à leur place d'origine, en gris (la scène les distingue par « borrowed »)
+    const borrowed = (payload.borrowed ?? []).map((b) => ({ ...b, borrowed: true }));
+    scene?.setData(payload.room, payload.openings, payload.units, [...(payload.contents ?? []), ...borrowed]);
     applyColors();
     if (state.selectedOpening !== null) scene?.selectOpening(state.selectedOpening);
     else scene?.select(state.selectedId);
@@ -179,7 +187,8 @@ export async function render(view, session, params) {
 
   try {
     scene = new (await import('../three/room-scene.js')).RoomScene(stage, {
-      onSelect: (id) => { if (!state.panel) select(id); },
+      // Clic sur un objet : son rangement est sélectionné et l'objet mis en évidence dans la liste du contenu
+      onSelect: (id, hit) => { if (!state.panel) { state.flashItem = hit?.item ? hit.item : null; select(id); } },
       onSelectOpening: (id) => { if (!state.panel) selectOpening(id); },
       canEdit: (u) => can(u.parent_id === null ? 'furniture.edit' : 'storage.edit'),
       canEditRoom: () => can('rooms.edit') && !state.panel,
@@ -205,11 +214,20 @@ export async function render(view, session, params) {
         }
         if (!await patchUnit(unit, changes, `Déplacer « ${unit.name} »`)) scene?.rebuildUnits();
       },
+      onFocusChange: (u) => {
+        focusBar.hidden = !u;
+        focusName.textContent = u ? (u.label ? `${u.name} (${u.label})` : u.name) : '';
+        stage.classList.toggle('is-focused', Boolean(u));
+      },
       onContextMenu: (unit, point, hit) => {
         if (state.panel) return;
         if (hit?.opening) {
           selectOpening(hit.opening.id);
           return openContextMenu(openingMenuItems(hit.opening), { x: point.clientX, y: point.clientY, label: `Actions pour ${openingName(hit.opening)}` });
+        }
+        if (hit?.item && can('stock.view')) {
+          if (unit) select(unit.id);
+          return openContextMenu(itemHereMenuItems(hit.item, unit), { x: point.clientX, y: point.clientY, label: `Actions pour ${hit.item.name}` });
         }
         if (unit) select(unit.id);
         openContextMenu(unit ? unitMenuItems(unit) : roomMenuItems(hit), { x: point.clientX, y: point.clientY, label: unit ? `Actions pour ${unit.name}` : 'Actions de la salle' });
@@ -300,6 +318,8 @@ export async function render(view, session, params) {
     if (mod && key === 's' && u) return handle(() => saveTemplate(u));
     if (mod) return undefined;
 
+    // Échap : sortir d'abord du rangement isolé, puis désélectionner
+    if (event.key === 'Escape' && scene?.focusedId !== null && scene?.focusedId !== undefined) return handle(() => scene.exitFocus());
     if (event.key === 'Escape') return handle(() => select(null));
     if (event.key === '?') return handle(() => shortcutsDialog());
     if ((event.key === 'Delete' || event.key === 'Backspace') && u) return handle(() => remove(u));
@@ -784,16 +804,36 @@ export async function render(view, session, params) {
     const load = async () => {
       try {
         const { contents } = await api(`/storage-units/${u.id}/contents?deep=1`);
-        clear(body, contents.length
-          ? h('ul', { class: 'plain-list contents-list' }, contents.map((c) => withItemMenu(c, h('li', { class: 'list-row' },
+        // Emprunts dont l'origine est ce rangement ou l'un de ses sous-rangements
+        const inside = (id) => id === u.id || (unitById(id) && inside(unitById(id).parent_id));
+        const away = (state.payload.borrowed ?? []).filter((b) => inside(b.unit_id));
+        const flash = state.flashItem;
+        state.flashItem = null;
+        clear(body, contents.length || away.length
+          ? h('ul', { class: 'plain-list contents-list' }, contents.map((c) => withItemMenu(c, h('li', {
+            class: ['list-row', flash && !flash.borrowed && flash.item_id === c.item_id && flash.unit_id === c.unit_id && 'is-flash'],
+          },
             h('div', { class: 'list-row-main' },
               h('a', { href: `/items/${c.item_id}` }, c.name),
               h('span', { class: 'sub' }, formatQuantity(c.quantity, c.unit), c.unit_id !== u.id && `, dans ${c.path.split(' › ').slice(-1)[0]}`)),
             can('stock.take') && h('button', { class: 'btn btn-small', type: 'button', 'aria-label': `Prendre ${c.name}`, onclick: async () => {
               const item = { id: c.item_id, name: c.name, unit: c.unit, is_consumable: c.is_consumable };
               if (await takeDialog(item, { unit_id: c.unit_id, path: c.path, quantity: c.quantity })) { await reload(); }
-            } }, 'Prendre')))))
+            } }, 'Prendre')))),
+          away.map((b) => {
+            const item = { id: b.item_id, name: b.name, unit: b.unit, is_consumable: b.is_consumable };
+            const row = h('li', { class: ['list-row', 'is-borrowed', flash?.borrowed && flash.item_id === b.item_id && flash.unit_id === b.unit_id && 'is-flash'] },
+              h('div', { class: 'list-row-main' },
+                h('a', { href: `/items/${b.item_id}` }, b.name),
+                h('span', { class: 'sub' }, `${formatQuantity(b.quantity, b.unit)} empruntée${Number(b.quantity) >= 2 ? 's' : ''}`, b.unit_id !== u.id && `, de ${unitById(b.unit_id)?.name ?? ''}`)),
+              can('stock.take') && h('button', { class: 'btn btn-small', type: 'button', 'aria-label': `Rendre ${b.name}`, onclick: async () => {
+                try { if (await recordReturn(item, session)) await reload(); } catch (error) { showError(error); }
+              } }, 'Rendre'));
+            contextMenu(row, () => itemMenuItems(item, session, { reload, borrowed: true }), { label: `Actions pour ${b.name}` });
+            return row;
+          }))
           : h('p', { class: 'muted small' }, 'Aucun objet rangé ici.'));
+        body.querySelector('.is-flash')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       } catch (error) { clear(body, errorState(error, load)); }
     };
     load();
@@ -810,6 +850,18 @@ export async function render(view, session, params) {
   }
 
   // ===== Menus contextuels =====
+
+  /** Objet visé dans la vue 3D (présent, ou emprunté et dessiné en gris) : actions de l'objet à cet endroit. */
+  function itemHereMenuItems(entry, u) {
+    const item = { id: entry.item_id, name: entry.name, unit: entry.unit, is_consumable: entry.is_consumable };
+    const place = { unit_id: entry.unit_id, path: unitById(entry.unit_id)?.path ?? '', quantity: entry.quantity };
+    return [
+      { heading: `${entry.name} · ${entry.borrowed ? 'emprunté' : 'ici'} : ${formatQuantity(entry.quantity, entry.unit)}` },
+      ...itemMenuItems(item, session, { reload, location: entry.borrowed ? null : place, borrowed: entry.borrowed }),
+      u && scene?.focusedId !== u.id && { separator: true },
+      u && scene?.focusedId !== u.id && { label: `Regarder dans « ${u.name} »`, icon: 'focus', onSelect: () => enterFocus(u.id) },
+    ];
+  }
 
   function withItemMenu(c, element) {
     const item = { id: c.item_id, name: c.name, unit: c.unit, is_consumable: c.is_consumable };
@@ -854,8 +906,11 @@ export async function render(view, session, params) {
     return [
       { label: 'Sélectionner et centrer', icon: 'focus', onSelect: () => select(u.id, { focus: true }) },
       u.can_hold_items && can('stock.view') && { label: 'Consulter le contenu', icon: 'box', onSelect: showContents },
-      u.shape === 'drawer' && { label: scene?.isDrawerOpen(u.id) ? 'Fermer le tiroir' : 'Ouvrir et regarder dedans', icon: 'drawer', onSelect: () => {
-        if (scene?.isDrawerOpen(u.id)) scene.setDrawerOpen(u.id, false); else scene?.focus(u.id);
+      (u.can_hold_items || u.can_contain_units) && scene?.focusedId !== u.id && { label: 'Regarder dedans', icon: 'focus', onSelect: () => enterFocus(u.id) },
+      scene?.focusedId !== null && scene?.focusedId !== undefined && { label: 'Revenir à la salle', icon: 'arrowLeft', onSelect: () => scene?.exitFocus() },
+      u.shape === 'drawer' && scene?.isDrawerOpen(u.id) && { label: 'Fermer le tiroir', icon: 'drawer', onSelect: () => {
+        if (scene?.focusedId === u.id) scene.exitFocus();
+        scene?.setDrawerOpen(u.id, false);
         setTimeout(renderDetails, 300);
       } },
       { separator: true },

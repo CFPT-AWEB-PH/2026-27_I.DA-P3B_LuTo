@@ -1167,6 +1167,9 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 .editor-details .detail-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); justify-content: stretch; margin-bottom: var(--s2); }
 .editor-details .detail-actions > .btn { justify-content: center; min-width: 0; white-space: normal; text-align: center; padding-block: var(--s1); }
 .editor-details .detail-actions > :last-child:nth-child(odd), .editor-details .detail-actions > .btn-primary { grid-column: 1 / -1; }
+/* Rangée de boutons-icônes (modifier, masquer, copier…) : une ligne compacte, pas une grille */
+.editor-details .detail-actions:has(> .icon-btn) { display: flex; flex-wrap: wrap; justify-content: flex-start; }
+.editor-details .detail-actions:has(> .icon-btn) > .btn { white-space: nowrap; }
 .editor-details .props { font-size: var(--text-sm); }
 .nudge { padding: var(--s3); margin-top: var(--s5); border-radius: var(--r-lg); background: var(--surface-2); }
 .nudge .panel-subtitle { margin-top: 0; }
@@ -1767,3 +1770,19 @@ kbd { display: inline-block; padding: 1px 6px; border: 1px solid var(--line); bo
 .editor-tree { overflow-x: hidden; }
 .panel-tabs { display: flex; }
 .panel-tabs > .segmented-option { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Titre d'un menu contextuel : ce qu'il vise */
+.menu-heading { padding: var(--s1-5) var(--s3) var(--s1); max-width: 20rem; font-size: var(--text-xs); font-weight: var(--fw-semibold); color: var(--ink-3); overflow-wrap: anywhere; }
+/* Contenu d'un rangement : objet emprunté (sa place est ici) et objet visé dans la vue 3D */
+.contents-list .is-borrowed .list-row-main > a { color: var(--ink-3); }
+.contents-list .is-borrowed .sub { font-style: italic; }
+.contents-list .is-flash { animation: flash-row 1.6s var(--ease-out); border-radius: var(--r-sm); }
+@keyframes flash-row { 0%, 40% { background: var(--primary-soft); box-shadow: 0 0 0 4px var(--primary-soft); } 100% { background: transparent; box-shadow: 0 0 0 4px transparent; } }
+/* Mode « regarder dedans » : bandeau en haut de la vue, fond plus sombre pour détacher le rangement isolé */
+.focus-bar { position: absolute; left: 50%; top: var(--s3); transform: translateX(-50%); display: flex; align-items: center; gap: var(--s2); max-width: calc(100% - var(--s6)); padding: var(--s1) var(--s1) var(--s1) var(--s3); border-radius: var(--r-lg); background: var(--scene-overlay-bg); color: var(--scene-overlay-fg); font-size: var(--text-sm); box-shadow: var(--shadow-md); animation: rise-in var(--dur-3) var(--ease-out); }
+.focus-bar[hidden] { display: none; }
+.focus-bar > .icon { width: 16px; height: 16px; flex: none; opacity: .8; }
+.focus-bar-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.focus-bar .btn { flex: none; }
+.editor-stage.is-focused { background: color-mix(in srgb, var(--scene-bg) 82%, #000); transition: background-color var(--dur-3); }
+.editor-canvas:has(.focus-bar:not([hidden])) .gizmo-hud { top: calc(var(--s3) + 48px); }

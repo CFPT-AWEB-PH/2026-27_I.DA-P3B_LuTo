@@ -12,6 +12,7 @@ import {
 import { buildObjects } from './item-models.js';
 import { buildShell } from './room-shell.js';
 import { boxCorners, fitPosition } from './fit.js';
+import { formatQuantity } from '../stock-dialogs.js';
 
 const S = 0.001;
 const SELECT_COLOR = 0xffa31a;
@@ -117,6 +118,7 @@ export class RoomScene {
     this.clearGroup(this.unitsGroup);
     if (!this.minimal) this.buildRoom();
     this.buildUnits();
+    this.reapplyFocus();
     this.refreshOverlay();
     if (first && !this.minimal) this.viewPreset('iso');
     this.updateWallVisibility();
@@ -218,6 +220,7 @@ export class RoomScene {
     this.detachGizmo();
     this.clearGroup(this.unitsGroup);
     this.buildUnits();
+    this.reapplyFocus();
     this.refreshOverlay();
     this.refreshGizmo();
     this.requestRender();
@@ -237,7 +240,7 @@ export class RoomScene {
     group.userData.unitId = u.id;
     this.placeUnit(group, u, parent);
     group.visible = !this.hidden.has(u.id);
-    this.buildPanels(u, group);
+    this.buildPanels(u, group, { covered: this.isCovered(u) });
 
     const content = new THREE.Group();
     group.add(content);
@@ -246,6 +249,15 @@ export class RoomScene {
     this.unitGroups.set(u.id, group);
     if (u.shape !== 'drawer' || this.openDrawers.has(u.id)) this.buildContent(u);
     else content.visible = false;
+  }
+
+  /** Un rangement frère est-il posé directement dessus ? (son étiquette ne peut alors pas dépasser du bord) */
+  isCovered(u) {
+    const top = u.pos_y_mm + u.height_mm;
+    return (this.childrenOf.get(u.parent_id) ?? []).some((o) => o.id !== u.id
+      && Math.abs(o.pos_y_mm - top) <= 5
+      && o.pos_x_mm < u.pos_x_mm + u.width_mm && o.pos_x_mm + o.width_mm > u.pos_x_mm
+      && o.pos_z_mm < u.pos_z_mm + u.depth_mm && o.pos_z_mm + o.depth_mm > u.pos_z_mm);
   }
 
   /** Sous-rangements et objets : pour un tiroir, construits à sa première ouverture (économise la mémoire et le rendu). */
@@ -339,7 +351,7 @@ export class RoomScene {
     return this.materials.get(key);
   }
 
-  buildPanels(source, group) {
+  buildPanels(source, group, { covered = false } = {}) {
     const u = this.colorOverrides?.has(source.id) ? { ...source, color: this.colorOverrides.get(source.id) } : source;
     const { width: w, height: h, depth: d } = { width: u.width_mm, height: u.height_mm, depth: u.depth_mm };
     const p = u.panel_mm;
@@ -364,12 +376,33 @@ export class RoomScene {
       group.add(mesh);
     };
     // Étiquette collée sur la face avant. Sans étiquette, le nom s'il a été choisi (pas « Bac 3 » généré)
-    const sticker = () => {
+    const sticker = ({ raised = false } = {}) => {
       const text = u.label || (/^\S+ [\d.]+$/.test(u.name) ? '' : u.name);
       if (!text || w < 25 || h < 12) return;
       const stickerW = Math.min(w * 0.8, 90);
       const stickerH = Math.min(h * 0.32, 16);
-      plane(stickerW, stickerH, w / 2, h - stickerH / 2 - Math.min(h * 0.08, 5), d + 0.3, this.labelMaterial(text, stickerW, stickerH));
+      if (!raised) {
+        plane(stickerW, stickerH, w / 2, h - stickerH / 2 - Math.min(h * 0.08, 5), d + 0.3, this.labelMaterial(text, stickerW, stickerH));
+        return;
+      }
+      // Porte-étiquette incliné sur le bord avant, qui dépasse du bac : lisible d'en haut et de face,
+      // même quand les bacs sont collés les uns aux autres
+      const tagW = Math.min(w * 0.86, 100);
+      const tagH = Math.max(Math.min(h * 0.4, 18), 9);
+      const tilt = 0.75;
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(tagW * S, tagH * S), this.labelMaterial(text, tagW, tagH));
+      mesh.rotation.x = -tilt;
+      // Bord bas posé sur le haut de la paroi avant, le haut penché vers l'intérieur : la face regarde vers l'avant et le haut
+      mesh.position.set((w / 2) * S, (h + (tagH / 2) * Math.cos(tilt) - 1) * S, (d - p / 2 - (tagH / 2) * Math.sin(tilt)) * S);
+      mesh.userData.unitId = u.id;
+      group.add(mesh);
+      // Dos du porte-étiquette, dans la couleur du bac
+      const back = new THREE.Mesh(new THREE.PlaneGeometry(tagW * S, tagH * S), this.material(u.color));
+      back.rotation.x = Math.PI - tilt;
+      back.position.copy(mesh.position);
+      back.position.add(new THREE.Vector3(0, -Math.sin(tilt), -Math.cos(tilt)).multiplyScalar(0.0004));
+      back.userData.unitId = u.id;
+      group.add(back);
     };
 
     switch (u.shape) {
@@ -406,7 +439,7 @@ export class RoomScene {
           return;
         }
         add(p, p, d - p, w - p, h, d);
-        sticker();
+        sticker({ raised: !covered });
         return;
       case 'shelf':
         add(0, 0, 0, w, Math.max(p, 2), d);
@@ -573,6 +606,94 @@ export class RoomScene {
     this.refreshGizmo();
   }
 
+  // ===== Regarder dans un rangement =====
+
+  /**
+   * Isole un rangement pour voir son contenu : la salle, les autres meubles et les parois de ses parents
+   * disparaissent, la caméra plonge dedans. exitFocus() remet tout comme avant, vue comprise.
+   */
+  enterFocus(id) {
+    const u = this.unit(id);
+    if (!u || !this.unitGroups.get(id)) return;
+    if (this.focusId === null || this.focusId === undefined) {
+      this.focusReturn = { position: this.camera.position.clone(), target: this.controls.target.clone() };
+    } else {
+      this.restoreFocusVisibility();
+    }
+    this.focusId = id;
+    this.reveal(id);
+    if (u.shape === 'drawer' && !this.openDrawers.has(id)) this.setDrawerOpen(id, true);
+    this.buildContent(u);
+    this.applyFocus();
+    this.refreshGizmo();
+    this.callbacks.onFocusChange?.(u);
+    // Rangement ouvert par le haut : vue plongeante ; sinon de face, un peu au-dessus
+    if (OPEN_TOP.has(u.shape)) this.lookInto(id);
+    else {
+      const g = this.unitGroups.get(id);
+      const box = this.finalBox(g);
+      const center = box.getCenter(new THREE.Vector3());
+      const front = new THREE.Vector3(0, 0, 1).applyQuaternion(g.getWorldQuaternion(new THREE.Quaternion())).normalize();
+      const direction = front.clone().add(new THREE.Vector3(0, 0.45, 0)).normalize();
+      this.moveCamera(fitPosition(this.camera, boxCorners(box.min, box.max), center, direction, 0.08), center);
+    }
+    this.requestRender();
+  }
+
+  exitFocus() {
+    if (this.focusId === null || this.focusId === undefined) return;
+    this.restoreFocusVisibility();
+    this.focusId = null;
+    this.refreshGizmo();
+    if (this.focusReturn) this.moveCamera(this.focusReturn.position, this.focusReturn.target);
+    this.focusReturn = null;
+    this.callbacks.onFocusChange?.(null);
+    this.requestRender();
+  }
+
+  get focusedId() { return this.focusId ?? null; }
+
+  applyFocus() {
+    const chain = new Set();
+    for (let c = this.unit(this.focusId); c; c = this.unit(c.parent_id)) chain.add(c.id);
+    this.focusHidden = [];
+    const hide = (object) => {
+      if (!object.visible) return;
+      object.visible = false;
+      this.focusHidden.push(object);
+    };
+    hide(this.roomGroup);
+    for (const child of this.unitsGroup.children) if (!chain.has(child.userData.unitId)) hide(child);
+    for (const aid of chain) {
+      if (aid === this.focusId) continue;
+      const g = this.unitGroups.get(aid);
+      if (!g) continue;
+      // Parois et étiquettes du parent ; dans son contenu, seul le chemin vers le rangement reste
+      for (const child of g.children) if (child !== g.userData.content && !child.userData.overlay) hide(child);
+      for (const child of g.userData.content.children) if (!chain.has(child.userData.unitId)) hide(child);
+    }
+  }
+
+  restoreFocusVisibility() {
+    for (const object of this.focusHidden ?? []) object.visible = true;
+    this.focusHidden = [];
+  }
+
+  /** Après une reconstruction (enregistrement, annulation…) : le rangement reste isolé, ou la vue normale revient s'il n'existe plus. */
+  reapplyFocus() {
+    if (this.focusId === null || this.focusId === undefined) return;
+    this.roomGroup.visible = true;
+    this.focusHidden = [];
+    if (!this.unit(this.focusId) || !this.unitGroups.get(this.focusId)) {
+      this.focusId = null;
+      this.focusReturn = null;
+      this.callbacks.onFocusChange?.(null);
+      return;
+    }
+    this.reveal(this.focusId);
+    this.applyFocus();
+  }
+
   // ===== Gizmo : déplacer, pivoter, redimensionner directement dans la vue =====
 
   createGizmo() {
@@ -605,6 +726,8 @@ export class RoomScene {
   gizmoTarget() {
     if (this.draft) return this.draft;
     if (this.previewGroup) return null;
+    // Rangement isolé pour regarder dedans : pas de poignées qui masquent le contenu
+    if (this.focusId !== null && this.focusId !== undefined && this.selectedId === this.focusId) return null;
     const unit = this.unit(this.selectedId);
     const group = this.unitGroups.get(this.selectedId);
     if (!unit || !group || !this.callbacks.canEdit?.(unit)) return null;
@@ -1082,13 +1205,15 @@ export class RoomScene {
   pickAny(event) {
     this.setPointer(event);
     const hits = this.raycaster.intersectObjects([this.unitsGroup, this.roomGroup], true);
-    const result = { unit: null, opening: null, wallIndex: null, point: null, itemName: null };
+    const result = { unit: null, opening: null, wallIndex: null, point: null, itemName: null, item: null };
     for (const hit of hits) {
       const data = hit.object.userData;
       if (!isVisible(hit.object) || hit.object.isCSS2DObject || hit.object.isLine) continue;
       if (data.unitId !== undefined) {
         result.unit = this.unit(data.unitId);
         result.itemName = data.itemName ?? null;
+        // Objet visé (présent ou emprunté) : { unit_id, item_id, name, quantity, unit, borrowed }
+        result.item = data.entry ?? null;
         result.point = hit.point;
         return result;
       }
@@ -1113,15 +1238,15 @@ export class RoomScene {
   handleClick(event) {
     const hit = this.pickAny(event);
     if (hit.opening && this.callbacks.onSelectOpening) return this.callbacks.onSelectOpening(hit.opening.id);
-    return this.callbacks.onSelect?.(hit.unit?.id ?? null);
+    return this.callbacks.onSelect?.(hit.unit?.id ?? null, hit);
   }
 
   handleDoubleClick(event) {
     const hit = this.pick(event);
-    if (!hit) return;
-    // Double-clic sur un tiroir : il s'ouvre et on regarde dedans ; ouvert, il se referme
-    if (hit.shape === 'drawer' && this.isDrawerOpen(hit.id)) this.setDrawerOpen(hit.id, false);
-    else this.focus(hit.id);
+    // Double-clic dans le vide, ou sur le rangement déjà isolé : retour à la salle
+    if (!hit || hit.id === this.focusId) return this.exitFocus();
+    // Double-clic sur un rangement : on l'isole et on regarde dedans (un tiroir s'ouvre)
+    this.enterFocus(hit.id);
   }
 
   handleMenu(point) {
@@ -1132,6 +1257,8 @@ export class RoomScene {
   /** Texte de l'infobulle pour ce qui est sous le pointeur (null : rien à signaler). */
   hoverText(event) {
     const hit = this.pickAny(event);
+    if (hit.item?.borrowed) return `${hit.item.name} : emprunté (${formatQuantity(hit.item.quantity, hit.item.unit)})`;
+    if (hit.item) return `${hit.item.name} (${formatQuantity(hit.item.quantity, hit.item.unit)})`;
     if (hit.itemName) return hit.itemName;
     if (hit.unit) return hit.unit.label ? `${hit.unit.name} (${hit.unit.label})` : hit.unit.name;
     if (hit.opening) return hit.opening.name || { door: 'Porte', window: 'Fenêtre', opening: 'Passage' }[hit.opening.kind];

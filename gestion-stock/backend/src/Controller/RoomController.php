@@ -365,7 +365,7 @@ final class RoomController
             }
             // Objets de chaque rangement, pour les afficher dans la vue 3D
             $stmt = $pdo->prepare(
-                'SELECT s.unit_id, s.item_id, s.quantity, i.name, i.unit, i.visual, i.visual_color, c.name AS category
+                'SELECT s.unit_id, s.item_id, s.quantity, i.name, i.unit, i.visual, i.visual_color, i.is_consumable, c.name AS category
                  FROM stock_levels s
                  JOIN storage_units u ON u.id = s.unit_id
                  JOIN items i ON i.id = s.item_id
@@ -373,7 +373,7 @@ final class RoomController
                  WHERE u.room_id = ? AND s.quantity > 0'
             );
             $stmt->execute([$id]);
-            $payload['contents'] = array_map(static fn (array $r): array => [
+            $row = static fn (array $r): array => [
                 'unit_id' => (int) $r['unit_id'],
                 'item_id' => (int) $r['item_id'],
                 'quantity' => Quantity::out($r['quantity']),
@@ -382,7 +382,23 @@ final class RoomController
                 'visual' => $r['visual'],
                 'visual_color' => $r['visual_color'],
                 'category' => $r['category'],
-            ], $stmt->fetchAll());
+                'is_consumable' => (bool) $r['is_consumable'],
+            ];
+            $payload['contents'] = array_map($row, $stmt->fetchAll());
+            // Emprunts en cours, rattachés à leur rangement d'origine : la vue 3D les montre en gris, à leur place
+            $stmt = $pdo->prepare(
+                'SELECT l.origin_unit_id AS unit_id, l.item_id, SUM(l.quantity - l.quantity_returned) AS quantity,
+                        i.name, i.unit, i.visual, i.visual_color, i.is_consumable, c.name AS category
+                 FROM loans l
+                 JOIN storage_units u ON u.id = l.origin_unit_id
+                 JOIN items i ON i.id = l.item_id
+                 LEFT JOIN categories c ON c.id = i.category_id
+                 WHERE u.room_id = ? AND l.status = ?
+                 GROUP BY l.origin_unit_id, l.item_id, i.name, i.unit, i.visual, i.visual_color, i.is_consumable, c.name
+                 HAVING quantity > 0'
+            );
+            $stmt->execute([$id, 'open']);
+            $payload['borrowed'] = array_map($row, $stmt->fetchAll());
         }
         return $payload;
     }

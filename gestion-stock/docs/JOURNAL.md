@@ -371,3 +371,14 @@ Demande de l'utilisateur : un objet emprunté ne peut être rendu que là où il
 - Testé sur une copie de la base du Pi : stock total identique avant et après, aucun emprunt sans origine, seconde exécution refusée.
 
 **Page de connexion** : panneau de présentation sur grand écran (une recherche et son emplacement), erreurs par champ, bouton pour afficher le mot de passe, alerte majuscules verrouillées, indicateur d'envoi, secousse brève en cas de refus, aide unique pour la fiche perdue.
+
+## Vue 3D : objets empruntés, menu des objets, étiquettes, « regarder dedans » (2026-11-09)
+
+Demande de l'utilisateur.
+
+- **Objets empruntés** : l'API de la salle renvoie `borrowed` (emprunts en cours, par rangement d'origine). La vue 3D les dessine à leur place, en gris translucide ; le panneau « Objets rangés ici » les liste (« 10 pièces empruntées », bouton « Rendre »).
+- **Clic droit sur un objet** dans la vue 3D : fiche, prendre, retour, déplacer, ajouter du stock, historique, depuis ce rangement précis. Sur un objet emprunté : fiche, retour, historique seulement. Un clic gauche sélectionne le rangement et fait clignoter l'objet dans la liste.
+- **Étiquettes** : un bac ou une boîte ouverte porte un porte-étiquette incliné qui dépasse du bord, lisible d'en haut et de face même quand les bacs sont collés ; s'il y a un bac posé dessus, l'étiquette reste sur la face avant.
+- **Regarder dedans** (double-clic, menu, ou depuis le menu d'un objet) : le rangement est isolé (salle, autres meubles et parois des parents masqués), la caméra plonge dedans, un bandeau « Dans … / Sortir » s'affiche ; Échap ou « Sortir » remet la vue d'avant. Le mode survit à un enregistrement.
+
+**Tests** : pile locale avec les données de l'atelier et des emprunts en cours : objets gris dans le bon compartiment, menus d'un objet présent et d'un objet emprunté, fenêtre « Prendre » sur le bon emplacement, isolement d'une armoire puis d'une boîte, sortie. Pas de test automatisé côté serveur pour `borrowed`.

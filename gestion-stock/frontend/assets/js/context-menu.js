@@ -1,7 +1,7 @@
 // Menu contextuel : clic droit, appui long au toucher, touche Menu ou Maj+F10 au clavier.
 // Il ne remplace le menu du navigateur que sur les éléments qui l'activent, jamais dans un champ de saisie
 // ni sur un texte sélectionné. Maj + clic droit laisse toujours le menu natif (copier un lien, inspecter…).
-// items : [{ label, icon, onSelect, danger }] ; { separator: true } pour un trait ; les valeurs fausses sont ignorées.
+// items : [{ label, icon, onSelect, danger }] ; { separator: true } pour un trait ; { heading } pour un titre ; les valeurs fausses sont ignorées.
 // Les actions proposées dépendent des permissions, mais le serveur reste seul juge.
 
 import { h } from './dom.js';
@@ -29,6 +29,8 @@ export function openContextMenu(rawItems, { x, y, label = 'Actions' }) {
   const menu = h('div', { class: 'popover context-menu', role: 'menu', 'aria-label': label },
     cleaned.map((item) => {
       if (item.separator) return h('div', { class: 'menu-separator', role: 'separator' });
+      // Titre non cliquable (ce que vise le menu, une quantité…)
+      if (item.heading) return h('div', { class: 'menu-heading', role: 'presentation' }, item.heading);
       const entry = h('button', {
         class: ['menu-item', item.danger && 'menu-item-danger'], type: 'button', role: 'menuitem', tabindex: '-1',
         onclick: () => { close(true); item.onSelect(); },

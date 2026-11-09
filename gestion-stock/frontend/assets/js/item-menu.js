@@ -22,11 +22,28 @@ async function pickLocation(item, title) {
   ]);
 }
 
+/** Retour d'un emprunt de cet objet (le seul, ou celui choisi) ; résout avec le résultat de la fenêtre de retour. */
+export async function recordReturn(item, session) {
+  const can = (p) => session.can(p);
+  // Un gestionnaire peut enregistrer le retour d'un autre utilisateur
+  const scope = can('stock.adjust') && can('history.view') ? 'all' : 'mine';
+  const { loans } = await api(`/loans?scope=${scope}&status=open&item_id=${item.id}`);
+  if (loans.length === 0) {
+    toast(scope === 'all' ? 'Aucun emprunt en cours pour cet objet.' : "Vous n'avez aucun emprunt en cours pour cet objet.", 'info');
+    return false;
+  }
+  const loan = loans.length === 1 ? loans[0] : await choose(`Quel emprunt de « ${item.name} » ?`, loans, (l) => [
+    h('span', {}, h('strong', {}, l.user.display_name || l.user.email), h('span', { class: 'sub' }, `pris le ${formatDate(l.taken_at, false)}`)),
+    h('strong', { class: 'choice-side' }, formatQuantity(l.remaining, item.unit)),
+  ]);
+  return loan && returnDialog(loan);
+}
+
 /**
  * Entrées du menu d'un objet. item : { id, name, unit, is_consumable, locations } (locations facultatif :
  * rechargé au besoin). location : emplacement précis si le menu a été ouvert depuis un rangement.
  */
-export function itemMenuItems(item, session, { reload = () => {}, location = null, active = true } = {}) {
+export function itemMenuItems(item, session, { reload = () => {}, location = null, active = true, borrowed = false } = {}) {
   const can = (p) => session.can(p);
   // Depuis un rangement, la ligne ne connaît pas tous les emplacements de l'objet
   const withLocations = async () => (item.locations ? item : { ...item, locations: (await api(`/items/${item.id}`)).item.locations });
@@ -35,8 +52,9 @@ export function itemMenuItems(item, session, { reload = () => {}, location = nul
       if (await task()) await reload();
     } catch (error) { showError(error); }
   };
-  const canTake = active && can('stock.take') && (location || !item.locations || item.locations.length > 0);
-  const canMove = active && can('stock.move') && (location || !item.locations || item.locations.length > 0);
+  // Objet emprunté (sa silhouette grise dans la vue 3D) : rien à prendre ni à déplacer à cet endroit
+  const canTake = active && !borrowed && can('stock.take') && (location || !item.locations || item.locations.length > 0);
+  const canMove = active && !borrowed && can('stock.move') && (location || !item.locations || item.locations.length > 0);
 
   return [
     { label: 'Consulter la fiche', icon: 'box', onSelect: () => navigate(`/items/${item.id}`) },
@@ -48,24 +66,14 @@ export function itemMenuItems(item, session, { reload = () => {}, location = nul
       const place = location ?? await pickLocation(full, `Prendre « ${item.name} » depuis…`);
       return place && takeDialog(full, place);
     }) },
-    can('stock.take') && { label: 'Enregistrer un retour…', icon: 'undo', onSelect: run(async () => {
-      // Un gestionnaire peut enregistrer le retour d'un autre utilisateur
-      const scope = can('stock.adjust') && can('history.view') ? 'all' : 'mine';
-      const { loans } = await api(`/loans?scope=${scope}&status=open&item_id=${item.id}`);
-      if (loans.length === 0) return toast(scope === 'all' ? 'Aucun emprunt en cours pour cet objet.' : "Vous n'avez aucun emprunt en cours pour cet objet.", 'info');
-      const loan = loans.length === 1 ? loans[0] : await choose(`Quel emprunt de « ${item.name} » ?`, loans, (l) => [
-        h('span', {}, h('strong', {}, l.user.display_name || l.user.email), h('span', { class: 'sub' }, `pris le ${formatDate(l.taken_at, false)}`)),
-        h('strong', { class: 'choice-side' }, formatQuantity(l.remaining, item.unit)),
-      ]);
-      return loan && returnDialog(loan);
-    }) },
+    can('stock.take') && { label: 'Enregistrer un retour…', icon: 'undo', onSelect: run(() => recordReturn(item, session)) },
     canMove && { label: "Déplacer l'objet…", icon: 'move', onSelect: run(async () => {
       const full = await withLocations();
       if (!location && full.locations.length === 0) return toast('Aucun stock à déplacer pour cet objet.', 'info');
       const place = location ?? await pickLocation(full, `Déplacer « ${item.name} » depuis…`);
       return place && moveDialog(full, place);
     }) },
-    active && can('stock.add') && { label: 'Ajouter du stock…', icon: 'plus', onSelect: run(() => addDialog(item, location)) },
+    active && !borrowed && can('stock.add') && { label: 'Ajouter du stock…', icon: 'plus', onSelect: run(() => addDialog(item, location)) },
     { separator: true },
     can('history.view') && { label: "Consulter l'historique", icon: 'history', onSelect: () => navigate(`/movements?item_id=${item.id}`) },
   ];

@@ -273,7 +273,14 @@ function modelGeometry(visual, color) {
 }
 
 let sharedMaterial = null;
-function material() {
+let ghostMaterial = null;
+/** Objet présent : couleurs du modèle. Objet emprunté : silhouette grise translucide, « sa place est ici ». */
+function material(borrowed = false) {
+  if (borrowed) {
+    ghostMaterial ??= new THREE.MeshStandardMaterial({ color: 0x9aa1ad, roughness: 0.9, metalness: 0, transparent: true, opacity: 0.32, depthWrite: false });
+    ghostMaterial.userData.shared = true;
+    return ghostMaterial;
+  }
   sharedMaterial ??= new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.1 });
   sharedMaterial.userData.shared = true;
   return sharedMaterial;
@@ -422,7 +429,8 @@ export function buildObjects(unitId, inside, entries) {
     const { placements, fit } = placeInCell(entry, visual, size, cell, inside.height, randomFrom(unitId * 7919 + entry.item_id * 104729));
     if (placements.length === 0) return;
 
-    const mesh = new THREE.InstancedMesh(geometry, material(), placements.length);
+    const mesh = new THREE.InstancedMesh(geometry, material(Boolean(entry.borrowed)), placements.length);
+    if (entry.borrowed) mesh.renderOrder = 1; // transparent : dessiné après les objets présents
     const finalScale = scale.clone().multiplyScalar(fit * S);
     placements.forEach((p, i) => {
       position.set(p.x * S, p.y * S, p.z * S);
@@ -436,6 +444,7 @@ export function buildObjects(unitId, inside, entries) {
     mesh.userData.unitId = unitId;
     mesh.userData.itemId = entry.item_id;
     mesh.userData.itemName = entry.name;
+    mesh.userData.entry = entry;
     group.add(mesh);
   });
   return group;
