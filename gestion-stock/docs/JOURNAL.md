@@ -147,7 +147,7 @@ Vérifié dans le navigateur : page de connexion, messages d'erreur, redirection
 - Le mode hors ligne (file d'attente) n'est pas fait : prévu avec la PWA en phase 6. Aucune opération de stock n'est simulée hors ligne.
 - Données réelles constatées : la salle « test » créée par l'utilisateur (conservée).
 
-## Interface : deuxième passe de refonte (2026-11-03)
+## Interface : deuxième passe de refonte (2026-11-05)
 
 Audit écran par écran sur une copie locale complète (Docker, données réalistes), à 1440, 768 et 375 px, en clair et en sombre. Détail, design system et pistes : [DESIGN.md](DESIGN.md).
 
@@ -382,3 +382,12 @@ Demande de l'utilisateur.
 - **Regarder dedans** (double-clic, menu, ou depuis le menu d'un objet) : le rangement est isolé (salle, autres meubles et parois des parents masqués), la caméra plonge dedans, un bandeau « Dans … / Sortir » s'affiche ; Échap ou « Sortir » remet la vue d'avant. Le mode survit à un enregistrement.
 
 **Tests** : pile locale avec les données de l'atelier et des emprunts en cours : objets gris dans le bon compartiment, menus d'un objet présent et d'un objet emprunté, fenêtre « Prendre » sur le bon emplacement, isolement d'une armoire puis d'une boîte, sortie. Pas de test automatisé côté serveur pour `borrowed`.
+
+## Administration, poste partagé, thème, HTTPS et IP fixe (2026-11-09)
+
+- **Pages d'administration** (catégories, types de rangement, utilisateurs, rôles, paramètres) : passe de finition à toutes les tailles, en clair et en sombre ; Paramètres avec aperçu des couleurs et bouton Enregistrer actif seulement s'il y a des changements.
+- **Thème clair / sombre au choix** (`assets/js/theme.js`, chargé avant l'affichage) : sur la page de connexion et dans le menu du compte ; la vue 3D suit.
+- **Poste partagé** (`scripts/poste/`, voir EXPLOITATION.md) : compte `poste` sans droits en ouverture automatique, session labwc dédiée en lecture seule, Chromium en kiosque sur un profil neuf à chaque ouverture, déconnexion après 10 minutes d'inactivité, règles Chromium et Firefox (aucun mot de passe enregistré, seulement `localhost`), mises à jour nocturnes, pare-feu, SSH par clé, services d'accès à distance coupés, polkit et sysctl durcis. Vérifié : session imbriquée sur l'écran du Pi, puis après installation (pare-feu qui ignore les ports fermés, mot de passe SSH refusé, processus du kiosque).
+- **HTTPS** sur l'adresse IP (autorité interne de Caddy, `HTTPS_IP`) : Let's Encrypt est impossible sans nom de domaine. Sans SNI et derrière Docker, Caddy cherchait un certificat pour l'adresse du conteneur : bloc dédié avec `tls internal` et `default_sni`, vérifié en local puis sur le Pi (racine valide, HSTS). Le poste du Pi reste sur `http://localhost`.
+- **IP fixe** : `ip-fixe.sh` tourne détaché de SSH et revient seul en arrière si la passerelle ne répond pas (essai de 10.5.35.176, hors du réseau de la prise : retour automatique). Puis **10.5.35.30**, avec certificat, `APP_URL` et pare-feu mis à jour automatiquement.
+- **Publication** : projet publié dans le dépôt GitHub de la classe, dossier `gestion-stock/`, avec son historique ; ajout du cahier des charges, du journal de bord, du README et de captures d'écran.

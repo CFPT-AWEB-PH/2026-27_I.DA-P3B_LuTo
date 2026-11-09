@@ -182,7 +182,7 @@ Audit sur l'atelier (12 m × 8,10 m, 727 rangements), à 1440, 1100 et 375 px, c
 
 Reste : en 2D, l'étiquette d'une petite salle collée à une autre peut chevaucher sa voisine.
 
-## 5. Audit (deuxième passe, 2026-11-03)
+## 5. Audit (deuxième passe, 2026-11-05)
 
 La première refonte (commit c31bb0b) avait posé un socle solide. Cet audit a été mené sur une copie locale de l'application avec des données réalistes, à 1440 px, 768 px et 375 px, en clair et en sombre.
 
