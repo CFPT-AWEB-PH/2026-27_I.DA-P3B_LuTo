@@ -1,4 +1,9 @@
 {
+	# HTTPS sans nom de domaine (HTTPS_IP, ex. 10.5.35.38) : certificat de l'autorité interne de Caddy
+	# (Let's Encrypt ne délivre rien pour une adresse IP privée). Un navigateur n'envoie pas de SNI vers une IP
+	# et, derrière Docker, Caddy ne voit que l'adresse du conteneur : default_sni désigne le bon certificat.
+	default_sni {$HTTPS_IP:localhost}
+	skip_install_trust
 	# Une connexion lente ne doit pas occuper le serveur indéfiniment
 	servers {
 		timeouts {
@@ -9,8 +14,8 @@
 	}
 }
 
-# ":80" : HTTP local, sans redirection. Nom de domaine : HTTPS automatique et redirection du HTTP.
-{$SITE_ADDRESS::80} {
+# Réglages communs à toutes les adresses du site
+(app) {
 	encode zstd gzip
 
 	header {
@@ -63,5 +68,33 @@
 				request>headers>X-Csrf-Token delete
 			}
 		}
+	}
+}
+
+# ":80" : HTTP, sans redirection (poste du Pi via localhost, développement). Nom de domaine : HTTPS automatique
+# (Let's Encrypt) et redirection du HTTP.
+{$SITE_ADDRESS::80} {
+	import app
+}
+
+# HTTPS sur l'adresse IP du serveur. Sans HTTPS_IP (docker-compose : certificat.invalid), ce bloc ne sert à rien.
+https://{$HTTPS_IP:certificat.invalid} {
+	tls internal
+	import app
+}
+
+# HTTP sur l'adresse IP : seulement le certificat racine à installer sur les appareils (il doit se télécharger
+# sans avertissement) ; tout le reste est redirigé vers HTTPS.
+http://{$HTTPS_IP:certificat.invalid} {
+	handle /certificat.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition "attachment; filename=\"gestion-stock-certificat.crt\""
+		header Cache-Control "no-cache"
+		file_server
+	}
+	handle {
+		redir https://{host}{uri} permanent
 	}
 }
