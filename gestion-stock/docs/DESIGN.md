@@ -139,6 +139,21 @@ Audit mené sur une pile Docker locale avec les données de l'atelier (362 objet
 | Clavier, lecteur d'écran | Focus visible partout (y compris les cases des filtres), chemin complet des étiquettes compactes lu en entier, noms accessibles sur les boutons de ligne (« Prendre Accus 18650 »). |
 | Performance | Animations en `transform`/`opacity` seulement ; cascade limitée aux 8 premiers éléments ; vignettes 3D étalées sur plusieurs images. |
 
+### Passe de finition de l'accueil (2026-11-09)
+
+Audit à 1440, 900 et 375 px, clair et sombre, administrateur et Élève.
+
+| Problème | Solution |
+|---|---|
+| Mobile : « Derniers mouvements » en fiches de 7 lignes étiquetées (~330 px par mouvement) | Même carte compacte de 4 lignes que l'historique (`movements-table`) |
+| Mobile : cartes « À rendre » et « À réapprovisionner » plus larges que l'écran de 17 px (colonne `1fr` et liste en grille à largeur minimale de contenu) | `minmax(0, 1fr)` pour la grille de l'accueil et `.plain-list` |
+| Mobile : emplacement d'un emprunt sur 3 lignes, serré à côté de « Rendre » | Emplacement sous le nom et le bouton, sur toute la largeur ; lié à la vue 3D |
+| Bandeau de chiffres et salles absents pendant le chargement, puis tout le contenu poussé vers le bas | Squelettes de la hauteur exacte du résultat (même nombre de cellules selon les permissions) |
+| Tablette : « À réapprovisionner » et noms d'objets coupés | Libellés plus petits quand le bandeau est étroit (requête de conteneur) ; noms sur deux lignes au lieu d'être coupés |
+| Miniatures de salle vides (contour et porte seulement) | Meubles posés au sol dessinés à l'échelle, d'après `/plan` ; repère de la salle (« B206 ») à côté du nombre de rangements |
+| Pas de nombre sur « À rendre » / « À réapprovisionner » ; au-delà de 5 emprunts, aucun signe qu'il en reste | Compteur à côté du titre ; « Et 2 autres emprunts » lié à la liste |
+| Quantité à rendre noyée dans la phrase | Quantité en gras ; date sur une ligne insécable ; date du jour au-dessus de la salutation |
+
 ## 5. Audit (deuxième passe, 2026-11-03)
 
 La première refonte (commit c31bb0b) avait posé un socle solide. Cet audit a été mené sur une copie locale de l'application avec des données réalistes, à 1440 px, 768 px et 375 px, en clair et en sombre.

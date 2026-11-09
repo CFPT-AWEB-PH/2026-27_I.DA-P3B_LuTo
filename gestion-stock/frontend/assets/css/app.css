@@ -768,7 +768,7 @@ input[type="checkbox"]:focus-visible { outline: 2px solid var(--focus); outline-
 .stepper-btn .icon { width: 18px; height: 18px; transition: transform var(--dur-1) var(--ease-out); }
 
 /* ===== Listes et tableaux ===== */
-.plain-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s1); }
+.plain-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1); }
 .list-row { display: flex; justify-content: space-between; gap: var(--s3); align-items: center; flex-wrap: wrap; padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
 .list-row:last-child { border-bottom: 0; }
 .list-row-main { min-width: 0; flex: 1 1 16rem; display: grid; gap: var(--s0); }
@@ -835,7 +835,8 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 /* ===== Accueil ===== */
 .home-hero { padding: var(--s4) 0 var(--s2); margin-bottom: var(--s6); }
 .home-hero h1 { font-size: var(--text-2xl); margin-bottom: var(--s1-5); }
-.home-hero p { color: var(--ink-3); font-size: var(--text-md); margin-bottom: var(--s5); }
+.home-date { margin: 0 0 var(--s1); color: var(--ink-3); font-size: var(--text-sm); font-weight: var(--fw-medium); }
+.home-lead { color: var(--ink-3); font-size: var(--text-md); margin: 0 0 var(--s5); }
 .home-search { position: relative; max-width: 42rem; }
 .home-search .search-field > .icon { left: 15px; width: 20px; height: 20px; }
 .home-search-input { width: 100%; min-height: 50px; padding-left: 46px; font-size: var(--text-md); border-color: var(--line-strong); border-radius: var(--r-lg); box-shadow: var(--shadow-sm); }
@@ -851,17 +852,31 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 .quick-room:hover { border-color: var(--line-strong); box-shadow: var(--shadow-sm); color: var(--ink); text-decoration: none; }
 .quick-room:active { transform: scale(.99); }
 .quick-room .plan-thumb { width: 44px; height: 44px; flex: none; }
-.quick-room strong { display: block; font-weight: var(--fw-semibold); }
-.quick-room span { font-size: var(--text-sm); color: var(--ink-3); }
-.home-loan { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
+.quick-room-text { flex: 1; min-width: 0; }
+.quick-room strong { display: block; font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-room-text > span { display: block; font-size: var(--text-sm); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-room-skeleton { pointer-events: none; }
+.quick-room-skeleton .plan-thumb { border-radius: var(--r-md); }
+.quick-room-skeleton .quick-room-text { display: grid; gap: var(--s2); }
+.quick-room-skeleton .skeleton-text { width: 70%; }
+.quick-room-skeleton .skeleton-text + .skeleton-text { width: 45%; }
+/* Emprunt : nom et quantité, « Rendre » à droite, emplacement d'origine dessous */
+.home-loan { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "main action" "loc action"; align-items: center; gap: var(--s1-5) var(--s4); padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
 .home-loan:last-child { border-bottom: 0; padding-bottom: 0; }
 .home-loan:first-child { padding-top: 0; }
-.home-loan-main { flex: 1; min-width: 0; display: grid; gap: var(--s1); }
-.home-loan-main > a { font-weight: var(--fw-semibold); color: var(--ink); text-decoration: none; }
+.home-loan-main { grid-area: main; min-width: 0; display: grid; gap: var(--s0); }
+.home-loan-main > a { font-weight: var(--fw-semibold); color: var(--ink); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-loan-main > a:hover { color: var(--primary-ink); }
+.home-loan-meta { font-size: var(--text-sm); color: var(--ink-3); }
+.home-loan-meta .nowrap { white-space: nowrap; }
+.home-loan-meta strong { color: var(--ink-2); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
+.home-loan > .btn { grid-area: action; }
+.home-loan-loc { grid-area: loc; display: flex; min-width: 0; }
+.card-footnote a { font-weight: var(--fw-medium); }
 .low-row { display: flex; align-items: center; gap: var(--s3); min-height: 36px; padding: var(--s1) 0; border-bottom: 1px solid var(--line); }
 .low-row:last-child { border-bottom: 0; }
-.low-row a { flex: 1; min-width: 0; color: var(--ink); text-decoration: none; font-weight: var(--fw-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Le nom passe sur deux lignes plutôt que d'être coupé : la quantité reste lisible à droite */
+.low-row a { flex: 1; min-width: 0; color: var(--ink); text-decoration: none; font-weight: var(--fw-medium); overflow-wrap: anywhere; }
 .low-row a:hover { color: var(--primary-ink); }
 .low-row .dot { background: var(--warning-line); }
 .low-row .dot.is-empty { background: var(--danger); }
@@ -1366,7 +1381,10 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
   .home-hero h1 { font-size: var(--text-xl); }
   .home-hero p { margin-bottom: var(--s4); font-size: var(--text-sm); }
   .home-search-input { min-height: 48px; }
-  .home-grid { grid-template-columns: 1fr; }
+  .home-grid { grid-template-columns: minmax(0, 1fr); }
+  .home-date { font-size: var(--text-xs); }
+  /* Téléphone : l'emplacement prend toute la largeur sous le nom et le bouton, il tient sur une ligne ou deux */
+  .home-loan { grid-template-areas: "main action" "loc loc"; gap: var(--s2) var(--s3); }
 
   .toolbar { display: grid; grid-template-columns: 1fr 1fr; }
   .toolbar > .toolbar-search, .toolbar > input[type="search"] { grid-column: 1 / -1; }
@@ -1538,7 +1556,7 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 
 /* ===== Tableau de bord ===== */
 /* Bandeau de chiffres : une seule surface découpée en cellules, plutôt que cinq cartes de même poids */
-.kpi-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin-bottom: var(--s4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+.kpi-row { container-type: inline-size; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin-bottom: var(--s4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
 .kpi-row:empty { display: none; }
 .kpi { position: relative; display: flex; flex-direction: column; gap: var(--s1); padding: var(--s4) var(--s5); color: var(--ink); text-decoration: none; transition: background-color var(--dur-1); }
 .kpi + .kpi { box-shadow: inset 1px 0 0 var(--line); }
@@ -1548,6 +1566,19 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 .kpi-label { order: -1; display: flex; align-items: center; gap: var(--s1-5); font-size: var(--text-sm); font-weight: var(--fw-medium); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kpi-sub { font-size: var(--text-xs); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kpi-warn .kpi-value { color: var(--warning); }
+/* Bandeau étroit (tablette, ou cinq chiffres à côté du menu) : libellés plus petits plutôt que coupés */
+@media (min-width: 768px) {
+  @container (max-width: 960px) {
+    .kpi { padding: var(--s4); }
+    .kpi-label { font-size: var(--text-xs); }
+  }
+}
+/* Squelette du bandeau : mêmes lignes que les chiffres (libellé, valeur, précision), donc même hauteur */
+.kpi-skeleton { pointer-events: none; }
+.kpi-skeleton .skeleton { display: block; border-radius: var(--r-xs); }
+.skeleton-kpi-label { order: -1; width: 60%; height: 12px; margin: 4px 0; }
+.skeleton-kpi-value { width: 2.2em; height: calc(var(--text-2xl) * var(--lh-tight) - 8px); margin: 4px 0; font-size: var(--text-2xl); }
+.skeleton-kpi-sub { width: 45%; height: 10px; margin: 3px 0; }
 .kpi-warn .kpi-label::before { content: ""; width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--warning-line); }
 .home-activity { overflow: hidden; }
 .home-activity .section-header { padding: var(--s4) var(--s5) var(--s1); }
@@ -1558,7 +1589,10 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
   .kpi-row { grid-auto-columns: minmax(8.5rem, 42%); overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); }
   .kpi-row::-webkit-scrollbar { display: none; }
   .kpi { scroll-snap-align: start; padding: var(--s3) var(--s4); }
+  .home-activity .section-header { padding-inline: var(--s4); }
+  .home-activity .empty-state { padding-inline: var(--s4); }
   .kpi-value { font-size: var(--text-xl); }
+  .skeleton-kpi-value { height: calc(var(--text-xl) * var(--lh-tight) - 8px); font-size: var(--text-xl); }
 }
 
 /* Le lien étiré des cartes impose position: relative à .item-actions * : le menu « ⋯ » reste un calque flottant,
