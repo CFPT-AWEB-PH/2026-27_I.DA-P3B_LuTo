@@ -55,11 +55,25 @@ export async function render(view, session) {
     room.append(...rooms.map((r) => h('option', { value: r.id, selected: String(r.id) === params.get('room_id') }, r.name)));
   } catch (error) { showError(error); }
 
-  const filtered = () => Boolean(search.value.trim() || category.value || room.value || low.checked || archived.checked);
+  const filtersOn = () => Boolean(category.value || room.value || low.checked || archived.checked);
+  const filtered = () => Boolean(search.value.trim() || filtersOn());
+  const clearFilters = () => { category.value = ''; room.value = ''; low.checked = false; archived.checked = false; };
   const reset = () => {
-    search.value = ''; category.value = ''; room.value = ''; low.checked = false; archived.checked = false; page = 1;
+    search.value = '';
+    clearFilters();
+    page = 1;
     load();
     search.focus();
+  };
+  // Une recherche qui ne trouve rien à cause d'un filtre : on propose de garder le texte et de lever les filtres
+  const dropFilters = () => { clearFilters(); page = 1; load(); };
+  const goTo = (target) => { page = target; load(); window.scrollTo({ top: 0 }); };
+
+  /** Pages numérotées : première, dernière, la page courante et ses voisines ; « … » pour les trous. */
+  const pageList = (pages) => {
+    const wanted = new Set([1, pages, page - 1, page, page + 1].filter((n) => n >= 1 && n <= pages));
+    const list = [...wanted].sort((a, b) => a - b);
+    return list.flatMap((n, i) => (i > 0 && n - list[i - 1] > 1 ? ['…', n] : [n]));
   };
 
   let sequence = 0;
@@ -81,22 +95,40 @@ export async function render(view, session) {
     try {
       const data = await api(`/items?${query}`);
       if (current !== sequence) return; // une réponse plus récente est déjà affichée
-      summary.textContent = data.total ? plural(data.total, 'objet') : '';
+      const pages = Math.ceil(data.total / data.per_page);
+      const first = (page - 1) * data.per_page + 1;
+      const last = Math.min(first + data.items.length - 1, data.total);
+      summary.textContent = !data.total || !data.items.length ? ''
+        : pages > 1 ? `${first === last ? first : `${first}–${last}`} sur ${plural(data.total, 'objet')}`
+          : plural(data.total, 'objet');
       clear(results, data.items.length
         ? data.items.map((item) => card(item, !archivedOnly))
         : h('div', { class: 'card' }, filtered()
-          ? emptyState(search.value.trim() ? `Aucun objet ne correspond à « ${search.value.trim()} ». Vérifiez l’orthographe ou essayez une référence.` : 'Aucun objet ne correspond à ces filtres.', {
-            title: 'Aucun résultat', iconName: 'search', action: h('button', { class: 'btn', type: 'button', onclick: reset }, 'Effacer la recherche et les filtres'),
-          })
+          ? emptyState(
+            search.value.trim() && filtersOn() ? `Aucun objet ne correspond à « ${search.value.trim()} » avec les filtres choisis.`
+              : search.value.trim() ? `Aucun objet ne correspond à « ${search.value.trim()} ». Vérifiez l’orthographe ou essayez une référence.`
+                : 'Aucun objet ne correspond à ces filtres.', {
+              title: 'Aucun résultat', iconName: 'search',
+              action: search.value.trim() && filtersOn()
+                ? h('button', { class: 'btn', type: 'button', onclick: dropFilters }, 'Chercher sans les filtres')
+                : h('button', { class: 'btn', type: 'button', onclick: reset }, search.value.trim() ? 'Effacer la recherche' : 'Effacer les filtres'),
+            })
           : emptyState(session.can('items.edit') ? 'Ajoutez un premier objet pour commencer l’inventaire.' : 'Le catalogue est vide pour le moment.', {
             title: 'Aucun objet', iconName: 'box',
             action: session.can('items.edit') && h('button', { class: 'btn btn-primary', type: 'button', onclick: create }, icon('plus'), 'Nouvel objet'),
           })));
-      const pages = Math.ceil(data.total / data.per_page);
       clear(pager, pages > 1 && [
-        h('button', { class: 'btn btn-small', type: 'button', disabled: page <= 1, onclick: () => { page--; load(); window.scrollTo({ top: 0 }); } }, icon('chevronLeft'), 'Précédente'),
-        h('span', { class: 'num' }, `Page ${page} sur ${pages}`),
-        h('button', { class: 'btn btn-small', type: 'button', disabled: page >= pages, onclick: () => { page++; load(); window.scrollTo({ top: 0 }); } }, 'Suivante', icon('chevronRight')),
+        h('button', { class: 'btn btn-small pager-step', type: 'button', disabled: page <= 1, 'aria-label': 'Page précédente', onclick: () => goTo(page - 1) },
+          icon('chevronLeft'), h('span', { class: 'pager-step-label' }, 'Précédente')),
+        h('span', { class: 'pager-pages' }, pageList(pages).map((n) => (n === '…'
+          ? h('span', { class: 'pager-gap', 'aria-hidden': 'true' }, '…')
+          : h('button', {
+            class: ['btn btn-small pager-page', n === page && 'is-current'], type: 'button', 'aria-label': `Page ${n}`,
+            'aria-current': n === page ? 'page' : null, onclick: () => { if (n !== page) goTo(n); },
+          }, String(n))))),
+        h('span', { class: 'pager-status num' }, `Page ${page} sur ${pages}`),
+        h('button', { class: 'btn btn-small pager-step', type: 'button', disabled: page >= pages, 'aria-label': 'Page suivante', onclick: () => goTo(page + 1) },
+          h('span', { class: 'pager-step-label' }, 'Suivante'), icon('chevronRight')),
       ]);
     } catch (error) {
       if (current === sequence) clear(results, errorState(error, load));
@@ -129,7 +161,8 @@ export async function render(view, session) {
         item.locations.length > 0 && h('ul', { class: 'location-list', 'aria-label': 'Emplacements' },
           item.locations.slice(0, 2).map((l) => h('li', {},
             locationLabel(l.path, { href: `/rooms/${l.room_id}?unit=${l.unit_id}`, quantity: item.locations.length > 1 ? formatQuantity(l.quantity) : null, compact: true }))),
-          item.locations.length > 2 && h('li', { class: 'location-more' }, `+ ${plural(item.locations.length - 2, 'autre emplacement', 'autres emplacements')}`))),
+          item.locations.length > 2 && h('li', { class: 'location-more' }, `+ ${plural(item.locations.length - 2, 'autre emplacement', 'autres emplacements')}`)),
+        item.locations.length === 0 && h('p', { class: 'item-nowhere' }, empty ? 'Plus en stock nulle part' : 'Aucun emplacement')),
       h('div', { class: 'item-side' },
         h('p', { class: 'item-qty' },
           h('span', { class: 'qty-num' }, formatQuantity(item.total_quantity)),

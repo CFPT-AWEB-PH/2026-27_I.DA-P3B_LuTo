@@ -916,6 +916,7 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 .location-list > li { min-width: 0; max-width: 100%; display: flex; }
 .location-list .loc, .item-actions, .item-actions * { position: relative; z-index: 1; } /* au-dessus du lien étiré */
 .location-more { font-size: var(--text-sm); color: var(--ink-3); align-self: center; }
+.item-nowhere { margin: var(--s1) 0 0; font-size: var(--text-sm); color: var(--ink-3); }
 .item-side { display: grid; justify-items: end; gap: var(--s2); }
 .item-qty { margin: 0; display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
 .qty-num { font-family: var(--font-display); font-size: var(--text-xl); font-weight: var(--fw-bold); line-height: 1; letter-spacing: var(--tracking-display); font-variant-numeric: tabular-nums; }
@@ -925,6 +926,11 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 .item-actions { display: flex; gap: var(--s1-5); justify-content: flex-end; }
 .pager { display: flex; gap: var(--s3); align-items: center; justify-content: center; margin: var(--s6) 0 0; flex-wrap: wrap; font-size: var(--text-sm); color: var(--ink-2); }
 .pager:empty { display: none; }
+.pager-pages { display: flex; align-items: center; gap: var(--s1); }
+.pager-page { min-width: 36px; justify-content: center; padding-inline: var(--s2); font-variant-numeric: tabular-nums; }
+.pager-page.is-current { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-soft-ink); cursor: default; }
+.pager-gap { min-width: 20px; text-align: center; color: var(--ink-3); }
+.pager-status { display: none; }
 .filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0 var(--s3); margin-bottom: var(--s2); }
 .filters-period { display: contents; }
 .filters-reset { margin: calc(-1 * var(--s2)) 0 var(--s4) calc(-1 * var(--s2)); }
@@ -1525,6 +1531,26 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 @media (min-width: 768px) {
   .toolbar > select, .filter-panel > select { flex: 0 1 12rem; min-width: 8rem; }
   .toolbar-search { flex: 1 1 14rem; }
+  /* Catalogue : la recherche est l'élément dominant, sur sa propre ligne ; les filtres dessous */
+  .toolbar-filters > .toolbar-search { flex-basis: 100%; }
+  .toolbar-filters .page-search-input { min-height: 44px; font-size: var(--text-md); }
+  .toolbar-filters > .toolbar-search > .icon { left: 13px; width: 18px; height: 18px; }
+  .toolbar-filters .page-search-input { padding-left: 40px; }
+}
+@media (max-width: 767px) {
+  /* Carte d'objet au téléphone : l'emplacement passe sous la vignette, sur toute la largeur (une ligne au lieu de deux) */
+  .item-card { row-gap: var(--s1-5); align-items: start; }
+  .item-card > .item-main { display: contents; }
+  .item-card > .item-thumb { grid-row: span 2; }
+  .item-card .item-name { align-self: end; }
+  .item-card .location-list, .item-card .item-nowhere { grid-column: 1 / -1; margin: 0; }
+  .item-card .loc-compact { flex-wrap: nowrap; }
+  .item-card .loc-compact .loc-part:not(.loc-exact) { max-width: none; min-width: 2.5em; }
+  .item-card .item-side { margin-top: var(--s1); }
+  /* Pages : seulement « précédente / suivante » et la position, assez gros pour le pouce */
+  .pager-pages, .pager-step-label { display: none; }
+  .pager-status { display: inline; }
+  .pager-step { min-width: var(--tap); min-height: var(--tap); justify-content: center; }
 }
 
 /* ===== Préférences d'affichage du système ===== */

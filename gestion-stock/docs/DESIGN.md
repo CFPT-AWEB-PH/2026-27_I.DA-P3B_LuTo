@@ -154,6 +154,19 @@ Audit à 1440, 900 et 375 px, clair et sombre, administrateur et Élève.
 | Pas de nombre sur « À rendre » / « À réapprovisionner » ; au-delà de 5 emprunts, aucun signe qu'il en reste | Compteur à côté du titre ; « Et 2 autres emprunts » lié à la liste |
 | Quantité à rendre noyée dans la phrase | Quantité en gras ; date sur une ligne insécable ; date du jour au-dessus de la salutation |
 
+### Passe de finition du catalogue (2026-11-09)
+
+Audit avec les 374 objets de l'atelier, à 1440, 900 et 375 px, clair et sombre, administrateur et Élève.
+
+| Problème | Solution |
+|---|---|
+| Recherche de 285 px, plus étroite que les trois listes déroulantes, alors qu'elle est l'élément dominant de l'écran | Recherche seule sur sa ligne (44 px de haut), filtres dessous ; inchangé sur mobile (recherche + bouton « Filtres ») |
+| 15 pages parcourables seulement une à une | Pages numérotées (première, dernière, voisines, « … ») ; sur mobile, flèches de 44 px et « Page 7 sur 15 » |
+| « 374 objets » quelle que soit la page | « 151–175 sur 374 objets » |
+| Mobile : emplacement sur deux lignes, coincé à droite de la vignette (« › AAA » seul sur sa ligne) | L'emplacement passe sous la vignette, sur toute la largeur, en une ligne ; environ 450 px de moins par page |
+| « Aucun objet ne correspond à « résistance » » alors que c'est le filtre « Stock bas » qui vide la liste | Message qui le dit et bouton « Chercher sans les filtres » qui garde le texte |
+| Objet épuisé : ligne vide sous la référence | « Plus en stock nulle part » |
+
 ## 5. Audit (deuxième passe, 2026-11-03)
 
 La première refonte (commit c31bb0b) avait posé un socle solide. Cet audit a été mené sur une copie locale de l'application avec des données réalistes, à 1440 px, 768 px et 375 px, en clair et en sombre.
