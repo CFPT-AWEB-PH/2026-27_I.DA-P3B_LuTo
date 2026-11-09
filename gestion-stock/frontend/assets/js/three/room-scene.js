@@ -64,8 +64,11 @@ export class RoomScene {
     container.append(this.labelRenderer.domElement);
 
     this.scene = new THREE.Scene();
-    const background = getComputedStyle(container).getPropertyValue('--scene-bg').trim() || '#dde2ea';
-    this.scene.background = new THREE.Color(background);
+    const readBackground = () => getComputedStyle(container).getPropertyValue('--scene-bg').trim() || '#dde2ea';
+    this.scene.background = new THREE.Color(readBackground());
+    // Thème clair/sombre changé pendant que la scène est ouverte : le fond suit
+    this.themeObserver = new MutationObserver(() => { this.scene.background.set(readBackground()); this.requestRender(); });
+    this.themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.01, 500);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -1329,6 +1332,7 @@ export class RoomScene {
   }
 
   dispose() {
+    this.themeObserver?.disconnect();
     this.disposed = true;
     this.resizeObserver.disconnect();
     this.detachGizmo();

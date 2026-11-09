@@ -3,7 +3,7 @@
 
 import { api } from '../api.js';
 import { clear, h } from '../dom.js';
-import { locationLabel } from '../ui.js';
+import { locationLabel, themeSwitch } from '../ui.js';
 import { icon } from '../icons.js';
 import { appName } from '../app.js';
 
@@ -156,7 +156,8 @@ export async function render(container) {
   card.addEventListener('animationend', () => card.classList.remove('is-shaking'));
 
   // Formulaire d'abord dans le document (lu et atteint en premier) ; le panneau s'affiche à sa gauche sur grand écran
-  container.append(h('main', { class: 'login-shell' }, card, showcase()),
+  container.append(h('div', { class: 'login-theme' }, themeSwitch()),
+    h('main', { class: 'login-shell' }, card, showcase()),
     h('p', { class: 'login-footer' }, 'Accès réservé aux élèves et au personnel de l’établissement.'));
 
   let config;

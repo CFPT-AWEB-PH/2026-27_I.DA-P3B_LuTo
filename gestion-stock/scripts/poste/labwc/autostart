@@ -1,0 +1,3 @@
+# Poste verrouillé : fond d'écran et application, sans barre des tâches, menu ni bureau.
+swaybg -i /usr/local/share/gestion-stock/fond-ecran.png -m fill >/dev/null 2>&1 &
+/usr/local/bin/gestion-stock-kiosque >/dev/null 2>&1 &

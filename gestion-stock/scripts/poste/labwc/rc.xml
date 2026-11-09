@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!-- Poste verrouillé : aucun raccourci (terminal, menu, lanceur, Alt+Tab...) ni menu du bureau. -->
+<labwc_config>
+  <core>
+    <decoration>server</decoration>
+  </core>
+  <!-- Des raccourcis définis ici remplacent tous ceux par défaut : on ne garde que le volume -->
+  <keyboard>
+    <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+" /></keybind>
+    <keybind key="XF86AudioLowerVolume"><action name="Execute" command="wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-" /></keybind>
+    <keybind key="XF86AudioMute"><action name="Execute" command="wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle" /></keybind>
+  </keyboard>
+  <mouse>
+    <default />
+    <!-- Clic sur le fond : rien (pas de menu) -->
+    <context name="Root">
+      <mousebind button="Left" action="Press"><action name="None" /></mousebind>
+      <mousebind button="Right" action="Press"><action name="None" /></mousebind>
+      <mousebind button="Middle" action="Press"><action name="None" /></mousebind>
+    </context>
+  </mouse>
+</labwc_config>

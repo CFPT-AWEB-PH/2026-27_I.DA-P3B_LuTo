@@ -4,7 +4,7 @@
 import { api, ApiError, onUnauthorized, setCsrfToken } from './api.js';
 import { append, clear, h } from './dom.js';
 import { icon } from './icons.js';
-import { emptyState, menuButton, showError } from './ui.js';
+import { emptyState, menuButton, showError, themeSwitch } from './ui.js';
 import * as homePage from './pages/home.js';
 import * as loginPage from './pages/login.js';
 import * as usersPage from './pages/users.js';
@@ -187,7 +187,8 @@ function userMenu(user) {
     header: h('div', { class: 'popover-header' },
       h('strong', {}, user.display_name || user.email),
       user.display_name && user.email && h('span', {}, user.email),
-      h('div', {}, h('span', { class: 'badge badge-accent' }, user.role.name))),
+      h('div', {}, h('span', { class: 'badge badge-accent' }, user.role.name)),
+      h('div', { class: 'popover-theme' }, h('span', { class: 'popover-theme-label' }, 'Apparence'), themeSwitch({ compact: true }))),
     items: [
       canInstall() && { label: "Installer l'application", icon: 'take', onSelect: promptInstall },
       { label: 'Se déconnecter', icon: 'logOut', danger: true, onSelect: logout },

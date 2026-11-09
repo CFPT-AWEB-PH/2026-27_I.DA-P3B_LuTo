@@ -344,3 +344,39 @@ export function stepper(input, step = 1) {
 export function plural(count, singular, pluralForm = `${singular}s`) {
   return `${Number(count).toLocaleString('fr-CH')} ${Math.abs(count) >= 2 ? pluralForm : singular}`;
 }
+
+const THEMES = [['auto', 'Auto', 'monitor', 'Comme le système'], ['light', 'Clair', 'sun', 'Thème clair'], ['dark', 'Sombre', 'moon', 'Thème sombre']];
+
+/** Choix du thème (Auto, Clair, Sombre) : groupe de boutons radio, flèches gauche/droite pour changer. */
+export function themeSwitch({ compact = false } = {}) {
+  const theme = window.appTheme;
+  if (!theme) return null;
+  const buttons = THEMES.map(([value, label, iconName, title]) => h('button', {
+    class: 'theme-option', type: 'button', role: 'radio', 'data-value': value, title,
+    'aria-label': compact ? title : null,
+    onclick: () => theme.set(value),
+  }, icon(iconName), !compact && h('span', {}, label)));
+  const group = h('div', { class: ['theme-switch', compact && 'theme-switch-compact'], role: 'radiogroup', 'aria-label': 'Apparence' }, buttons);
+  const sync = () => {
+    const current = theme.get();
+    for (const b of buttons) {
+      const on = b.dataset.value === current;
+      b.setAttribute('aria-checked', String(on));
+      b.tabIndex = on ? 0 : -1;
+    }
+  };
+  group.addEventListener('keydown', (event) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const i = buttons.findIndex((b) => b.dataset.value === theme.get());
+    const next = buttons[(i + step + buttons.length) % buttons.length];
+    theme.set(next.dataset.value);
+    next.focus();
+  });
+  // Se désabonne quand le sélecteur a quitté la page (changement de vue, déconnexion)
+  const off = theme.onChange(() => (group.isConnected ? sync() : off()));
+  sync();
+  return group;
+}
