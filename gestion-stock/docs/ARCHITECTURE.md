@@ -116,7 +116,7 @@ Options (décision en attente) :
 |---|---|---|
 | Architecture CPU | Vérifiée : aarch64 / arm64, donc images officielles PHP, MariaDB et Caddy disponibles | Aucune |
 | 2 Go de RAM, dont environ 350 Mo pris par le bureau graphique | Marge limitée | `innodb_buffer_pool_size=256M`, PHP-FPM `ondemand` ; désactiver le bureau graphique (`multi-user.target`) si vous êtes d'accord |
-| IP obtenue par DHCP (**déjà changée** : 10.5.35.39 puis 10.5.35.38 le 2026-11-05) | Site et liens de connexion inaccessibles, et plus tard DNS et OAuth cassés | Réservation DHCP auprès de l'administrateur réseau ou IP fixe. En attendant : `scripts/deploy.sh` et `APP_URL` à ajuster. Identifier le Pi par ses clés SSH (ssh refuse une autre machine) et **pas par `cuto.local`**, nom porté aussi par un autre Raspberry Pi du réseau |
+| IP obtenue par DHCP (**déjà changée** : 10.5.35.39 puis 10.5.35.38 le 2026-11-05) | Site et liens de connexion inaccessibles, et plus tard DNS et OAuth cassés | **IP fixe 10.5.35.30 depuis le 2026-11-09** (`scripts/poste/ip-fixe.sh`) ; reste à la faire réserver par l'administrateur réseau. Identifier le Pi par ses clés SSH (ssh refuse une autre machine) et **pas par `cuto.local`**, nom porté aussi par un autre Raspberry Pi du réseau |
 | `sudo` demande un mot de passe | Je ne peux pas installer Docker moi-même | Installation de Docker lancée par vous, puis `cuto` ajouté au groupe `docker` |
 | Carte SD (usure, corruption) | Perte de données | Sauvegardes quotidiennes, copie hors du Pi conseillée, SSD USB recommandé |
 | HTTPS et domaine non disponibles | Ni PWA ni Google | Voir §6 |
