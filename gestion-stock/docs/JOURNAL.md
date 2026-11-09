@@ -357,3 +357,17 @@ Demande de l'utilisateur : un objet emprunté ne peut être rendu que là où il
 - Serveur (`StockService::giveBack`) : un autre emplacement est refusé (422), pour tous les rôles. Pour ranger un objet ailleurs, on le rend, puis on le déplace (`stock.move`).
 - Fenêtre de retour : l'emplacement d'origine est affiché, sans choix. Un choix n'apparaît que si le rangement d'origine a été supprimé.
 - Retours déjà enregistrés au mauvais endroit : non modifiés (ex. 3 Sense HAT dans « Visserie M2 à M5 », le 2026-11-05).
+
+## Refonte « Établi », atelier d'après le plan relevé, page de connexion (2026-11-09)
+
+**Refonte de l'interface** (commit cf54a2f) : voir `docs/DESIGN.md` §4. Déployée sur le Pi.
+
+**Atelier réaménagé d'après le plan dessiné** (`backend/bin/amenager-atelier.php`, une seule exécution) :
+- Salle de 8,10 m × 4,50 m, hauteur 3,20 m (murs opposés égaux, à la demande de l'utilisateur). La porte de référence est sur le mur de droite du plan, d'où un repère tourné d'un quart de tour par rapport au dessin.
+- Mur du haut du plan : 2,30 m libres, les 4 armoires à tiroirs (contenu, stock et historique conservés, profondeur ramenée de 75 à 70 cm avec tout leur contenu), la porte du couloir (1 m), 80 cm.
+- Mur du bas : grandes armoires A à F (1 m × 80 cm × 1,77 m, portes bleues). Mur de droite : grandes armoires G à J. Chaque grande armoire : 5 étagères et 29 boîtes vides, disposées comme sur la photo (étiquettes « A1.2 » = armoire, étagère, boîte).
+- **Écart au dessin** : le mur de droite ne peut pas recevoir la porte (1 m) et 4 armoires de 1 m sur 4,50 m. Les 4 armoires y occupent les 3,23 m mesurés, donc 80 cm de façade chacune ; la porte est à 15 cm du coin. À corriger dans l'éditeur 3D si la réalité diffère.
+- Retirés : les deux établis et la copie « Armoire 2 : composants et connectique 2 », vides. Le rayonnage n'est pas sur le plan : son stock passe dans des boîtes de la grande armoire A (mêmes noms) par des déplacements journalisés ; les emprunts en cours qui en venaient y sont rattachés ; puis il est retiré. Le script s'arrête sans rien modifier si un meuble à retirer contient du stock.
+- Testé sur une copie de la base du Pi : stock total identique avant et après, aucun emprunt sans origine, seconde exécution refusée.
+
+**Page de connexion** : panneau de présentation sur grand écran (une recherche et son emplacement), erreurs par champ, bouton pour afficher le mot de passe, alerte majuscules verrouillées, indicateur d'envoi, secousse brève en cas de refus, aide unique pour la fiche perdue.
