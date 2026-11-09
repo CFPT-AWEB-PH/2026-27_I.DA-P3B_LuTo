@@ -9,6 +9,16 @@ import { formatQuantity } from './stock-dialogs.js';
 
 const collapse = () => document.body.classList.remove('search-open');
 
+/** Met en évidence le texte saisi dans un nom (nœuds texte uniquement, jamais de HTML). */
+function markMatch(text, query) {
+  const fold = (value) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  // La décomposition NFD peut allonger la chaîne : on ne surligne que si les longueurs correspondent
+  const haystack = fold(text);
+  const index = haystack.length === text.length ? haystack.indexOf(fold(query)) : -1;
+  if (index < 0 || !query) return text;
+  return [text.slice(0, index), h('mark', { class: 'hl' }, text.slice(index, index + query.length)), text.slice(index + query.length)];
+}
+
 export function searchBox(navigate, { id = 'global', variant = 'bar', placeholder = 'Rechercher un objet, une référence…' } = {}) {
   const bar = variant === 'bar';
   const listId = `${id}-suggestions`;
@@ -70,7 +80,7 @@ export function searchBox(navigate, { id = 'global', variant = 'bar', placeholde
             role: 'option', id: `${id}-opt-${i}`, 'aria-selected': 'false',
             onmousedown: (e) => { e.preventDefault(); open(`/items/${s.id}`); },
           },
-            h('div', { class: 'suggestion-name' }, s.name, h('span', { class: 'suggestion-qty' }, formatQuantity(s.total_quantity, s.unit))),
+            h('div', { class: 'suggestion-name' }, h('span', {}, markMatch(s.name, q)), h('span', { class: 'suggestion-qty' }, formatQuantity(s.total_quantity, s.unit))),
             h('div', { class: 'suggestion-meta' }, [s.reference, s.location].filter(Boolean).join('  ·  ')))), all]
           : [h('li', { class: 'suggestion-empty', role: 'option', 'aria-disabled': 'true' }, `Aucun objet ne correspond à « ${q} ».`), all]);
       } catch {
@@ -107,7 +117,8 @@ document.addEventListener('keydown', (event) => {
   const typing = event.target.closest?.('input, textarea, select, [contenteditable]');
   if (!((event.key === '/' && !typing) || (event.key?.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey)))) return;
   if (document.querySelector('dialog[open]')) return;
-  const target = document.querySelector('.home-search-input') ?? document.querySelector('.global-search-input');
+  // Le champ de la page s'il y en a un (accueil, catalogue), sinon celui de la barre supérieure
+  const target = document.querySelector('.home-search-input, .page-search-input') ?? document.querySelector('.global-search-input');
   if (!target) return;
   event.preventDefault();
   if (target.classList.contains('global-search-input')) document.body.classList.add('search-open');

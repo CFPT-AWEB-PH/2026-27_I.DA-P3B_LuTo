@@ -20,10 +20,10 @@ export function movementRow(m, withItem = true) {
     : h('span', { class: ['qty-delta', out && 'qty-minus', ['return', 'add'].includes(m.type) && 'qty-plus'] },
       `${out ? '−' : m.type === 'move' ? '' : '+'}${formatQuantity(m.quantity, unit)}`);
   const place = m.type === 'move'
-    ? h('span', { class: 'movement-places' }, locationLabel(m.from?.path ?? '?'), h('span', { class: 'move-arrow', 'aria-label': 'vers' }, '→'), locationLabel(m.to?.path ?? '?'))
-    : ((m.from ?? m.to)?.path ? locationLabel((m.from ?? m.to).path) : '–');
+    ? h('span', { class: 'movement-places' }, locationLabel(m.from?.path ?? '?', { compact: true }), h('span', { class: 'move-arrow', 'aria-label': 'vers' }, '→'), locationLabel(m.to?.path ?? '?', { compact: true }))
+    : ((m.from ?? m.to)?.path ? locationLabel((m.from ?? m.to).path, { compact: true }) : '–');
   return h('tr', {},
-    h('td', { 'data-label': 'Date', class: 'num' }, formatDate(m.created_at)),
+    h('td', { 'data-label': 'Date', class: 'num cell-date' }, ...dateParts(m.created_at)),
     withItem && h('td', { 'data-label': 'Objet' }, h('a', { href: `/items/${m.item.id}` }, m.item.name), h('span', { class: 'sub' }, m.item.reference)),
     h('td', { 'data-label': 'Mouvement' }, h('span', { class: ['badge', `movement-${m.type}`] }, movementLabel(m.type)), m.comment && h('span', { class: 'sub' }, m.comment)),
     h('td', { 'data-label': 'Quantité' }, qty),
@@ -52,7 +52,7 @@ export async function render(view) {
   let page = 1;
 
   append(view, 
-    pageHeader({ title: 'Historique', description: 'Qui a pris, rendu, ajouté, corrigé ou déplacé quoi, quand, et en quelle quantité.' }),
+    pageHeader({ title: 'Historique', description: 'Chaque prise, retour, ajout, correction et déplacement : qui, quoi, quand.' }),
     itemId && h('p', { class: 'filter-note' }, h('span', { class: 'badge badge-info' }, 'Filtré sur un objet'), h('a', { href: '/movements', class: 'small' }, 'Voir tout l’historique')),
     toggle.element,
     h('div', { class: 'filters', id: 'movement-filters' }, field('Type', type), field('Personne', user), field('Salle', room),
@@ -97,4 +97,10 @@ export async function render(view) {
     user.append(...users.users.map((u) => h('option', { value: u.id }, u.display_name || u.email)));
   } catch (error) { showError(error); }
   load();
+}
+
+/** Date puis heure en dessous : la colonne reste étroite et se lit d'un coup d'œil. */
+function dateParts(value) {
+  const [day, ...time] = formatDate(value).split(/,?\s+/);
+  return [day, time.length > 0 && h('span', { class: 'sub' }, time.join(' '))];
 }

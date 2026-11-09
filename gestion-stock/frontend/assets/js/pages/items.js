@@ -11,7 +11,7 @@ import { itemMenuItems } from '../item-menu.js';
 
 export async function render(view, session) {
   const params = new URLSearchParams(location.search);
-  const search = h('input', { type: 'search', placeholder: 'Nom, référence, salle, tiroir, étiquette…', value: params.get('q') ?? '', 'aria-label': 'Rechercher un objet', enterkeyhint: 'search' });
+  const search = h('input', { type: 'search', class: 'page-search-input', placeholder: 'Nom, référence, tiroir…', value: params.get('q') ?? '', 'aria-label': 'Rechercher un objet', enterkeyhint: 'search' });
   const category = h('select', { 'aria-label': 'Catégorie' }, h('option', { value: '' }, 'Toutes les catégories'));
   const room = h('select', { 'aria-label': 'Salle' }, h('option', { value: '' }, 'Toutes les salles'));
   const sort = h('select', { 'aria-label': 'Trier par' },
@@ -36,7 +36,7 @@ export async function render(view, session) {
   append(view, 
     pageHeader({
       title: 'Objets',
-      description: 'Cherchez par nom, référence, catégorie ou emplacement : salle, armoire, tiroir, étiquette.',
+      description: 'Tout le matériel, avec l’emplacement exact de chaque objet.',
       actions: session.can('items.edit') && h('button', { class: 'btn btn-primary', type: 'button', onclick: create }, icon('plus'), 'Nouvel objet'),
     }),
     h('div', { class: 'toolbar toolbar-filters' },
@@ -128,7 +128,7 @@ export async function render(view, session) {
           !active && h('span', { class: 'badge' }, 'Archivé')),
         item.locations.length > 0 && h('ul', { class: 'location-list', 'aria-label': 'Emplacements' },
           item.locations.slice(0, 2).map((l) => h('li', {},
-            locationLabel(l.path, { href: `/rooms/${l.room_id}?unit=${l.unit_id}`, quantity: item.locations.length > 1 ? formatQuantity(l.quantity) : null }))),
+            locationLabel(l.path, { href: `/rooms/${l.room_id}?unit=${l.unit_id}`, quantity: item.locations.length > 1 ? formatQuantity(l.quantity) : null, compact: true }))),
           item.locations.length > 2 && h('li', { class: 'location-more' }, `+ ${plural(item.locations.length - 2, 'autre emplacement', 'autres emplacements')}`))),
       h('div', { class: 'item-side' },
         h('p', { class: 'item-qty' },
@@ -137,7 +137,7 @@ export async function render(view, session) {
           h('span', { class: 'sr-only' }, 'en stock')),
         h('div', { class: 'item-actions' },
           main && session.can('stock.take') && active && h('button', {
-            class: 'btn btn-small btn-primary', type: 'button', 'aria-label': `Prendre ${item.name}`,
+            class: 'btn btn-small btn-tinted', type: 'button', 'aria-label': `Prendre ${item.name}`,
             onclick: async () => { if (await takeDialog(item, main)) load(); },
           }, icon('take'), 'Prendre'),
           // Alternative visible au clic droit et à l'appui long
@@ -149,7 +149,7 @@ export async function render(view, session) {
 }
 
 /** Sans photo : aperçu du modèle 3D de l'objet. L'icône reste affichée pendant le rendu, ou si WebGL manque. */
-function modelThumb(item) {
+export function modelThumb(item) {
   const thumb = h('div', { class: 'item-thumb item-thumb-empty', 'aria-hidden': 'true' }, icon('box'));
   import('../three/item-thumb.js')
     .then(({ itemThumbUrl }) => itemThumbUrl(item))

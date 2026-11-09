@@ -263,9 +263,12 @@ export function checkbox(input, label, hint = null) {
     h('span', { class: 'checkbox-text' }, label, hint && h('span', { class: 'checkbox-hint' }, hint)));
 }
 
-/** État vide : une phrase qui dit quoi faire, et l'action pour le faire quand elle existe. */
-export function emptyState(message, { title = null, iconName = 'box', action = null } = {}) {
-  return h('div', { class: 'empty-state' },
+/**
+ * État vide : une phrase qui dit quoi faire, et l'action pour le faire quand elle existe.
+ * compact : une ligne (dans une carte de l'accueil) ; tone 'success' : « tout va bien » plutôt que « rien ».
+ */
+export function emptyState(message, { title = null, iconName = 'box', action = null, compact = false, tone = null } = {}) {
+  return h('div', { class: ['empty-state', compact && 'empty-state-compact', tone && `empty-state-${tone}`] },
     h('span', { class: 'empty-icon' }, icon(iconName)),
     title && h('p', { class: 'empty-title' }, title),
     h('p', { class: 'empty-text' }, message),
@@ -302,8 +305,9 @@ export function pageHeader({ title, description = null, actions = null, back = n
  * Étiquette d'emplacement « Salle › Armoire › Tiroir » : la salle en tête, l'emplacement exact
  * en dernier et en gras. Avec href, l'étiquette ouvre la salle en 3D sur ce rangement.
  */
-export function locationLabel(path, { href = null, quantity = null } = {}) {
-  const parts = String(path ?? '').split(' › ').filter(Boolean);
+export function locationLabel(path, { href = null, quantity = null, compact = false } = {}) {
+  const full = String(path ?? '');
+  const parts = full.split(' › ').filter(Boolean);
   const room = parts.shift();
   const content = [
     h('span', { class: 'loc-room' }, room ?? '–'),
@@ -312,9 +316,11 @@ export function locationLabel(path, { href = null, quantity = null } = {}) {
       h('span', { class: ['loc-part', i === parts.length - 1 && 'loc-exact'] }, part),
     ]),
   ];
+  // Compacte : une seule ligne, niveaux intermédiaires raccourcis ; le chemin complet reste au survol
+  const cls = ['loc', compact && 'loc-compact'];
   const label = href
-    ? h('a', { class: 'loc', href, title: 'Voir cet emplacement en 3D' }, content)
-    : h('span', { class: 'loc' }, content);
+    ? h('a', { class: cls, href, title: compact ? `${full} : voir en 3D` : 'Voir cet emplacement en 3D' }, content)
+    : h('span', { class: cls, title: compact ? full : null }, content);
   return quantity === null ? label : h('span', { class: 'loc-with-qty' }, label, h('span', { class: 'loc-qty' }, quantity));
 }
 

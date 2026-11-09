@@ -119,8 +119,8 @@ function render() {
     if (link.hasAttribute('aria-current')) link.setAttribute('aria-current', 'page');
   });
   setNavOpen(false);
-  // L'accueil a sa propre grande recherche : pas de second champ identique dans la barre
-  document.body.classList.toggle('is-home', route?.path === '/');
+  // L'accueil et le catalogue ont leur propre recherche : pas de second champ identique dans la barre
+  document.body.classList.toggle('has-page-search', route?.path === '/' || route?.path === '/items');
   document.body.classList.remove('search-open');
 
   currentPage?.dispose?.();
@@ -280,6 +280,13 @@ document.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('popstate', render);
+
+// La barre supérieure se fond dans la page au repos ; un filet la détache dès que le contenu passe dessous
+let scrolled = false;
+window.addEventListener('scroll', () => {
+  const now = window.scrollY > 4;
+  if (now !== scrolled) document.body.classList.toggle('is-scrolled', (scrolled = now));
+}, { passive: true });
 
 onUnauthorized(() => {
   if (!session.me) return;

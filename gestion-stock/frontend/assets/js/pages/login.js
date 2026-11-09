@@ -26,9 +26,13 @@ function passwordForm() {
     if (!username.value.trim() || !password.value) {
       status.hidden = false;
       status.textContent = 'Indiquez votre identifiant et votre mot de passe.';
+      (username.value.trim() ? password : username).focus();
       return;
     }
+    status.hidden = true;
+    // Indicateur dans le bouton, libellé conservé : pas de saut, pas de double envoi
     submit.disabled = true;
+    submit.classList.add('is-busy');
     try {
       await api('/auth/login', { method: 'POST', body: { username: username.value.trim(), password: password.value } });
       location.assign('/');
@@ -38,6 +42,7 @@ function passwordForm() {
       password.value = '';
       password.focus();
       submit.disabled = false;
+      submit.classList.remove('is-busy');
     }
   });
   requestAnimationFrame(() => username.focus({ preventScroll: true }));
@@ -73,7 +78,8 @@ export async function render(container) {
   clear(body,
     passwordForm(),
     config.google && h('a', { class: 'btn btn-block', href: '/api/auth/google/start' }, 'Continuer avec Google'),
-    config.login_links && h('p', { class: 'login-note' },
-      'Pas de compte Google ? Un administrateur peut vous envoyer un lien de connexion à usage unique.'),
+    config.login_links && h('p', { class: 'login-note' }, config.google
+      ? 'Pas de compte Google ? Un administrateur peut vous envoyer un lien de connexion à usage unique.'
+      : 'Fiche perdue ? Un administrateur peut vous envoyer un lien de connexion à usage unique.'),
   );
 }

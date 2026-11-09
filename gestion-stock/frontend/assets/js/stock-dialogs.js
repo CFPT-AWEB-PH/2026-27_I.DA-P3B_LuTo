@@ -30,6 +30,12 @@ function parseQuantity(input) {
   return Number(String(input.value).replace(',', '.'));
 }
 
+/** « Prendre 3 pièces » si la quantité est valide, sinon le verbe seul. */
+function actionLabel(verb, input, unit, fallback = verb) {
+  const value = parseQuantity(input);
+  return value > 0 ? `${verb} ${formatQuantity(value, unit)}` : fallback;
+}
+
 /** Choix d'un rangement pouvant recevoir des objets : salle puis arborescence. Résout avec { id, path }. */
 export function pickUnit({ title = 'Choisir un emplacement', roomId = null } = {}) {
   return openDialog(title, (close) => {
@@ -192,13 +198,19 @@ function unitField(label, initial = null, hint = null) {
   return { element: wrapper, get value() { return value; } };
 }
 
+/**
+ * Fenêtre d'opération : corps, bouton d'annulation, bouton de validation.
+ * liveLabel() recalcule le libellé du bouton à chaque saisie : « Prendre 3 pièces » dit exactement ce qui va se passer.
+ */
 function operationDialog(title, build) {
   return openDialog(title, (close) => {
-    const { body, submit, label = 'Enregistrer', danger = false } = build();
+    const { body, submit, label = 'Enregistrer', danger = false, liveLabel = null } = build();
+    const text = h('span', {}, liveLabel?.() ?? label);
     const form = h('form', { class: 'dialog-body', novalidate: true }, ...body,
       h('div', { class: 'dialog-actions' },
         h('button', { class: 'btn', type: 'button', onclick: () => close(undefined) }, 'Annuler'),
-        h('button', { class: ['btn', danger ? 'btn-danger' : 'btn-primary'], type: 'submit' }, h('span', {}, label))));
+        h('button', { class: ['btn', danger ? 'btn-danger' : 'btn-primary'], type: 'submit' }, text)));
+    if (liveLabel) form.addEventListener('input', () => { text.textContent = liveLabel(); });
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       busy(event.submitter, async () => {
@@ -216,16 +228,17 @@ export function takeDialog(item, location) {
   return operationDialog(`Prendre « ${item.name} »`, () => {
     const quantity = quantityInput('quantity', Math.min(1, location.quantity) || 1);
     quantity.max = location.quantity;
-    const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'Projet, classe… (facultatif)' });
+    const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'Projet, classe…' });
     const returnable = h('input', { type: 'checkbox', checked: !item.is_consumable });
     return {
       label: 'Prendre',
+      liveLabel: () => actionLabel('Prendre', quantity, item.unit),
       body: [
         h('div', { class: 'dialog-lead' },
           locationLabel(location.path),
           h('div', { class: 'dialog-lead-row' }, 'Disponible ici', h('strong', {}, formatQuantity(location.quantity, item.unit)))),
-        field(`Quantité (${item.unit})`, stepper(quantity)),
-        field('Pour quoi faire ?', comment),
+        field('Quantité', stepper(quantity)),
+        field(['Pour quoi faire ? ', h('span', { class: 'optional' }, 'facultatif')], comment),
         checkbox(returnable, 'Je le rendrai', 'Ouvre un emprunt à votre nom. Décochez pour un consommable utilisé.'),
       ],
       submit: async () => {
@@ -248,16 +261,17 @@ export function returnDialog(loan) {
     // Le serveur impose l'emplacement d'origine ; on ne choisit que si ce rangement a été supprimé
     const hasOrigin = Boolean(loan.origin.unit_id);
     const target = hasOrigin ? null : unitField('Rangé à', null, `Le rangement d'origine n'existe plus (${loan.origin.path}).`);
-    const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'État, remarque… (facultatif)' });
+    const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'État, remarque…' });
     return {
-      label: 'Enregistrer le retour',
+      label: 'Rendre',
+      liveLabel: () => actionLabel('Rendre', quantity, unit),
       body: [
         h('div', { class: 'dialog-lead' },
           hasOrigin && locationLabel(loan.origin.path),
           h('div', { class: 'dialog-lead-row' }, 'Reste à rendre', h('strong', {}, formatQuantity(loan.remaining, unit)))),
-        field(`Quantité rendue (${unit})`, stepper(quantity), 'Un retour partiel garde l’emprunt ouvert pour le reste.'),
+        field('Quantité rendue', stepper(quantity), 'Un retour partiel garde l’emprunt ouvert pour le reste.'),
         target?.element,
-        field('Commentaire', comment),
+        field(['Commentaire ', h('span', { class: 'optional' }, 'facultatif')], comment),
       ],
       submit: async () => {
         const body = { quantity: parseQuantity(quantity), comment: comment.value };
@@ -278,10 +292,11 @@ export function addDialog(item, location = null) {
   return operationDialog(`Ajouter du stock : « ${item.name} »`, () => {
     const quantity = quantityInput('quantity', '');
     const target = unitField('Emplacement', location ? { id: location.unit_id, path: location.path } : null);
-    const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'Commande, fournisseur… (facultatif)' });
+    const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'Commande, fournisseur…' });
     return {
       label: 'Ajouter au stock',
-      body: [target.element, field(`Quantité ajoutée (${item.unit})`, stepper(quantity)), field('Commentaire', comment)],
+      liveLabel: () => actionLabel('Ajouter', quantity, item.unit, 'Ajouter au stock'),
+      body: [target.element, field(`Quantité ajoutée (${item.unit})`, stepper(quantity)), field(['Commentaire ', h('span', { class: 'optional' }, 'facultatif')], comment)],
       submit: async () => {
         if (!target.value) throw Object.assign(new Error('Choisissez où ranger ce stock.'), { fields: { unit_id: 'Choisissez un emplacement.' } });
         const r = await api('/stock/add', { method: 'POST', body: { item_id: item.id, unit_id: target.value.id, quantity: parseQuantity(quantity), comment: comment.value } });
@@ -321,16 +336,17 @@ export function moveDialog(item, location) {
     const quantity = quantityInput('quantity', location.quantity);
     quantity.max = location.quantity;
     const target = unitField('Vers');
-    const comment = h('input', { name: 'comment', maxlength: 500, placeholder: 'Facultatif' });
+    const comment = h('input', { name: 'comment', maxlength: 500 });
     return {
       label: 'Déplacer',
+      liveLabel: () => actionLabel('Déplacer', quantity, item.unit),
       body: [
         h('div', { class: 'dialog-lead' },
           h('div', { class: 'dialog-lead-row' }, 'Depuis', h('strong', {}, formatQuantity(location.quantity, item.unit))),
           locationLabel(location.path)),
         field(`Quantité à déplacer (${item.unit})`, stepper(quantity)),
         target.element,
-        field('Commentaire', comment),
+        field(['Commentaire ', h('span', { class: 'optional' }, 'facultatif')], comment),
       ],
       submit: async () => {
         if (!target.value) throw Object.assign(new Error('Choisissez la destination.'), { fields: { unit_id: 'Choisissez où déplacer le stock.' } });

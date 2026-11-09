@@ -25,7 +25,7 @@ export function render(view, session) {
   const status = segmented('Statut', [['open', 'En cours'], ['closed', 'Rendus']], 'open', () => load());
 
   append(view, 
-    pageHeader({ title: 'Emprunts', description: 'Ce qui est sorti et doit revenir. Un retour partiel garde l’emprunt ouvert pour la quantité restante.' }),
+    pageHeader({ title: 'Emprunts', description: 'Ce qui est sorti et doit revenir. Un retour partiel garde l’emprunt ouvert pour le reste.' }),
     h('div', { class: 'toolbar' }, scope.element, status.element),
     list,
   );
@@ -50,7 +50,7 @@ export function render(view, session) {
     const returned = Number(loan.quantity) - Number(loan.remaining);
     const bar = h('div', { class: 'progress-bar' });
     bar.style.width = `${Math.round((returned / Number(loan.quantity)) * 100)}%`;
-    return h('article', { class: 'loan-card' },
+    return h('article', { class: ['loan-card', !open && 'is-closed'] },
       h('div', { class: 'loan-main' },
         h('a', { class: 'loan-title', href: `/items/${loan.item.id}` }, loan.item.name),
         h('div', { class: 'loan-meta' },
@@ -58,15 +58,15 @@ export function render(view, session) {
           h('span', {}, icon('history'), open ? `Pris le ${formatDate(loan.taken_at)}` : `Rendu le ${formatDate(loan.closed_at)}`),
           loan.comment && h('span', {}, loan.comment)),
         loan.origin.path && (loan.origin.room_id
-          ? locationLabel(loan.origin.path, { href: `/rooms/${loan.origin.room_id}?unit=${loan.origin.unit_id}` })
-          : locationLabel(loan.origin.path))),
+          ? locationLabel(loan.origin.path, { href: `/rooms/${loan.origin.room_id}?unit=${loan.origin.unit_id}`, compact: true })
+          : locationLabel(loan.origin.path, { compact: true }))),
       h('div', { class: 'loan-remaining' },
         open
           ? [h('strong', {}, formatQuantity(loan.remaining, loan.item.unit)), h('span', {}, `à rendre sur ${formatQuantity(loan.quantity)}`)]
           : [h('strong', {}, formatQuantity(loan.quantity, loan.item.unit)), h('span', {}, 'rendus')],
         open && returned > 0 && h('div', { class: 'progress', role: 'img', 'aria-label': `${formatQuantity(returned)} déjà rendus` }, bar)),
       open && session.can('stock.take') && (mine || session.can('stock.adjust'))
-        ? h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => { if (await returnDialog(loan)) load(); } }, icon('undo'), 'Rendre')
+        ? h('button', { class: 'btn btn-tinted', type: 'button', 'aria-label': `Rendre ${loan.item.name}`, onclick: async () => { if (await returnDialog(loan)) load(); } }, icon('undo'), 'Rendre')
         : h('span'),
     );
   }

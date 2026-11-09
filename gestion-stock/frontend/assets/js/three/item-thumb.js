@@ -70,8 +70,9 @@ export function itemThumbUrl(item) {
   const entry = { name: item.name, visual: item.visual, visual_color: item.visual_color, category: item.category?.name };
   const key = JSON.stringify(entry);
   if (!images.has(key)) {
+    // Une image affichée entre deux rendus : les animations d'entrée de la liste restent fluides
     images.set(key, queue = queue.then(() => new Promise((resolve) => {
-      setTimeout(() => {
+      requestAnimationFrame(() => setTimeout(() => {
         if (unavailable) return resolve(null);
         try {
           resolve(draw(entry));
@@ -81,7 +82,7 @@ export function itemThumbUrl(item) {
           resolve(null);
         }
         releaseWhenIdle();
-      });
+      }));
     })));
   }
   return images.get(key);
