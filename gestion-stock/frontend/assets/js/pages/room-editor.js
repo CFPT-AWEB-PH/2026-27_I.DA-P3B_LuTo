@@ -35,7 +35,7 @@ export async function render(view, session, params) {
   const history = new History({ onChange: () => refreshHistoryButtons() });
   const details = h('aside', { class: 'editor-details', 'aria-live': 'polite' });
   const stage = h('div', { class: 'editor-stage' });
-  const hint = h('p', { class: 'editor-hint' }, `Clic : sélectionner  ·  Glisser : tourner  ·  Clic droit : menu  ·  Molette : zoomer  ·  Double-clic : ouvrir un tiroir  ·  ${MOD}+Z : annuler  ·  ? : raccourcis`);
+  const hint = h('p', { class: 'editor-hint' }, 'Glisser : tourner  ·  Double-clic : ouvrir un tiroir  ·  Clic droit : menu  ·  ? : raccourcis');
   // L'aide s'efface dès la première interaction : elle a servi
   stage.addEventListener('pointerdown', () => hint.classList.add('is-faded'), { once: true });
 
@@ -351,7 +351,7 @@ export async function render(view, session, params) {
               onclick: () => { if (open) state.expanded.delete(u.id); else state.expanded.add(u.id); renderTree(); } }, icon('chevronRight'))
             : h('span', { class: 'tree-toggle' }),
           h('button', { class: 'tree-label', type: 'button', onclick: () => select(u.id, { focus: true }) },
-            h('span', { class: 'tree-swatch', dataset: { color: u.color } }), u.name, u.label && h('span', { class: 'badge' }, u.label)),
+            h('span', { class: 'tree-swatch', dataset: { color: u.color } }), h('span', { class: 'tree-text', title: u.name }, u.name), u.label && h('span', { class: 'badge' }, u.label)),
           h('button', { class: 'tree-eye', type: 'button', 'aria-pressed': String(hidden), title: hidden ? 'Afficher' : 'Masquer temporairement', 'aria-label': `${hidden ? 'Afficher' : 'Masquer'} ${u.name}`,
             onclick: () => { scene?.setHidden(u.id, !hidden); renderTree(); } }, icon(hidden ? 'eyeOff' : 'eye')),
         );
@@ -381,7 +381,7 @@ export async function render(view, session, params) {
       h('h2', { class: 'panel-subtitle' }, 'Portes et fenêtres', h('span', { class: 'count' }, String(doors.length))),
       h('ul', { class: 'tree' }, doors.map((o) => {
         const row = h('div', { class: 'tree-row' }, h('span', { class: 'tree-toggle' }),
-          h('button', { class: 'tree-label', type: 'button', onclick: () => selectOpening(o.id, { focus: true }) }, icon(o.kind === 'window' ? 'window' : 'door'), openingName(o)));
+          h('button', { class: 'tree-label', type: 'button', onclick: () => selectOpening(o.id, { focus: true }) }, icon(o.kind === 'window' ? 'window' : 'door'), h('span', { class: 'tree-text', title: openingName(o) }, openingName(o))));
         contextMenu(row, () => openingMenuItems(o), { label: `Actions pour ${openingName(o)}` });
         return h('li', { class: ['tree-node', o.id === state.selectedOpening && 'is-selected'] }, row);
       })));
@@ -446,7 +446,7 @@ export async function render(view, session, params) {
       (u.can_contain_units || kids.length > 0) && [
         h('h3', { class: 'panel-subtitle' }, 'Rangements à l’intérieur', h('span', { class: 'count' }, String(kids.length))),
         kids.length
-          ? h('ul', { class: 'plain-list' }, kids.map((k) => h('li', {}, h('button', { class: 'tree-label', type: 'button', onclick: () => select(k.id, { focus: true }) }, icon('chevronRight'), k.name, h('span', { class: 'sub' }, k.type_name)))))
+          ? h('ul', { class: 'plain-list' }, kids.map((k) => h('li', {}, h('button', { class: 'tree-label', type: 'button', onclick: () => select(k.id, { focus: true }) }, icon('chevronRight'), h('span', { class: 'tree-text', title: k.name }, k.name), h('span', { class: 'sub' }, k.type_name)))))
           : h('p', { class: 'muted small' }, 'Aucun pour le moment.'),
         addInside],
       h('h3', { class: 'panel-subtitle' }, 'Dimensions et position'),
@@ -736,7 +736,7 @@ export async function render(view, session, params) {
         h('h2', { class: 'panel-subtitle' }, 'Types de rangement'),
         h('ul', { class: 'plain-list library-types' }, state.types.filter((t) => t.shape !== 'divider').map((t) => h('li', {},
           h('button', { class: 'tree-label', type: 'button', onclick: () => editUnit(null, inTypeTarget(t), { typeId: t.id }) },
-            h('span', { class: 'tree-swatch', dataset: { color: t.default_color } }), t.name)))),
+            h('span', { class: 'tree-swatch', dataset: { color: t.default_color } }), h('span', { class: 'tree-text', title: t.name }, t.name))))),
       ]);
   }
 

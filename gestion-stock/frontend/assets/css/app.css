@@ -1163,7 +1163,10 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 .panel-section { padding-top: var(--s1); }
 .detail-header { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-bottom: var(--s2); }
 .editor-details .loc { margin-bottom: var(--s4); }
-.editor-details .detail-actions { margin-bottom: var(--s2); }
+/* Panneau latéral : actions en grille de deux colonnes alignées, la dernière s'étire si elle est seule sur sa ligne */
+.editor-details .detail-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); justify-content: stretch; margin-bottom: var(--s2); }
+.editor-details .detail-actions > .btn { justify-content: center; min-width: 0; white-space: normal; text-align: center; padding-block: var(--s1); }
+.editor-details .detail-actions > :last-child:nth-child(odd), .editor-details .detail-actions > .btn-primary { grid-column: 1 / -1; }
 .editor-details .props { font-size: var(--text-sm); }
 .nudge { padding: var(--s3); margin-top: var(--s5); border-radius: var(--r-lg); background: var(--surface-2); }
 .nudge .panel-subtitle { margin-top: 0; }
@@ -1189,6 +1192,9 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
 .tree-eye { opacity: 0; transition: opacity var(--dur-1); }
 .tree-row:hover .tree-eye, .tree-eye:focus-visible, .tree-eye[aria-pressed="true"] { opacity: 1; }
 .tree-label { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s2); min-height: 32px; border: 0; background: none; color: var(--ink); font: inherit; font-size: var(--text-sm); text-align: left; padding: 0 var(--s1); cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-radius: var(--r-xs); }
+/* Le nom se raccourcit avec « … » (le texte brut d'un bouton flex ne le peut pas) ; badges et icônes gardent leur place */
+.tree-text { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-label > .badge, .tree-label > .icon, .tree-label > .sub { flex: none; }
 .tree-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 18%); }
 .tree ul.tree-children { animation: fade-in var(--dur-2) var(--ease-out); }
 
@@ -1254,6 +1260,19 @@ a.loc:hover .loc-exact { color: var(--primary-soft-ink); }
   .editor-toolbar .btn:not(.btn-primary) .btn-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .editor-toolbar .btn:not(.btn-primary) { padding: 0 var(--s2); }
   .editor-toolbar .btn:not(.btn-primary) .icon { margin: 0; }
+  /* Modes du gizmo en icônes (infobulle et raccourci Q, W, E, R) ; listes plus étroites : tout tient sur une ligne */
+  .editor-toolbar .segmented-option .btn-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .editor-toolbar .gizmo-switch .segmented-option { padding-inline: var(--s2); }
+  .editor-toolbar .select-small { max-width: 10.5rem; }
+}
+/* Grand écran : une seule ligne ; si la place manque, ce sont les listes déroulantes qui raccourcissent */
+@media (min-width: 1280px) {
+  .editor-toolbar { flex-wrap: nowrap; column-gap: var(--s2); }
+  .editor-toolbar .toolbar-group { flex-wrap: nowrap; flex: none; }
+  .editor-toolbar .toolbar-group:has(> .select-small) { flex: 0 1 auto; min-width: 0; }
+  .editor-toolbar .select-small { flex: 0 1 10.5rem; min-width: 7rem; text-overflow: ellipsis; }
+  .editor-toolbar .toolbar-divider { margin-inline: var(--s1); }
+  .editor-heading { flex: 0 0 auto; max-width: 16rem; }
 }
 
 /* ===== Tablette : menu latéral en tiroir ===== */
@@ -1736,3 +1755,15 @@ kbd { display: inline-block; padding: 1px 6px; border: 1px solid var(--line); bo
   .kpi-row { grid-auto-columns: minmax(10.5rem, 46%); }
 }
 .home-grid:has(> :only-child) { grid-template-columns: minmax(0, 1fr); }
+
+/* ===== Éditeurs (plan, salle) entre 1024 et 1279 px : le menu latéral est là, trois colonnes laisseraient
+   moins de 350 px à la vue 3D. Vue sur toute la largeur, propriétés et arborescence dessous. ===== */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .editor { grid-template: auto 62vh auto / minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "bar bar" "canvas canvas" "details tree"; height: auto; }
+  .editor-tree, .editor-details { border: 0; border-top: 1px solid var(--line); }
+  .editor-tree { border-left: 1px solid var(--line); }
+}
+/* L'arborescence ne défile jamais de côté : onglets et noms se partagent la largeur */
+.editor-tree { overflow-x: hidden; }
+.panel-tabs { display: flex; }
+.panel-tabs > .segmented-option { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }

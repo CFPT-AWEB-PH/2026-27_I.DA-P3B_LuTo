@@ -6,6 +6,7 @@ import * as THREE from '/vendor/three/three.module.min.js';
 import { CSS2DObject } from '/vendor/three/CSS2DRenderer.js';
 import { RoomScene } from './room-scene.js';
 import { buildShell } from './room-shell.js';
+import { boxCorners, fitPosition } from './fit.js';
 import {
   clampToRoom, containsPoint, formatLength, isRectangle, openingProblem, outlineSize, planBounds, planToRoom, referenceDoor, rotation, roomToPlan, slideOpening, snapToEdges, unitFootprint, unitProblem, wallFrame,
 } from '../spatial.js';
@@ -177,8 +178,11 @@ export class PlanScene extends RoomScene {
     if (this.is2d) {
       this.moveCamera(new THREE.Vector3(cx, needed + box.maxY, cz + 0.001), new THREE.Vector3(cx, 0, cz));
     } else {
-      const span = Math.max(width, depth);
-      this.moveCamera(new THREE.Vector3(cx + span * 0.55, Math.max(span * 0.8, box.maxY + 3), cz + span * 1.05), new THREE.Vector3(cx, box.maxY / 3, cz));
+      // Tout l'étage dans l'image, quel que soit le format de la vue
+      const minY = this.entries.size ? Math.min(...[...this.entries.values()].map((e) => e.y)) * S : 0;
+      const target = new THREE.Vector3(cx, (minY + box.maxY) / 2, cz);
+      const corners = boxCorners(new THREE.Vector3(box.minX, minY, box.minZ), new THREE.Vector3(box.maxX, box.maxY, box.maxZ));
+      this.moveCamera(fitPosition(this.camera, corners, target, new THREE.Vector3(0.45, 0.75, 0.95), 0.05), target);
     }
   }
 

@@ -167,6 +167,21 @@ Audit avec les 374 objets de l'atelier, à 1440, 900 et 375 px, clair et sombre,
 | « Aucun objet ne correspond à « résistance » » alors que c'est le filtre « Stock bas » qui vide la liste | Message qui le dit et bouton « Chercher sans les filtres » qui garde le texte |
 | Objet épuisé : ligne vide sous la référence | « Plus en stock nulle part » |
 
+### Passe de finition du plan et de l'éditeur de salle (2026-11-09)
+
+Audit sur l'atelier (12 m × 8,10 m, 727 rangements), à 1440, 1100 et 375 px, clair et sombre, administrateur et Élève.
+
+| Problème | Solution |
+|---|---|
+| Vue 3D et vue de dessus cadrées à distance fixe, sans tenir compte du format : armoires G à J coupées à droite, salle coupée sur les côtés en vue de dessus et au téléphone | `three/fit.js` : distance calculée pour que les 8 coins de la salle (haut des murs compris, plus grand vu d'en haut) tiennent dans l'image ; même calcul pour la vue 3D du plan |
+| Noms coupés net dans les arborescences (« Armoire 1 : visserie et cc »), sans « … » | Nom dans son propre élément, raccourci avec « … », nom complet en infobulle ; badges et icônes gardent leur place |
+| Barre d'outils sur deux lignes à 1440 px (40 px de vue en moins) | Sous 1600 px, modes du gizmo en icônes (infobulle, Q W E R) ; dès 1280 px une seule ligne, les listes déroulantes raccourcissent en dernier ; le titre de la salle ne rétrécit plus |
+| Aide sur deux lignes posée sur la scène | Texte réduit à l'essentiel (le reste est dans « ? ») |
+| 1024 à 1279 px : vue 3D de 330 px entre deux panneaux, arborescence qui défile de côté | Vue sur toute la largeur, propriétés et arborescence dessous ; plus de défilement horizontal |
+| Panneau de l'étage : trois boutons de largeurs inégales, le dernier seul à droite | Grille de deux colonnes : « Étage au-dessus » et « Sous-sol » côte à côte, « Renommer l'étage » dessous ; même grille pour toutes les actions des panneaux latéraux |
+
+Reste : en 2D, l'étiquette d'une petite salle collée à une autre peut chevaucher sa voisine.
+
 ## 5. Audit (deuxième passe, 2026-11-03)
 
 La première refonte (commit c31bb0b) avait posé un socle solide. Cet audit a été mené sur une copie locale de l'application avec des données réalistes, à 1440 px, 768 px et 375 px, en clair et en sombre.

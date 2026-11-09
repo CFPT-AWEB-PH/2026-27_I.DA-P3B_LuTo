@@ -45,7 +45,7 @@ export async function render(view, session) {
   const details = h('aside', { class: 'editor-details', 'aria-live': 'polite' });
   const stage = h('div', { class: 'editor-stage' });
   const hud = h('div', { class: 'gizmo-hud', hidden: true, role: 'status' });
-  const hint = h('p', { class: 'editor-hint' }, `Clic : sélectionner  ·  Double-clic : entrer dans la salle  ·  Clic droit : menu  ·  Molette : zoomer  ·  ${MOD}+Z : annuler  ·  ? : raccourcis`);
+  const hint = h('p', { class: 'editor-hint' }, 'Double-clic : entrer dans la salle  ·  Clic droit : menu  ·  ? : raccourcis');
   stage.addEventListener('pointerdown', () => hint.classList.add('is-faded'), { once: true });
 
   const undoButton = h('button', { class: 'icon-btn icon-btn-small icon-btn-bordered', type: 'button', disabled: true, onclick: () => history.undo() }, icon('undo'));
@@ -681,14 +681,14 @@ export async function render(view, session) {
     const sel = state.selection;
     const entry = (selected, onClick, iconName, text, extras = null) => h('li', { class: ['tree-node', selected && 'is-selected'] },
       h('div', { class: 'tree-row' }, h('span', { class: 'tree-toggle' }),
-        h('button', { class: 'tree-label', type: 'button', onclick: onClick }, icon(iconName), text), extras));
+        h('button', { class: 'tree-label', type: 'button', onclick: onClick }, icon(iconName), h('span', { class: 'tree-text', title: text }, text)), extras));
     const roomNode = (r) => {
       const open = state.expanded.has(r.id) || sel?.roomId === r.id;
       const units = unitsOf(r.id);
       const doors = [referenceDoor(r), ...openingsOf(r.id)];
       const row = h('div', { class: 'tree-row' },
         h('button', { class: 'tree-toggle', type: 'button', 'aria-expanded': String(open), 'aria-label': `${open ? 'Replier' : 'Déplier'} ${r.name}`, onclick: () => { if (state.expanded.has(r.id)) state.expanded.delete(r.id); else state.expanded.add(r.id); renderLeft(); } }, icon('chevronRight')),
-        h('button', { class: 'tree-label', type: 'button', onclick: () => select({ kind: 'room', id: r.id, roomId: r.id }), ondblclick: () => navigate(`/rooms/${r.id}`) }, icon('room'), r.name, r.label && h('span', { class: 'badge' }, r.label)),
+        h('button', { class: 'tree-label', type: 'button', onclick: () => select({ kind: 'room', id: r.id, roomId: r.id }), ondblclick: () => navigate(`/rooms/${r.id}`) }, icon('room'), h('span', { class: 'tree-text', title: r.name }, r.name), r.label && h('span', { class: 'badge' }, r.label)),
         h('a', { class: 'tree-eye', href: `/rooms/${r.id}`, title: 'Entrer dans la salle', 'aria-label': `Entrer dans ${r.name}` }, icon('cube')));
       contextMenu(row, () => roomMenu(r), { label: `Actions pour ${r.name}` });
       return h('li', { class: ['tree-node', sel?.kind === 'room' && sel.id === r.id && 'is-selected'] }, row,
@@ -720,7 +720,7 @@ export async function render(view, session) {
       editFurniture && [
         h('h2', { class: 'panel-subtitle' }, 'Types de rangement'),
         h('ul', { class: 'plain-list library-types' }, state.types.filter((t) => t.shape === 'cabinet' || t.shape === 'shelf' || t.shape === 'box' || t.shape === 'bin').map((t) => h('li', {},
-          h('button', { class: 'tree-label', type: 'button', onclick: () => placeType(t) }, h('span', { class: 'tree-swatch', dataset: { color: t.default_color } }), t.name)))),
+          h('button', { class: 'tree-label', type: 'button', onclick: () => placeType(t) }, h('span', { class: 'tree-swatch', dataset: { color: t.default_color } }), h('span', { class: 'tree-text', title: t.name }, t.name))))),
       ]);
   }
 
@@ -754,9 +754,10 @@ export async function render(view, session) {
         ? 'Cliquez sur une salle, une porte ou un meuble pour le déplacer avec le gizmo. Double-cliquez sur une salle pour y entrer.'
         : 'Double-cliquez sur une salle pour y entrer.')),
       floor && editRooms && h('div', { class: 'detail-actions' },
-        h('button', { class: 'btn btn-small', type: 'button', onclick: () => renameFloor(floor) }, icon('edit'), 'Renommer l’étage'),
-        h('button', { class: 'btn btn-small', type: 'button', onclick: () => addFloor(1) }, icon('stairs'), 'Étage au-dessus'),
-        h('button', { class: 'btn btn-small', type: 'button', onclick: () => addFloor(-1) }, icon('stairs'), 'Sous-sol')));
+        // Ajouts côte à côte, puis le renommage sur toute la largeur
+        h('button', { class: 'btn btn-small', type: 'button', title: 'Ajouter un étage au-dessus', onclick: () => addFloor(1) }, icon('stairs'), 'Étage au-dessus'),
+        h('button', { class: 'btn btn-small', type: 'button', title: 'Ajouter un sous-sol', onclick: () => addFloor(-1) }, icon('stairs'), 'Sous-sol'),
+        h('button', { class: 'btn btn-small', type: 'button', onclick: () => renameFloor(floor) }, icon('edit'), 'Renommer l’étage')));
   }
 
   function renderRoomDetails(r) {

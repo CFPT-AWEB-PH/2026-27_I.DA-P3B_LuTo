@@ -11,6 +11,7 @@ import {
 } from '../spatial.js';
 import { buildObjects } from './item-models.js';
 import { buildShell } from './room-shell.js';
+import { boxCorners, fitPosition } from './fit.js';
 
 const S = 0.001;
 const SELECT_COLOR = 0xffa31a;
@@ -876,20 +877,17 @@ export class RoomScene {
   }
 
   viewPreset(name) {
-    const { center, size } = this.bounds();
-    const span = Math.max(size.x, size.z, 2);
-    const target = new THREE.Vector3(center.x, name === 'door' ? 1.2 : 0.6, center.z);
-    let position;
-    if (name === 'top') {
-      position = new THREE.Vector3(center.x, span * 1.6, center.z + 0.001);
-    } else if (name === 'door') {
+    const { min, max, center } = this.bounds();
+    if (name === 'door') {
       const doorX = (this.room.door_offset_mm + this.room.door_width_mm / 2) * S;
-      position = new THREE.Vector3(doorX, 1.6, -0.6);
-      target.set(doorX, 1.1, Math.min(center.z * 2, 4));
-    } else {
-      position = new THREE.Vector3(center.x + span * 0.55, span * 0.9, center.z + span * 1.1);
+      this.moveCamera(new THREE.Vector3(doorX, 1.6, -0.6), new THREE.Vector3(doorX, 1.1, Math.min(center.z * 2, 4)));
+      return;
     }
-    this.moveCamera(position, target);
+    // Vue 3D et vue de dessus : toute la salle dans l'image, quel que soit le format de la vue
+    const target = new THREE.Vector3(center.x, name === 'top' ? 0 : (max.y - min.y) * 0.3, center.z);
+    const direction = name === 'top' ? new THREE.Vector3(0, 1, 0.001) : new THREE.Vector3(0.45, 0.75, 0.95);
+    // Les 8 coins, haut des murs compris : vu d'en haut, il est plus près de la caméra et paraît plus grand que le sol
+    this.moveCamera(fitPosition(this.camera, boxCorners(min, max), target, direction, 0.04), target);
   }
 
   /** Boîte englobante en position finale, sans attendre la fin de l'ouverture des tiroirs. */
