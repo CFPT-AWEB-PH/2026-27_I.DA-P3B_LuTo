@@ -1,0 +1,8 @@
+.git
+.env
+.env.*
+backups
+*.sql.gz
+docs
+node_modules
+backend/tests

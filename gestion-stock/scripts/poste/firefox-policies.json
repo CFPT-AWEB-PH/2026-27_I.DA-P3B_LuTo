@@ -1,0 +1,21 @@
+{
+  "policies": {
+    "PasswordManagerEnabled": false,
+    "OfferToSaveLogins": false,
+    "OfferToSaveLoginsDefault": false,
+    "DisableFormHistory": true,
+    "AutofillAddressEnabled": false,
+    "AutofillCreditCardEnabled": false,
+    "DisableFirefoxAccounts": true,
+    "DontCheckDefaultBrowser": true,
+    "SanitizeOnShutdown": {
+      "Cache": true,
+      "Cookies": true,
+      "FormData": true,
+      "History": true,
+      "Sessions": true,
+      "SiteSettings": false,
+      "Locked": true
+    }
+  }
+}

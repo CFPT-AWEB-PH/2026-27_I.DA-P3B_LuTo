@@ -1,0 +1,27 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Dépendances
+backend/vendor/
+node_modules/
+
+# Données et sauvegardes locales (dont les listes de classes : données personnelles)
+backups/
+*.sql
+!database/migrations/*.sql
+*.sql.gz
+uploads/
+*.xls
+*.xlsx
+*.xlsm
+*.csv
+
+# Divers
+.DS_Store
+Thumbs.db
+*.log

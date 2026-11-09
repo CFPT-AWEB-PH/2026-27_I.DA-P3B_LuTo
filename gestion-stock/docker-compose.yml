@@ -1,0 +1,152 @@
+# Pile de production : voir docs/ARCHITECTURE.md.
+# Seul caddy publie des ports. Réseaux internes, sans accès à Internet : "db" (php, backup, mariadb) et "app" (caddy, php).
+name: gestion_stock
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  mariadb:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:?DB_NAME manquant dans .env}
+      MARIADB_USER: ${DB_USER:?DB_USER manquant dans .env}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD manquant dans .env}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD manquant dans .env}
+      MARIADB_AUTO_UPGRADE: "1"
+      TZ: UTC
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/mariadb/zz-app.cnf:/etc/mysql/conf.d/zz-app.cnf:ro
+    networks: [db]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
+
+  php:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
+    # "current" = dernière version validée par activate-release.sh / rollback.sh
+    image: gestion_stock-php:${APP_VERSION:-current}
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DOMAIN: ${APP_DOMAIN:-}
+      DB_HOST: mariadb
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      APP_URL: ${APP_URL:-}
+      AUTH_LOGIN_LINKS: ${AUTH_LOGIN_LINKS:-1}
+      SESSION_LIFETIME_DAYS: ${SESSION_LIFETIME_DAYS:-30}
+      SESSION_IDLE_DAYS: ${SESSION_IDLE_DAYS:-7}
+    volumes:
+      - uploads:/app/storage/uploads
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    # Aucun accès sortant : ajouter "web" le jour où la connexion Google (JWKS, échange du code OAuth) sera en place
+    networks: [db, app]
+    # Système de fichiers en lecture seule : seuls les envois (volume) et /tmp sont modifiables
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "SCRIPT_NAME=/ping SCRIPT_FILENAME=/ping REQUEST_METHOD=GET cgi-fcgi -bind -connect 127.0.0.1:9000 | grep -q pong"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging: *logging
+
+  caddy:
+    build:
+      context: .
+      dockerfile: docker/caddy/Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
+    image: gestion_stock-caddy:${APP_VERSION:-current}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+      HTTPS_IP: ${HTTPS_IP:-certificat.invalid}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      php:
+        condition: service_healthy
+    networks: [app, web]
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+  backup:
+    image: mariadb:11.4
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "/usr/local/bin/backup.sh"]
+    command: ["loop"]
+    environment:
+      DB_NAME: ${DB_NAME}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      BACKUP_TIME: ${BACKUP_TIME:-02:30}
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-14}
+      BACKUP_KEEP_WEEKLY: ${BACKUP_KEEP_WEEKLY:-8}
+      TZ: Europe/Zurich
+    volumes:
+      - ./docker/backup/backup.sh:/usr/local/bin/backup.sh:ro
+      - ${BACKUP_HOST_DIR:-./backups}:/backups
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks: [db]
+    healthcheck:
+      test: ["CMD-SHELL", "find /tmp/backup-heartbeat -mmin -3 | grep -q ."]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
+
+networks:
+  db:
+    internal: true
+  app:
+    internal: true
+  web: {}
+
+volumes:
+  db_data:
+  uploads:
+  caddy_data:
+  caddy_config:
