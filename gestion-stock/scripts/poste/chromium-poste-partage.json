@@ -1,0 +1,24 @@
+{
+  "PasswordManagerEnabled": false,
+  "PasswordLeakDetectionEnabled": false,
+  "PasswordSharingEnabled": false,
+  "ImportSavedPasswords": false,
+  "ImportAutofillFormData": false,
+  "AutofillAddressEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "PaymentMethodQueryEnabled": false,
+  "BrowserSignin": 0,
+  "SyncDisabled": true,
+  "BrowserAddPersonEnabled": false,
+  "DefaultBrowserSettingEnabled": false,
+  "PromotionalTabsEnabled": false,
+  "RestoreOnStartup": 5,
+  "ClearBrowsingDataOnExitList": [
+    "browsing_history",
+    "download_history",
+    "cookies_and_other_site_data",
+    "cached_images_and_files",
+    "password_signin",
+    "autofill"
+  ]
+}

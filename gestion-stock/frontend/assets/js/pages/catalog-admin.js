@@ -4,7 +4,6 @@ import { api } from '../api.js';
 import { append, clear, h } from '../dom.js';
 import { busy, checkbox, confirmDialog, emptyState, errorState, field, openDialog, pageHeader, plural, showError, skeleton, toast } from '../ui.js';
 import { icon } from '../icons.js';
-import { categoryBadge } from './items.js';
 
 const TYPES = { text: 'Texte', number: 'Nombre', date: 'Date', boolean: 'Oui / non', select: 'Liste de choix' };
 
@@ -12,17 +11,19 @@ export function render(view) {
   const categories = h('div', { class: 'list-container' }, skeleton('text', 3));
   const fields = h('div', { class: 'list-container' }, skeleton('text', 3));
   let categoryList = [];
+  const categoryCount = h('span', { class: 'count' });
+  const fieldCount = h('span', { class: 'count' });
 
   append(view, 
     pageHeader({ title: 'Catégories et champs', description: 'Classez les objets et ajoutez les informations utiles à votre inventaire (marque, date d’achat…).' }),
-    h('section', { class: 'card' },
-      h('div', { class: 'section-header' }, h('h2', {}, 'Catégories'),
+    h('section', { class: 'card', 'aria-labelledby': 'cat-title' },
+      h('div', { class: 'section-header' }, h('h2', { id: 'cat-title' }, 'Catégories', categoryCount),
         h('button', { class: 'btn btn-small', type: 'button', onclick: () => editCategory(null) }, icon('plus'), 'Nouvelle catégorie')),
       categories),
-    h('section', { class: 'card' },
-      h('div', { class: 'section-header' }, h('h2', {}, 'Champs personnalisés'),
+    h('section', { class: 'card', 'aria-labelledby': 'field-title' },
+      h('div', { class: 'section-header' }, h('h2', { id: 'field-title' }, 'Champs personnalisés', fieldCount),
         h('button', { class: 'btn btn-small', type: 'button', onclick: () => editField(null) }, icon('plus'), 'Nouveau champ')),
-      h('p', { class: 'field-hint' }, 'Un champ s’applique à tous les objets ou à une seule catégorie. Les champs recherchables sont pris en compte par la recherche.'),
+      h('p', { class: 'field-hint section-hint' }, 'Un champ s’applique à tous les objets ou à une seule catégorie. Les champs recherchables sont pris en compte par la recherche.'),
       fields),
   );
 
@@ -30,28 +31,48 @@ export function render(view) {
     try {
       const [c, f] = await Promise.all([api('/categories'), api('/fields')]);
       categoryList = c.categories;
-      clear(categories, c.categories.length ? h('ul', { class: 'plain-list' }, c.categories.map((cat) => h('li', { class: 'list-row' },
-        h('div', { class: 'list-row-main' }, h('span', {}, categoryBadge(cat), ' ', h('span', { class: 'small muted' }, plural(cat.item_count, 'objet'))), cat.description && h('span', { class: 'sub' }, cat.description)),
-        h('span', { class: 'list-row-actions' },
-          h('button', { class: 'btn btn-small', type: 'button', onclick: () => editCategory(cat) }, 'Modifier'),
-          h('button', { class: 'btn btn-small btn-danger-ghost', type: 'button', onclick: async () => {
-            if (!await confirmDialog({ title: 'Supprimer la catégorie', message: `Les objets de « ${cat.name} » deviendront sans catégorie, et ses champs propres seront supprimés.`, confirmLabel: 'Supprimer', danger: true })) return;
-            try { await api(`/categories/${cat.id}`, { method: 'DELETE' }); toast('Catégorie supprimée.'); load(); } catch (e) { showError(e); }
-          } }, 'Supprimer'))))) : emptyState('Créez des catégories pour regrouper les objets (Électricité, Verrerie…).', { iconName: 'tag' }));
-      clear(fields, f.fields.length ? h('table', { class: 'data-table' },
-        h('thead', {}, h('tr', {}, ['Champ', 'Type', 'S\'applique à', 'Options', ''].map((t) => h('th', {}, t)))),
+      categoryCount.textContent = c.categories.length ? String(c.categories.length) : '';
+      fieldCount.textContent = f.fields.length ? String(f.fields.length) : '';
+      clear(categories, c.categories.length
+        ? h('ul', { class: 'plain-list category-list' }, c.categories.map((cat) => {
+          const dot = h('span', { class: 'category-dot', 'aria-hidden': 'true' });
+          dot.style.background = cat.color; // CSSOM : la CSP interdit les attributs style
+          return h('li', { class: 'category-row' },
+            dot,
+            h('div', { class: 'category-row-main' },
+              h('strong', {}, cat.name),
+              h('span', { class: 'sub' },
+                h('a', { href: `/items?category_id=${cat.id}`, title: `Voir les objets de « ${cat.name} »` }, plural(cat.item_count, 'objet')),
+                cat.description && ` · ${cat.description}`)),
+            rowActions(`la catégorie « ${cat.name} »`, () => editCategory(cat), () => deleteCategory(cat)));
+        }))
+        : emptyState('Créez des catégories pour regrouper les objets (Électricité, Verrerie…).', { iconName: 'tag' }));
+      clear(fields, f.fields.length ? h('table', { class: 'data-table fields-table' },
+        h('thead', {}, h('tr', {}, ['Champ', 'Type', 'S’applique à', 'Recherche', ''].map((t, i) => h('th', {}, i === 4 ? h('span', { class: 'sr-only' }, 'Actions') : t)))),
         h('tbody', {}, f.fields.map((fd) => h('tr', {},
           h('td', { 'data-label': 'Champ' }, h('span', { class: 'cell-title' }, fd.name, fd.is_required && h('span', { class: 'badge' }, 'obligatoire'))),
           h('td', { 'data-label': 'Type' }, TYPES[fd.field_type], fd.options && h('div', { class: 'muted small' }, fd.options.join(', '))),
-          h('td', { 'data-label': 'S\'applique à' }, fd.category_name ?? 'Tous les objets'),
-          h('td', { 'data-label': 'Options' }, fd.is_searchable ? 'recherchable' : '–'),
-          h('td', { class: 'cell-actions' },
-            h('button', { class: 'btn btn-small', type: 'button', onclick: () => editField(fd) }, 'Modifier'),
-            h('button', { class: 'btn btn-small btn-danger-ghost', type: 'button', onclick: async () => {
-              if (!await confirmDialog({ title: 'Supprimer le champ', message: `Supprimer « ${fd.name} » et toutes ses valeurs ?`, confirmLabel: 'Supprimer', danger: true })) return;
-              try { await api(`/fields/${fd.id}`, { method: 'DELETE' }); toast('Champ supprimé.'); load(); } catch (e) { showError(e); }
-            } }, 'Supprimer')))))) : emptyState('Aucun champ personnalisé pour le moment.', { iconName: 'listCheck' }));
+          h('td', { 'data-label': 'S’applique à' }, fd.category_name ?? 'Tous les objets'),
+          h('td', { 'data-label': 'Recherche' }, fd.is_searchable ? 'Recherchable' : '–'),
+          h('td', { class: 'cell-actions' }, rowActions(`le champ « ${fd.name} »`, () => editField(fd), () => deleteField(fd))))))) : emptyState('Aucun champ personnalisé pour le moment. Ajoutez-en pour noter une marque, une date d’achat, un numéro de série…', { iconName: 'listCheck', compact: true }));
     } catch (error) { clear(categories, errorState(error, load)); clear(fields); }
+  };
+
+  /** Modifier (bouton) et supprimer (icône) : un seul rouge discret par ligne, au lieu d'un mot rouge partout. */
+  const rowActions = (what, onEdit, onDelete) => h('span', { class: 'list-row-actions' },
+    h('button', { class: 'btn btn-small', type: 'button', 'aria-label': `Modifier ${what}`, onclick: onEdit }, icon('edit'), h('span', { class: 'btn-label' }, 'Modifier')),
+    h('button', { class: 'icon-btn icon-btn-small btn-danger-ghost', type: 'button', 'aria-label': `Supprimer ${what}`, title: 'Supprimer', onclick: onDelete }, icon('trash')));
+
+  const deleteCategory = async (cat) => {
+    const message = cat.item_count
+      ? `Les ${plural(cat.item_count, 'objet')} de « ${cat.name} » deviendront sans catégorie, et ses champs propres seront supprimés.`
+      : `« ${cat.name} » ne contient aucun objet. Ses champs propres seront supprimés.`;
+    if (!await confirmDialog({ title: 'Supprimer la catégorie', message, confirmLabel: 'Supprimer la catégorie', danger: true })) return;
+    try { await api(`/categories/${cat.id}`, { method: 'DELETE' }); toast('Catégorie supprimée.'); load(); } catch (e) { showError(e); }
+  };
+  const deleteField = async (fd) => {
+    if (!await confirmDialog({ title: 'Supprimer le champ', message: `Supprimer « ${fd.name} » et toutes ses valeurs ?`, confirmLabel: 'Supprimer le champ', danger: true })) return;
+    try { await api(`/fields/${fd.id}`, { method: 'DELETE' }); toast('Champ supprimé.'); load(); } catch (e) { showError(e); }
   };
 
   const editCategory = (cat) => openDialog(cat ? `Modifier « ${cat.name} »` : 'Nouvelle catégorie', (close) => {

@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { append, clear, h } from '../dom.js';
-import { busy, checkbox, confirmDialog, errorState, field, openDialog, pageHeader, skeleton, showError, toast } from '../ui.js';
+import { busy, checkbox, confirmDialog, errorState, field, openDialog, pageHeader, plural, skeleton, showError, toast } from '../ui.js';
 import { icon } from '../icons.js';
 import { SHAPE_LABELS } from '../spatial.js';
 import { unitPreview } from '../three/preview.js';
@@ -19,24 +19,32 @@ export function render(view) {
   const load = async () => {
     try {
       const { types } = await api('/storage-types');
-      clear(list, h('div', { class: 'card card-flush' }, h('table', { class: 'data-table' },
-        h('thead', {}, h('tr', {}, h('th', {}, 'Type'), h('th', {}, 'Forme'), h('th', {}, 'Dimensions par défaut (mm)'), h('th', {}, 'Utilisations'), h('th', {}, h('span', { class: 'sr-only' }, 'Actions')))),
-        h('tbody', {}, types.map((t) => h('tr', {},
-          h('td', { 'data-label': 'Type' }, h('span', { class: 'cell-title' }, t.name, t.is_builtin && h('span', { class: 'badge' }, 'fourni'))),
-          h('td', { 'data-label': 'Forme' }, SHAPE_LABELS[t.shape]),
-          h('td', { 'data-label': 'Dimensions par défaut (mm)' }, `${t.default_width_mm} × ${t.default_depth_mm} × ${t.default_height_mm}, parois ${t.default_panel_mm}`),
-          h('td', { 'data-label': 'Utilisations' }, String(t.usage_count)),
-          h('td', { class: 'cell-actions' },
-            h('button', { class: 'btn btn-small', type: 'button', onclick: () => edit(t).then((ok) => ok && load()) }, 'Modifier'),
-            !t.is_builtin && h('button', { class: 'btn btn-small btn-danger-ghost', type: 'button', onclick: async () => {
-              if (!await confirmDialog({ title: 'Supprimer le type', message: `Supprimer « ${t.name} » ?`, confirmLabel: 'Supprimer', danger: true })) return;
-              try {
-                await api(`/storage-types/${t.id}`, { method: 'DELETE' });
-                toast('Type supprimé.');
-                load();
-              } catch (error) { showError(error); }
-            } }, 'Supprimer')),
-        ))))));
+      const remove = async (t) => {
+        if (!await confirmDialog({ title: 'Supprimer le type', message: `Supprimer « ${t.name} » ? Aucun rangement ne l’utilise.`, confirmLabel: 'Supprimer le type', danger: true })) return;
+        try {
+          await api(`/storage-types/${t.id}`, { method: 'DELETE' });
+          toast('Type supprimé.');
+          load();
+        } catch (error) { showError(error); }
+      };
+      const open = (t) => edit(t).then((ok) => ok && load());
+      clear(list, h('div', { class: 'card card-flush' }, h('table', { class: 'data-table types-table' },
+        h('thead', {}, h('tr', {}, h('th', {}, 'Type'), h('th', {}, 'Forme'), h('th', {}, 'Dimensions par défaut'), h('th', { class: 'cell-num' }, 'Utilisé'), h('th', {}, h('span', { class: 'sr-only' }, 'Actions')))),
+        h('tbody', {}, types.map((t) => {
+          const swatch = h('span', { class: 'tree-swatch', 'aria-hidden': 'true' });
+          swatch.style.background = t.default_color; // CSSOM : la CSP interdit les attributs style
+          return h('tr', {},
+            h('td', { 'data-label': 'Type' }, h('span', { class: 'cell-title' }, swatch, t.name, t.is_builtin && h('span', { class: 'badge', title: 'Type fourni : il ne se supprime pas' }, 'fourni'))),
+            h('td', { 'data-label': 'Forme' }, SHAPE_LABELS[t.shape]),
+            h('td', { 'data-label': 'Dimensions par défaut', class: 'num' },
+              `${t.default_width_mm} × ${t.default_depth_mm} × ${t.default_height_mm} mm`, h('span', { class: 'sub' }, `L × P × H, parois ${t.default_panel_mm} mm`)),
+            h('td', { 'data-label': 'Utilisé', class: 'cell-num' }, t.usage_count ? plural(t.usage_count, 'fois', 'fois') : h('span', { class: 'muted' }, 'jamais')),
+            h('td', { class: 'cell-actions' }, h('span', { class: 'list-row-actions' },
+              h('button', { class: 'btn btn-small', type: 'button', 'aria-label': `Modifier le type « ${t.name} »`, onclick: () => open(t) }, icon('edit'), h('span', { class: 'btn-label' }, 'Modifier')),
+              !t.is_builtin && (t.usage_count
+                ? h('button', { class: 'icon-btn icon-btn-small', type: 'button', disabled: true, 'aria-label': `Suppression impossible : « ${t.name} » est utilisé`, title: 'Utilisé par des rangements : suppression impossible' }, icon('trash'))
+                : h('button', { class: 'icon-btn icon-btn-small btn-danger-ghost', type: 'button', 'aria-label': `Supprimer le type « ${t.name} »`, title: 'Supprimer', onclick: () => remove(t) }, icon('trash'))))));
+        })))));
     } catch (error) {
       clear(list, errorState(error, load));
     }

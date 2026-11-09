@@ -1786,3 +1786,126 @@ kbd { display: inline-block; padding: 1px 6px; border: 1px solid var(--line); bo
 .focus-bar .btn { flex: none; }
 .editor-stage.is-focused { background: color-mix(in srgb, var(--scene-bg) 82%, #000); transition: background-color var(--dur-3); }
 .editor-canvas:has(.focus-bar:not([hidden])) .gizmo-hud { top: calc(var(--s3) + 48px); }
+
+/* ===== Administration ===== */
+/* Utilisateurs : pastille d'initiales, rôle modifiable sans cadre tant qu'on ne le survole pas, actions dans « ⋯ » */
+.user-cell { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+.user-cell-text { min-width: 0; display: grid; }
+.user-cell-text .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar-soft { width: 32px; height: 32px; background: var(--primary-soft); color: var(--primary-soft-ink); font-size: var(--text-xs); }
+.is-inactive .avatar-soft { background: var(--surface-3); color: var(--ink-3); }
+.select-quiet { border-color: transparent; background-color: transparent; box-shadow: none; padding-left: var(--s2); margin-left: calc(-1 * var(--s2)); min-width: 10rem; transition: border-color var(--dur-1), background-color var(--dur-1); }
+.select-quiet:hover { border-color: var(--line-strong); background-color: var(--surface); }
+.select-quiet:focus { border-color: var(--focus); background-color: var(--surface); }
+.users-table .cell-actions { width: 1%; }
+.users-table .cell-login { color: var(--ink-2); white-space: nowrap; }
+.list-actions .field-hint { flex: 1 1 20rem; margin: 0; }
+@media (max-width: 767px) {
+  /* Une ligne compacte par compte (≈ 100 px au lieu de 360) : case, nom, menu ; puis rôle et statut */
+  .users-table tr { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "check user menu" ". role status"; align-items: center; gap: var(--s2) var(--s3); padding: var(--s3) var(--s4); }
+  .users-table td, .card-flush .users-table td:first-child, .card-flush .users-table td:last-child { padding: 0; width: auto; }
+  .users-table td[data-label]::before { display: none; }
+  .users-table td.cell-check { grid-area: check; padding: 0; }
+  .users-table td.cell-check:empty { display: block; width: 18px; }
+  .users-table td[data-label="Utilisateur"] { grid-area: user; }
+  .users-table td.cell-actions { grid-area: menu; padding: 0; }
+  .users-table td[data-label="Rôle"] { grid-area: role; }
+  .users-table td[data-label="Statut"] { grid-area: status; text-align: right; }
+  .users-table td.cell-login { display: none; }
+  .users-table .select-quiet { min-width: 0; width: auto; max-width: 100%; }
+  .avatar-soft { width: 28px; height: 28px; }
+}
+/* Catégories : pastille de couleur, nom, nombre d'objets (lien vers le catalogue filtré) ; deux colonnes sur grand écran */
+.category-list { grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr)); column-gap: var(--s8); gap: 0 var(--s8); }
+.category-row { display: flex; align-items: center; gap: var(--s3); min-height: 56px; padding: var(--s2) 0; border-bottom: 1px solid var(--line); }
+.category-dot { width: 12px; height: 12px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 12%); }
+.category-row-main { flex: 1; min-width: 0; display: grid; }
+.category-row-main strong { font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.category-row-main .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.category-row-main .sub a { color: var(--ink-3); }
+.category-row-main .sub a:hover { color: var(--primary-ink); }
+.section-hint { margin: calc(-1 * var(--s1)) 0 var(--s3); }
+/* Supprimer : icône neutre, rouge seulement au survol ou au focus */
+.list-row-actions .btn-danger-ghost.icon-btn, .cell-actions .btn-danger-ghost.icon-btn { color: var(--ink-3); }
+.list-row-actions .btn-danger-ghost.icon-btn:hover, .list-row-actions .btn-danger-ghost.icon-btn:focus-visible,
+.cell-actions .btn-danger-ghost.icon-btn:hover, .cell-actions .btn-danger-ghost.icon-btn:focus-visible { color: var(--danger); background: var(--danger-soft); }
+.cell-actions .list-row-actions { justify-content: flex-end; }
+@media (max-width: 767px) {
+  .category-row .btn-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .category-row .btn { padding: 0; width: var(--tap); }
+  .category-row .icon-btn { width: var(--tap); height: var(--tap); }
+  .category-row .btn .icon { margin: 0; }
+  /* Champs : carte compacte (nom ; type et portée ; actions) */
+  .fields-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s1) var(--s3); padding: var(--s3) var(--s4); }
+  .fields-table td, .card .fields-table td { padding: 0; width: auto; }
+  .fields-table td[data-label]::before { display: none; }
+  .fields-table td[data-label="Champ"] { grid-column: 1; }
+  .fields-table td.cell-actions { grid-column: 2; grid-row: 1 / span 3; align-self: center; padding: 0; }
+  .fields-table td[data-label="Type"], .fields-table td[data-label="S’applique à"], .fields-table td[data-label="Recherche"] { grid-column: 1; font-size: var(--text-sm); color: var(--ink-3); }
+}
+/* Types de rangement */
+.types-table .cell-title .tree-swatch { margin-right: var(--s0); }
+.types-table td.num .sub { display: block; font-size: var(--text-xs); color: var(--ink-3); }
+@media (max-width: 767px) {
+  /* Carte compacte : nom et action ; forme ; dimensions ; utilisation */
+  .types-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name actions" "shape actions" "dims used"; gap: var(--s1) var(--s3); padding: var(--s3) var(--s4); }
+  .types-table td, .card-flush .types-table td:first-child, .card-flush .types-table td:last-child { padding: 0; width: auto; }
+  .types-table td[data-label]::before { display: none; }
+  .types-table td[data-label="Type"] { grid-area: name; }
+  .types-table td[data-label="Forme"] { grid-area: shape; font-size: var(--text-sm); color: var(--ink-2); }
+  .types-table td[data-label="Dimensions par défaut"] { grid-area: dims; font-size: var(--text-sm); color: var(--ink-3); }
+  .types-table td[data-label="Dimensions par défaut"] .sub { display: none; }
+  .types-table td[data-label="Utilisé"] { grid-area: used; font-size: var(--text-sm); color: var(--ink-3); text-align: right; }
+  .types-table td.cell-actions { grid-area: actions; align-self: center; padding: 0; }
+  .types-table .btn-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .types-table .btn { padding: 0; width: var(--tap); }
+  .types-table .btn .icon { margin: 0; }
+}
+/* Rôles : cartes de même hauteur, permissions par catégorie, actions en bas */
+.role-grid { align-items: stretch; }
+.role-description { color: var(--ink-2); margin: 0 0 var(--s2); }
+.role-count { margin: 0 0 var(--s3); }
+.role-count a { color: var(--ink-3); font-weight: var(--fw-medium); }
+.role-count a:hover { color: var(--primary-ink); }
+.role-all { display: flex; align-items: center; gap: var(--s2); margin: 0; padding: var(--s2) var(--s3); border-radius: var(--r-md); background: var(--primary-soft); color: var(--primary-soft-ink); font-size: var(--text-sm); font-weight: var(--fw-medium); }
+.role-all .icon { width: 16px; height: 16px; }
+.permission-groups { display: grid; gap: var(--s3); margin: 0; }
+.permission-groups dt { display: flex; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s1); font-size: var(--text-xs); font-weight: var(--fw-semibold); color: var(--ink-2); text-transform: uppercase; letter-spacing: .04em; }
+.permission-groups dt .count { font-weight: var(--fw-medium); color: var(--ink-3); letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.permission-groups dd { margin: 0; }
+.role-card .card-actions { align-items: center; justify-content: space-between; border-top: 1px solid var(--line); margin-top: auto; padding-top: var(--s3); }
+.role-card .permission-groups, .role-card .role-all { margin-bottom: var(--s4); }
+/* Paramètres : sections en cartes, couleurs avec aperçu, barre d'enregistrement */
+.settings-form { display: grid; gap: var(--s4); max-width: 44rem; }
+.settings-section { margin: 0; }
+.settings-section > h2, .settings-section .section-header h2 { margin: 0 0 var(--s3); font-size: var(--text-md); }
+.settings-section .section-header { margin-bottom: var(--s2); }
+.settings-section .section-header h2 { margin: 0; }
+.fill-choices { display: grid; border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+.fill-choice { display: flex; align-items: center; gap: var(--s3); min-height: 64px; padding: var(--s3) var(--s4); cursor: pointer; transition: background-color var(--dur-1); }
+.fill-choice + .fill-choice { border-top: 1px solid var(--line); }
+.fill-choice:hover { background: var(--surface-2); }
+.fill-sample { flex: none; width: 36px; height: 28px; border-radius: var(--r-sm); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 14%), inset 0 -6px 0 rgb(0 0 0 / 12%); }
+.fill-choice-text { flex: 1; min-width: 0; display: grid; }
+.fill-choice-text strong { font-weight: var(--fw-semibold); }
+.fill-choice-picker { display: flex; align-items: center; gap: var(--s2); flex: none; }
+.color-value { font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--text-xs); color: var(--ink-3); text-transform: uppercase; }
+.fill-choice input[type="color"] { width: 44px; height: 36px; }
+.settings-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--s3); flex-wrap: wrap; }
+.form-status { color: var(--ink-3); font-size: var(--text-sm); }
+.form-status:empty { display: none; }
+@media (max-width: 767px) {
+  .fill-choice { padding: var(--s3); }
+  .color-value { display: none; }
+  .settings-actions { position: sticky; bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); padding: var(--s3) 0; background: linear-gradient(transparent, var(--bg) 30%); }
+  .settings-actions .btn { flex: 1; }
+}
+.types-table .cell-title { display: inline-flex; align-items: center; gap: var(--s2); flex-wrap: nowrap; white-space: nowrap; }
+.types-table .cell-title .badge { margin: 0; }
+.types-table td.num { white-space: nowrap; }
+@media (min-width: 768px) and (max-width: 1099px) {
+  /* Écran moyen : « Modifier » en icône seule pour que le tableau tienne sans défilement */
+  .types-table .btn-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .types-table .cell-actions .btn { padding: 0; width: var(--tap); }
+  .types-table .cell-actions .btn .icon { margin: 0; }
+}

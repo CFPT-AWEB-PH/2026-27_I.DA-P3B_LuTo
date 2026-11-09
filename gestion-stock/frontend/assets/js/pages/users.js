@@ -1,6 +1,7 @@
 import { api } from '../api.js';
 import { append, clear, formatDate, h } from '../dom.js';
-import { busy, confirmDialog, emptyState, errorState, field, openDialog, pageHeader, plural, skeleton, showError, toast } from '../ui.js';
+import { busy, confirmDialog, emptyState, errorState, field, menuButton, openDialog, pageHeader, plural, skeleton, showError, toast } from '../ui.js';
+import { contextMenu } from '../context-menu.js';
 import { icon } from '../icons.js';
 import { credentialsDialog } from '../credentials.js';
 import { peopleFromRows, readSpreadsheet } from '../spreadsheet.js';
@@ -15,6 +16,7 @@ export async function render(view, session) {
   );
   const groupFilter = h('select', { 'aria-label': 'Filtrer par groupe' }, h('option', { value: '' }, 'Tous les groupes'));
   const list = h('div', { class: 'list-container' }, skeleton('row', 4));
+  const summary = h('p', { class: 'result-summary', 'aria-live': 'polite' });
   let knownGroups = [];
 
   append(view,
@@ -27,6 +29,7 @@ export async function render(view, session) {
       ],
     }),
     h('div', { class: 'toolbar' }, h('div', { class: 'toolbar-search' }, icon('search'), search), roleFilter, groupFilter, activeFilter),
+    summary,
     list,
   );
 
@@ -36,7 +39,8 @@ export async function render(view, session) {
   } catch (error) {
     return clear(list, errorState(error, () => location.reload()));
   }
-  roleFilter.append(...roles.map((r) => h('option', { value: r.id }, r.name)));
+  const wantedRole = new URLSearchParams(location.search).get('role_id');
+  roleFilter.append(...roles.map((r) => h('option', { value: r.id, selected: String(r.id) === wantedRole }, r.name)));
 
   // Comptes cochés pour de nouvelles fiches. Limité aux lignes affichées : on ne change jamais un mot de passe que l'écran ne montre pas.
   const selection = new Set();
@@ -61,7 +65,7 @@ export async function render(view, session) {
       const all = h('input', { type: 'checkbox', 'aria-label': 'Sélectionner tous les comptes affichés' });
       const boxes = new Map();
       const regenerateLabel = h('span', {});
-      const regenerateButton = h('button', { class: 'btn btn-small', type: 'button', onclick: async (e) => {
+      const regenerateButton = h('button', { class: 'btn btn-small btn-tinted', type: 'button', onclick: async (e) => {
         await busy(e.currentTarget, async () => {
           if (await regenerate(withPassword.filter((u) => selection.has(u.id)))) selection.clear();
         });
@@ -69,6 +73,8 @@ export async function render(view, session) {
       } }, icon('refresh'), regenerateLabel);
       function sync() {
         const count = selection.size;
+        const total = plural(users.length, 'utilisateur');
+        summary.textContent = count ? `${total} · ${plural(count, 'compte coché', 'comptes cochés')}` : total;
         regenerateLabel.textContent = count ? `Nouvelles fiches pour ${plural(count, 'compte')}` : 'Nouvelles fiches';
         regenerateButton.disabled = count === 0;
         all.checked = count > 0 && count === withPassword.length;
@@ -93,9 +99,10 @@ export async function render(view, session) {
         ? h('div', { class: 'card card-flush' }, table(users, roles, session, load, { all: withPassword.length > 0 ? all : null, selectBox }))
         : h('div', { class: 'card' }, emptyState('Aucun utilisateur ne correspond à ces critères.', { iconName: 'users' }));
       sync();
+      if (!users.length) summary.textContent = '';
       clear(list,
         withPassword.length > 0 && h('div', { class: 'list-actions' },
-          h('p', { class: 'field-hint' }, 'Les mots de passe ne sont pas conservés : cochez les comptes à réimprimer, ils recevront un nouveau mot de passe.'),
+          h('p', { class: 'field-hint' }, 'Fiche perdue ? Cochez les comptes à réimprimer : ils reçoivent un nouveau mot de passe (les anciens ne sont pas conservés).'),
           regenerateButton),
         body);
     } catch (error) {
@@ -139,7 +146,7 @@ function addDialog(roles, groups, reload) {
           if (Object.keys(missing).length) return showError(Object.assign(new Error('Complétez les champs indiqués.'), { fields: missing }), form);
           const { created, skipped } = await api('/users/import', { method: 'POST', body: { role_id: Number(role.value), people: [person] } });
           if (skipped.length) {
-            return showError(new Error(`Ce compte existe déjà (identifiant ${skipped[0].username}). Pour une nouvelle fiche, utilisez le bouton « Mot de passe » de sa ligne.`), form);
+            return showError(new Error(`Ce compte existe déjà (identifiant ${skipped[0].username}). Pour une nouvelle fiche : menu « ⋯ » de sa ligne, « Nouveau mot de passe ».`), form);
           }
           close();
           await reload();
@@ -250,8 +257,14 @@ async function regenerate(users) {
   return rows.length > 0;
 }
 
+/** Initiales pour la pastille : prénom et nom, ou les deux premières lettres de l'identifiant. */
+function initials(user) {
+  const words = String(user.display_name || user.username || user.email || '?').split(/[\s.@_-]+/).filter(Boolean);
+  return (words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? '?').slice(0, 2)).toUpperCase();
+}
+
 function table(users, roles, session, reload, { all, selectBox }) {
-  return h('table', { class: 'data-table' },
+  return h('table', { class: 'data-table users-table' },
     h('thead', {}, h('tr', {},
       h('th', { class: 'cell-check' }, all), h('th', {}, 'Utilisateur'), h('th', {}, 'Rôle'), h('th', {}, 'Statut'),
       h('th', {}, 'Dernière connexion'), h('th', {}, h('span', { class: 'sr-only' }, 'Actions')),
@@ -290,43 +303,48 @@ function row(user, roles, session, reload, selectBox) {
     });
   });
 
-  const toggle = h('button', {
-    class: ['btn', 'btn-small', user.is_active ? 'btn-danger-ghost' : ''],
-    type: 'button',
-    disabled: isSelf && user.is_active,
-    title: isSelf ? 'Vous ne pouvez pas désactiver votre propre compte' : null,
-    onclick: async () => {
-      const activate = !user.is_active;
-      const ok = await confirmDialog({
-        title: activate ? 'Réactiver le compte' : 'Désactiver le compte',
-        message: activate
-          ? `${who} pourra de nouveau se connecter.`
-          : `${who} sera immédiatement déconnecté et ne pourra plus se connecter.`,
-        confirmLabel: activate ? 'Réactiver le compte' : 'Désactiver le compte',
-        danger: !activate,
-      });
-      if (!ok) return;
-      try {
-        await api(`/users/${user.id}`, { method: 'PATCH', body: { is_active: activate } });
-        toast(activate ? 'Compte réactivé.' : 'Compte désactivé.');
-        reload();
-      } catch (error) {
-        showError(error);
-      }
-    },
-  }, user.is_active ? 'Désactiver' : 'Réactiver');
+  const toggleActive = async () => {
+    const activate = !user.is_active;
+    const ok = await confirmDialog({
+      title: activate ? 'Réactiver le compte' : 'Désactiver le compte',
+      message: activate
+        ? `${who} pourra de nouveau se connecter.`
+        : `${who} sera immédiatement déconnecté et ne pourra plus se connecter.`,
+      confirmLabel: activate ? 'Réactiver le compte' : 'Désactiver le compte',
+      danger: !activate,
+    });
+    if (!ok) return;
+    try {
+      await api(`/users/${user.id}`, { method: 'PATCH', body: { is_active: activate } });
+      toast(activate ? 'Compte réactivé.' : 'Compte désactivé.');
+      reload();
+    } catch (error) {
+      showError(error);
+    }
+  };
 
-  const passwordButton = user.username && h('button', { class: 'btn btn-small', type: 'button', title: 'Choisir ou générer un nouveau mot de passe', onclick: () => passwordDialog(user) }, 'Mot de passe');
+  // Actions rares regroupées dans un menu (bouton « ⋯ » et clic droit sur la ligne) : la liste reste calme
+  const menuItems = () => [
+    user.username && user.is_active && { label: 'Nouveau mot de passe…', icon: 'refresh', onSelect: () => passwordDialog(user) },
+    !(isSelf && user.is_active) && { label: user.is_active ? 'Désactiver le compte…' : 'Réactiver le compte…', icon: user.is_active ? 'x' : 'check', danger: user.is_active, onSelect: toggleActive },
+  ].filter(Boolean);
+  const actions = menuItems().length ? menuButton({ label: `Actions pour ${who}`, items: menuItems() }) : null;
 
-  return h('tr', { class: !user.is_active && 'is-inactive' },
+  roleSelect.classList.add('select-quiet');
+  const tr = h('tr', { class: !user.is_active && 'is-inactive' },
     h('td', { class: 'cell-check' }, user.username && user.is_active && selectBox(user)),
     h('td', { 'data-label': 'Utilisateur' },
-      h('div', { class: 'cell-title' }, user.display_name || user.email, isSelf && h('span', { class: 'badge badge-accent' }, 'Vous')),
-      user.display_name && h('span', { class: 'sub' }, [user.username ?? user.email, user.group].filter(Boolean).join(' · '))),
+      h('div', { class: 'user-cell' },
+        h('span', { class: 'avatar avatar-soft', 'aria-hidden': 'true' }, initials(user)),
+        h('div', { class: 'user-cell-text' },
+          h('div', { class: 'cell-title' }, user.display_name || user.email, isSelf && h('span', { class: 'badge badge-accent' }, 'Vous')),
+          user.display_name && h('span', { class: 'sub' }, [user.username ?? user.email, user.group].filter(Boolean).join(' · '))))),
     h('td', { 'data-label': 'Rôle' }, roleSelect),
     h('td', { 'data-label': 'Statut' },
       h('span', { class: ['status', user.is_active ? 'status-ok' : 'status-off'] }, user.is_active ? 'Actif' : 'Désactivé')),
-    h('td', { 'data-label': 'Dernière connexion', class: 'num' }, user.last_login_at ? formatDate(user.last_login_at) : 'Jamais'),
-    h('td', { class: 'cell-actions' }, passwordButton, toggle),
+    h('td', { 'data-label': 'Dernière connexion', class: 'num cell-login' }, user.last_login_at ? formatDate(user.last_login_at) : 'Jamais'),
+    h('td', { class: 'cell-actions' }, actions),
   );
+  if (actions) contextMenu(tr, menuItems, { label: `Actions pour ${who}` });
+  return tr;
 }
