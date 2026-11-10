@@ -1797,6 +1797,13 @@ kbd { display: inline-block; padding: 1px 6px; border: 1px solid var(--line); bo
 .select-quiet:hover { border-color: var(--line-strong); background-color: var(--surface); }
 .select-quiet:focus { border-color: var(--focus); background-color: var(--surface); }
 .users-table .cell-actions { width: 1%; }
+/* La colonne du nom prend la place libre ; rôle, statut et date restent à la largeur de leur contenu */
+.users-table td[data-label="Utilisateur"] { width: 100%; }
+.users-table td[data-label="Rôle"], .users-table td[data-label="Statut"] { white-space: nowrap; }
+/* Tablette et petit écran (menu latéral) : six colonnes ne tiennent pas, le nom passait sur trois lignes */
+@media (min-width: 768px) and (max-width: 1279px) {
+  .users-table th:nth-child(5), .users-table td.cell-login { display: none; }
+}
 .users-table .cell-login { color: var(--ink-2); white-space: nowrap; }
 .list-actions .field-hint { flex: 1 1 20rem; margin: 0; }
 @media (max-width: 767px) {
