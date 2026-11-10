@@ -700,6 +700,9 @@ input[type="checkbox"] {
 input[type="checkbox"]::after { content: ""; width: 10px; height: 10px; background: var(--primary-fg); clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%); transform: scale(0); transition: transform var(--dur-2) var(--ease-spring); }
 input[type="checkbox"]:checked { background: var(--primary); border-color: var(--primary); }
 input[type="checkbox"]:checked::after { transform: scale(1); }
+/* Sélection partielle (case « tout sélectionner ») : un trait au lieu de la coche */
+input[type="checkbox"]:indeterminate { background: var(--primary); border-color: var(--primary); }
+input[type="checkbox"]:indeterminate::after { height: 2px; border-radius: 1px; clip-path: none; transform: scale(1); }
 input[type="checkbox"]:hover:not(:disabled) { border-color: var(--primary); }
 input[type="checkbox"]:active:not(:disabled) { transform: scale(.88); }
 input[type="checkbox"]:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; box-shadow: none; }
@@ -1719,7 +1722,7 @@ kbd { display: inline-block; padding: 1px 6px; border: 1px solid var(--line); bo
 .login-form .field { margin-bottom: var(--s1); }
 .list-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s2) var(--s4); margin-bottom: var(--s2); }
 .data-table .cell-check { width: 1%; padding-right: 0; }
-.data-table .cell-check input { display: block; }
+.data-table .cell-check input { display: grid; } /* grid et non block : sinon la coche (::after) n'a pas de taille */
 .import-preview { max-height: 34vh; overflow-y: auto; margin-bottom: var(--s2); }
 .table-scroll { overflow-x: auto; }
 .credential-value { font-family: ui-monospace, Consolas, monospace; font-size: 1.02em; }

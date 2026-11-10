@@ -75,7 +75,9 @@ export async function render(view, session) {
         const count = selection.size;
         const total = plural(users.length, 'utilisateur');
         summary.textContent = count ? `${total} · ${plural(count, 'compte coché', 'comptes cochés')}` : total;
-        regenerateLabel.textContent = count ? `Nouvelles fiches pour ${plural(count, 'compte')}` : 'Nouvelles fiches';
+        // Libellé court : le bouton ne s'élargit presque pas, la ligne d'aide ne passe pas à la ligne et le tableau ne saute pas
+        regenerateLabel.textContent = count ? `Nouvelles fiches (${count})` : 'Nouvelles fiches';
+        regenerateButton.title = count ? `Nouvelles fiches pour ${plural(count, 'compte')}` : '';
         regenerateButton.disabled = count === 0;
         all.checked = count > 0 && count === withPassword.length;
         all.indeterminate = count > 0 && count < withPassword.length;
