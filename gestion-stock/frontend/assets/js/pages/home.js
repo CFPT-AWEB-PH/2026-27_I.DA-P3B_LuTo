@@ -54,7 +54,8 @@ export function render(view, session) {
     h('span', { class: 'quick-room-text' }, h('span', { class: 'skeleton skeleton-text' }), h('span', { class: 'skeleton skeleton-text' })))));
   const kpis = h('nav', { class: 'kpi-row', 'aria-label': 'Chiffres clés', 'aria-busy': 'true' },
     Array.from({ length: kpiCount(can) }, () => h('div', { class: 'kpi kpi-skeleton', 'aria-hidden': 'true' },
-      h('span', { class: 'skeleton skeleton-kpi-value' }), h('span', { class: 'skeleton skeleton-kpi-label' }), h('span', { class: 'skeleton skeleton-kpi-sub' }))));
+      h('span', { class: 'kpi-top' }, h('span', { class: 'skeleton skeleton-kpi-icon' }), h('span', { class: 'skeleton skeleton-kpi-label' })),
+      h('span', { class: 'skeleton skeleton-kpi-value' }), h('span', { class: 'skeleton skeleton-kpi-sub' }))));
   const activity = h('div', {}, skeleton('text', 4));
 
   append(view, 
@@ -108,19 +109,39 @@ export function render(view, session) {
     } finally {
       kpis.removeAttribute('aria-busy');
     }
-    // Libellé court au-dessus, précision dessous : pas de parenthèses qui font passer le libellé sur deux lignes
-    const tile = (label, value, href, { tone = null, sub = null } = {}) => h('a', { class: ['kpi', tone && `kpi-${tone}`], href },
-      h('span', { class: 'kpi-value' }, Number(value).toLocaleString('fr-CH')),
-      h('span', { class: 'kpi-label' }, label),
+    // Pastille d'icône et libellé en tête, valeur en grand, précision dessous ; la première carte
+    // (le stock, raison d'être de l'outil) est la vedette en dégradé
+    const tile = (label, value, href, { tone = null, sub = null, iconName = 'box', featured = false } = {}) => h('a', { class: ['kpi', featured && 'kpi-featured', tone && `kpi-${tone}`], href },
+      h('span', { class: 'kpi-top' }, h('span', { class: 'kpi-icon', 'aria-hidden': 'true' }, icon(iconName)), h('span', { class: 'kpi-label' }, label)),
+      h('span', { class: 'kpi-value', 'data-count': String(value) }, Number(value).toLocaleString('fr-CH')),
       sub && h('span', { class: 'kpi-sub' }, sub));
     clear(kpis,
-      data.stock && tile('Objets', data.stock.items, '/items', { sub: 'au catalogue' }),
-      data.stock && can('stock.add') && tile('À réapprovisionner', data.stock.low, '/items?low=1', { tone: data.stock.low > 0 ? 'warn' : null, sub: data.stock.low > 0 ? 'sous le seuil' : 'tout est en ordre' }),
+      data.stock && tile('Objets', data.stock.items, '/items', { sub: 'au catalogue', featured: true }),
+      data.stock && can('stock.add') && tile('À réapprovisionner', data.stock.low, '/items?low=1', { tone: data.stock.low > 0 ? 'warn' : null, sub: data.stock.low > 0 ? 'sous le seuil' : 'tout est en ordre', iconName: 'alert' }),
       data.activity
-        ? tile('Emprunts en cours', data.activity.open_loans, '/loans', { sub: plural(data.activity.borrowers, 'personne') })
-        : data.stock && tile('Mes emprunts', data.stock.my_open_loans, '/loans', { sub: 'en cours' }),
-      data.activity && tile('Mouvements', data.activity.movements_today, '/movements', { sub: 'aujourd’hui' }),
-      data.spaces && tile('Salles', data.spaces.rooms, '/plan', { sub: plural(data.spaces.units, 'rangement') }));
+        ? tile('Emprunts en cours', data.activity.open_loans, '/loans', { sub: plural(data.activity.borrowers, 'personne'), iconName: 'loans' })
+        : data.stock && tile('Mes emprunts', data.stock.my_open_loans, '/loans', { sub: 'en cours', iconName: 'loans' }),
+      data.activity && tile('Mouvements', data.activity.movements_today, '/movements', { sub: 'aujourd’hui', iconName: 'history' }),
+      data.spaces && tile('Salles', data.spaces.rooms, '/plan', { sub: plural(data.spaces.units, 'rangement'), iconName: 'room' }));
+    animateCounts(kpis);
+  }
+
+  /** Compteurs des chiffres clés : la valeur monte de 0 à sa cible en 650 ms (sauf mouvement réduit). */
+  function animateCounts(container) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    for (const el of container.querySelectorAll('[data-count]')) {
+      const target = Number(el.dataset.count);
+      if (!Number.isFinite(target) || target <= 0) continue;
+      const start = performance.now();
+      const step = (now) => {
+        if (!el.isConnected) return;
+        const p = Math.min(1, (now - start) / 650);
+        const eased = 1 - (1 - p) ** 3;
+        el.textContent = Math.round(target * eased).toLocaleString('fr-CH');
+        if (p < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
   }
 
   async function loadActivity() {

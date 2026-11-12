@@ -2,7 +2,7 @@
 
 Ce document décrit la direction visuelle, les jetons de design (implémentés dans `frontend/assets/css/app.css`), les composants communs (`frontend/assets/js/ui.js`) et les audits successifs. Il sert de référence pour toute nouvelle page.
 
-État actuel (2026-11-09) : troisième refonte, « Établi ». Elle garde l'accent indigo et la police Inter choisis le 2026-11-05 (style repris du site Trello 2.0), mais refait la hiérarchie, les fonds, les composants de liste, le mouvement et les parcours. Les sections 1 à 4 décrivent l'état actuel ; les sections 5 et suivantes sont l'historique des audits et citent parfois des styles abandonnés.
+État actuel (2026-11-12) : quatrième refonte, « Établi lumineux ». Elle garde la structure, l'accent indigo et la police Inter de la refonte « Établi » (2026-11-09), mais adopte le rendu « premium » des tableaux de bord de référence fournis par le client : fond ambiant à lueurs radiales, surfaces flottantes à grands rayons et ombres diffuses, dégradé indigo sur l'action principale et sur la carte vedette de l'accueil, verre dépoli (barre supérieure au défilement, arrière-plan des fenêtres), élévation au survol des cartes cliquables, compteurs animés des chiffres clés. Les sections 1 à 4 décrivent l'état actuel ; les sections 5 et suivantes sont l'historique des audits et citent parfois des styles abandonnés.
 
 ## 1. Direction
 
@@ -12,8 +12,9 @@ Ce document décrit la direction visuelle, les jetons de design (implémentés d
 - **La hiérarchie passe d'abord par la taille, la graisse et l'espace**, la couleur ensuite. Chaque écran a un élément dominant : la recherche (accueil, catalogue), la quantité en stock et « Où le trouver » (fiche objet), la quantité à rendre (emprunts).
 - **L'étiquette d'emplacement** (`Salle › Armoire › Tiroir`, filet indigo à gauche, dernier niveau en gras) est l'élément signature. Variante compacte dans les listes : une ligne, niveaux intermédiaires raccourcis, chemin complet au survol et pour les lecteurs d'écran.
 - **Les chiffres comptent** : chiffres tabulaires, plus grands que leur unité ; la quantité en stock d'une fiche est le plus grand texte de la page (36 px).
-- **La profondeur passe par la bordure**. Ombre uniquement pour ce qui flotte (menus, fenêtres, notifications) et au survol des cartes cliquables. Seul dégradé : le halo de la page de connexion.
-- **Fonds lumineux et calmes** : fond de page `#f6f7f9` (au lieu d'un gris bleuté plus sombre), cartes blanches, filets à peine marqués. La barre supérieure se fond dans la page et ne se détache (filet) qu'au défilement.
+- **Des surfaces qui flottent**. Bordure + ombre diffuse très légère (`--shadow-xs`) sur chaque carte ; les cartes cliquables s'élèvent au survol (−2 px, `--shadow-md`). Les menus, fenêtres et notifications flottent davantage (`--shadow-md`/`--shadow-lg`).
+- **Deux dégradés, pas plus** : `--grad-primary` (action principale, marque, avatar, barre de progression) et `--grad-featured` (carte vedette « Objets » de l'accueil, le motif signature). Un halo indigo (`--glow-primary`) souligne l'action principale.
+- **Fond ambiant** : deux lueurs radiales fixes (indigo `--glow-a`, cyan `--glow-b`) posées derrière la page par `body::before`. La barre supérieure est transparente au repos et devient une lame de verre dépoli (flou + filet) au défilement ; l'arrière-plan des fenêtres est flouté. `prefers-reduced-transparency` rend ces calques opaques.
 - **Inter**, hébergée dans `frontend/vendor/inter/` (la CSP n'autorise que les polices du site). Références d'objets en police à chasse fixe système (`--font-mono`) : elles se recopient et se comparent caractère par caractère.
 
 ## 2. Jetons
@@ -24,16 +25,20 @@ Tous définis dans `:root` (thème clair) et redéfinis sous `prefers-color-sche
 
 | Rôle | Jeton | Clair | Sombre |
 |---|---|---|---|
-| Fond de page et menu latéral | `--bg` | #f6f7f9 | #0b0c0f |
-| Cartes, champs, fenêtres | `--surface` | #ffffff | #14161b |
-| Zone en retrait dans une carte (en-têtes de tableau, pieds de fenêtre) | `--surface-2` | #f3f4f7 | #191b21 |
-| Survol sur le fond, piste des contrôles segmentés, badges neutres | `--surface-3` | #e9ecf1 | #22252c |
-| Survol sur une carte | `--surface-hover` | #f7f8fa | #1a1c22 |
-| Séparateurs, contours de cartes | `--line` | #e3e6eb | #23262d |
-| Contours des boutons secondaires | `--line-strong` | #cdd2da | #343842 |
+| Fond de page et menu latéral | `--bg` | #f2f4f9 | #090a10 |
+| Lueurs du fond ambiant (`body::before`) | `--glow-a`, `--glow-b` | indigo 7 %, cyan 6 % | indigo 11 %, cyan 7 % |
+| Cartes, champs, fenêtres | `--surface` | #ffffff | #13161e |
+| Zone en retrait dans une carte (en-têtes de tableau, pieds de fenêtre) | `--surface-2` | #f4f6fa | #181b25 |
+| Survol sur le fond, piste des contrôles segmentés, badges neutres | `--surface-3` | #e9edf4 | #212633 |
+| Survol sur une carte | `--surface-hover` | #f7f9fc | #191d28 |
+| Séparateurs, contours de cartes | `--line` | #e4e8f0 | #222736 |
+| Contours des boutons secondaires | `--line-strong` | #ccd3df | #353c4e |
 | Contours des champs et cases (≥ 3:1, WCAG 1.4.11) | `--line-control` | #7f8796 | #626977 |
 | Texte principal / secondaire / indication | `--ink` / `--ink-2` / `--ink-3` | 17:1 / 9,9:1 / 5,9:1 | ≥ 12:1 / ≥ 8:1 / ≥ 5:1 |
 | Marque | `--primary` (+ `-hover`, `-press`, `-fg`) | #4f46e5 | #5d5cf0 |
+| Dégradé de l'action principale (boutons pleins, marque, avatar) | `--grad-primary` | indigo 135° | plus clair |
+| Dégradé de la carte vedette (accueil) + texte | `--grad-featured`, `--featured-fg`, `--featured-fg-2` | indigo profond 140° | |
+| Halo sous l'action principale et la carte vedette | `--glow-primary` | indigo 55 % | indigo 45 % |
 | Teinte de marque (sélection, actions de ligne) | `--primary-soft`, `--primary-soft-2`, `--primary-soft-ink` | | |
 | Liens et texte coloré | `--primary-ink` | #4338ca (7,4:1) | #a9abff |
 | Succès, avertissement, erreur, info | `--success`, `--warning`, `--danger`, `--info` (+ `-soft`) | | |
@@ -45,8 +50,8 @@ Tous définis dans `:root` (thème clair) et redéfinis sous `prefers-color-sche
 
 | Niveau | Jeton | Taille | Graisse | Usage |
 |---|---|---|---|---|
-| Chiffre principal | `--text-3xl` | 36 px | 680 | Quantité en stock d'une fiche |
-| Display | `--text-2xl` | 28 px | 680 | Salutation de l'accueil, chiffres clés |
+| Chiffre principal | `--text-3xl` | 38 px | 680 | Quantité en stock d'une fiche |
+| Display | `--text-2xl` | 30 px | 680 | Salutation de l'accueil, chiffres clés |
 | H1 | `--text-xl` | 24 px (22 mobile) | 680, −0,025em | Titre de page |
 | H2 | `--text-lg` | 17 px | 600 | Titre de fenêtre ; titres de carte en `--text-md` 15 px |
 | Corps | `--text-base` | 14 px (15 mobile, champs 16) | 400, interligne 1,5 | Texte courant |
@@ -59,8 +64,8 @@ Quatre graisses (`--fw-regular` 400, `--fw-medium` 500, `--fw-semibold` 600, `--
 ### Espacements, rayons, ombres
 
 - Espacements, base 4 px : `--s0` 2 · `--s1` 4 · `--s1-5` 6 · `--s2` 8 · `--s2-5` 10 · `--s3` 12 · `--s4` 16 · `--s5` 20 · `--s6` 24 · `--s8` 32 · `--s10` 40 · `--s12` 48 · `--s16` 64. Cible tactile `--tap` 44 px.
-- Rayons : `--r-xs` 4 (puces, touches) · `--r-sm` 6 (petits boutons, menus) · `--r-md` 8 (boutons, champs) · `--r-lg` 12 (cartes) · `--r-xl` 16 (fenêtres). Élément imbriqué : rayon extérieur − marge.
-- Ombres : `--shadow-xs` (boutons secondaires), `--shadow-sm` (carte survolée, grande recherche), `--shadow-md` (menus, suggestions), `--shadow-lg` (fenêtres, notifications). `--highlight` : reflet interne d'un pixel sur les boutons pleins.
+- Rayons : `--r-xs` 5 (puces, touches) · `--r-sm` 8 (petits boutons, menus) · `--r-md` 10 (boutons, champs) · `--r-lg` 16 (cartes de liste, tableaux, panneaux) · `--r-xl` 20 (grandes cartes, bandeaux KPI) · `--r-2xl` 24 (fenêtres, carte de connexion). Élément imbriqué : rayon extérieur − marge.
+- Ombres, diffuses et teintées d'encre froide (`rgb(23 26 58 / …)`) : `--shadow-xs` (cartes au repos, boutons secondaires), `--shadow-sm` (recherche de l'accueil, carte vedette), `--shadow-md` (cartes survolées, menus, suggestions), `--shadow-lg` (fenêtres, notifications, carte de connexion). `--highlight` : reflet interne d'un pixel sur les boutons pleins.
 
 ### Mise en page
 
@@ -104,7 +109,22 @@ Boutons : `btn-primary` (une action principale par zone) · `btn` (secondaire) �
 
 Règle : les pages ajoutent leurs enfants avec `append(view, …)` ou `h(…)` (de `dom.js`), jamais avec `Element.append`, qui écrirait « null » ou « false » à l'écran pour une condition fausse.
 
-## 4. Troisième refonte « Établi » (2026-11-09)
+## 4. Quatrième refonte « Établi lumineux » (2026-11-12)
+
+Refonte visuelle demandée par le client avec des références précises (10 maquettes et 3 vidéos de tableaux de bord « premium » : Ultraleads, Quixotic, Skillset, « Glassy Dashboard » V24/V28/V30). Les idées communes à ces références ont été reprises ; la structure des pages, les composants et les parcours de la refonte « Établi » sont conservés tels quels.
+
+Ce qui vient des références :
+
+- **Carte vedette en dégradé** dans la rangée de chiffres (motif présent dans la quasi-totalité des références) : « Objets », la raison d'être de l'outil, sur `--grad-featured`, avec un reflet radial dans l'angle et un halo.
+- **Pastille d'icône teintée** en tête de chaque carte KPI (indigo par défaut, ambre pour « À réapprovisionner ») et **compteur animé** de 0 à la valeur en 650 ms (`animateCounts` dans `home.js`, désactivé par `prefers-reduced-motion`).
+- **Fond ambiant** à lueurs radiales, **grands rayons** (16/20/24), **ombres diffuses**, **élévation au survol** des cartes cliquables, **verre dépoli** (barre supérieure au défilement, arrière-plan des fenêtres), **dégradé + halo** sur l'action principale.
+- Point du menu latéral sur la page courante, liens « Tout voir » en pilule, avatar et marque en dégradé.
+
+Ce qui a été volontairement écarté : les mini-graphiques (sparklines) des références — l'API ne fournit pas de séries temporelles et des courbes décoratives seraient des données inventées ; les barres latérales sombres sur page claire ; les photos d'avatar.
+
+Vérifié sur le banc local (fausse API, CSP réelle) : accueil, catalogue, fiche, plan, emprunts, historique, utilisateurs, rôles, connexion, fenêtres (bureau et panneau mobile), en clair et en sombre ; 375 px sans défilement horizontal sur 7 pages. `theme-color` et `background_color` du manifeste alignés sur le nouveau fond.
+
+## 5. Troisième refonte « Établi » (2026-11-09)
 
 Audit mené sur une pile Docker locale avec les données de l'atelier (362 objets, 396 rangements), des emprunts et des stocks bas, à 1440, 900 et 375 px, en clair et en sombre, avec un compte administrateur puis un compte Élève.
 
@@ -182,7 +202,7 @@ Audit sur l'atelier (12 m × 8,10 m, 727 rangements), à 1440, 1100 et 375 px, c
 
 Reste : en 2D, l'étiquette d'une petite salle collée à une autre peut chevaucher sa voisine.
 
-## 5. Audit (deuxième passe, 2026-11-05)
+## 6. Audit (deuxième passe, 2026-11-05)
 
 La première refonte (commit c31bb0b) avait posé un socle solide. Cet audit a été mené sur une copie locale de l'application avec des données réalistes, à 1440 px, 768 px et 375 px, en clair et en sombre.
 
@@ -214,7 +234,7 @@ La première refonte (commit c31bb0b) avait posé un socle solide. Cet audit a �
 - **Ce qui manquait** : un composant de menu accessible, un moyen d'effacer les filtres de l'historique, l'annulation.
 - **Inutile** : le second champ de recherche de l'accueil.
 
-## 6. Auto-critique (deuxième passe)
+## 7. Auto-critique (deuxième passe)
 
 | Point de vue | Constat après refonte |
 |---|---|
@@ -226,7 +246,7 @@ La première refonte (commit c31bb0b) avait posé un socle solide. Cet audit a �
 | Clavier, lecteur d'écran | Focus visible sur tout, menus aux flèches, focus piégé dans les boîtes de dialogue et restitué, noms accessibles conservés sur les boutons icônes. |
 | Développeur | Trois menus remplacés par un composant ; `append` sûr ; recherche réutilisable ; aucune modification de l'API. |
 
-## 7. Pistes pour la suite
+## 8. Pistes pour la suite
 
 1. **API** : renvoyer `is_active` dans la liste des objets (le correctif actuel en déduit l'état du filtre, ce qui reste exact mais implicite).
 2. **Choix d'emplacement** : recherche directe d'un rangement (« Tiroir 2 ») dans le sélecteur, au lieu de salle puis arbre.
@@ -235,7 +255,7 @@ La première refonte (commit c31bb0b) avait posé un socle solide. Cet audit a �
 5. **Vignettes des salles** : dessiner les meubles sur le plan miniature (l'API de liste ne renvoie pas encore les emprises).
 6. **Tests d'interface** automatisés (Playwright) sur les parcours prendre / rendre / ajouter, aux trois points de rupture.
 
-## 8. Revue selon les Human Interface Guidelines (skill apple-design)
+## 9. Revue selon les Human Interface Guidelines (skill apple-design)
 
 Revue menée avec le skill [dickwu/apple-design-skill](https://github.com/dickwu/apple-design-skill) (pages HIG d'Apple). L'application est une PWA web : les principes et fondamentaux s'appliquent (accessibilité, couleur, typographie, mise en page, rédaction), les conventions iOS comme principes pour l'usage sur téléphone. Les majuscules suivent l'usage français (casse de phrase), appliqué partout : c'est un choix assumé, pas un écart.
 
