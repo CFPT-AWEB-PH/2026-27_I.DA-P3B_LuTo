@@ -41,6 +41,8 @@ Audit complet du 2026-11-05 : modèle de menace, règles à respecter et risques
 | Saturation du Pi | Quotas par compte sur les opérations coûteuses, délais de Caddy et de PHP-FPM |
 | Page malveillante qui agit à la place d'un utilisateur connecté | Cookie `SameSite=Lax`, jeton CSRF, contrôle de l'origine, JSON obligatoire |
 | Élève qui prend un objet non consommable en décochant « Je le rendrai » | **Non bloqué**, voir ci-dessous |
+| Caméra détournée, images de la salle qui partent ailleurs | `Permissions-Policy: camera=(self)` (micro et position interdits), CSP `connect-src 'self'` ; le comptage analyse l'image dans le navigateur, ne l'envoie pas et ne la garde pas ; la caméra s'éteint en quittant la page |
+| Compte faussé pour modifier le stock | Le comptage passe par `/stock/adjust` et `/stock/add` : permissions vérifiées par le serveur, mouvement journalisé au nom de la personne |
 
 ## Règles pour la suite
 

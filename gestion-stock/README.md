@@ -44,7 +44,9 @@ voir le **[guide d'exploitation](docs/EXPLOITATION.md)**.
 | **Administrateurs** | Plan du bâtiment et éditeur 3D des salles, comptes (import Excel, fiches à imprimer), rôles et permissions, paramètres |
 
 - **Vue 3D** des salles (Three.js) : armoires, tiroirs qui s'ouvrent, bacs étiquetés, objets dessinés à leur place
-  (89 modèles), objets empruntés en gris, « regarder dedans », couleurs de remplissage.
+  (128 modèles, dont les modules .NET Gadgeteer), objets empruntés en gris, « regarder dedans », couleurs de remplissage.
+- **Comptage à la caméra** : les pièces posées sur une table blanche sont comptées dans le navigateur (aucune image
+  envoyée), par lots, puis le stock de l'emplacement est remplacé ou complété, avec sa ligne d'historique.
 - **Plan du bâtiment** : étages, salles déplaçables au gizmo, portes et fenêtres, modèles de rangement réutilisables,
   annuler / rétablir, copier / couper / coller.
 - **Recherche** plein texte côté serveur (5000 objets en moins de 0,3 s sur le Pi), suggestions au clavier (`/`, `Ctrl+K`).
@@ -88,6 +90,7 @@ gestion-stock/
 ├── docker/              Images et configuration : Caddy, PHP-FPM, MariaDB, sauvegardes
 ├── scripts/             Déploiement, retour arrière, sauvegarde et restauration, tests sur le Pi
 │   └── poste/           Poste partagé du Pi : kiosque, fond d'écran, pare-feu, mises à jour, IP fixe
+├── tests/frontend/      Tests sans navigateur : comptage sur images de synthèse, cohérence des modèles 3D
 ├── docker-compose.yml
 └── docs/
     ├── cahier-des-charges.md
@@ -110,7 +113,13 @@ Sur le serveur (Raspberry Pi), toutes les suites d'intégration :
 bash ~/gestion_stock/current/scripts/run-tests.sh <email-administrateur>
 ```
 
-489 vérifications au total : authentification et sessions, escalades de privilèges, salles et validation spatiale,
+Sur le poste de développement, le comptage à la caméra et la cohérence des modèles 3D (Node, sans dépendance) :
+
+```bash
+node tests/frontend/vision_test.mjs && node tests/frontend/visuals_test.mjs
+```
+
+491 vérifications côté serveur : authentification et sessions, escalades de privilèges, salles et validation spatiale,
 stock et concurrence, recherche sur 5000 objets, plan et modèles, PWA, import de comptes, apparence 3D.
 
 ---

@@ -15,6 +15,7 @@ import * as storageTypesPage from './pages/storage-types.js';
 import * as itemsPage from './pages/items.js';
 import * as itemPage from './pages/item.js';
 import * as loansPage from './pages/loans.js';
+import * as countPage from './pages/count.js';
 import * as movementsPage from './pages/movements.js';
 import * as catalogAdminPage from './pages/catalog-admin.js';
 import * as settingsPage from './pages/settings.js';
@@ -22,7 +23,7 @@ import { searchBox } from './search-box.js';
 import { canInstall, initPwa, onInstallChange, promptInstall } from './pwa.js';
 
 // nav: false = page accessible mais absente du menu ; « :param » = segment variable
-// group : section du menu ; tab : présent dans la barre d'onglets mobile
+// group : section du menu ; tab : présent dans la barre d'onglets mobile ; permission : une permission, ou plusieurs dont une suffit
 const routes = [
   { path: '/', label: 'Accueil', icon: 'home', page: homePage, group: 'stock', tab: true },
   { path: '/items', label: 'Objets', icon: 'box', page: itemsPage, permission: 'stock.view', group: 'stock', tab: true },
@@ -30,6 +31,7 @@ const routes = [
   { path: '/plan', label: 'Plan', icon: 'plan', page: planPage, permission: 'rooms.view', group: 'stock', tab: true },
   { path: '/rooms/:id', label: 'Salle', page: roomEditorPage, permission: 'rooms.view', nav: false, menu: '/plan' },
   { path: '/loans', label: 'Emprunts', icon: 'loans', page: loansPage, permission: 'stock.view', group: 'stock', tab: true },
+  { path: '/count', label: 'Comptage', icon: 'camera', page: countPage, permission: ['stock.adjust', 'stock.add'], group: 'stock', tab: true },
   { path: '/movements', label: 'Historique', icon: 'history', page: movementsPage, permission: 'history.view', group: 'stock' },
   { path: '/admin/catalog', label: 'Catégories et champs', icon: 'tag', page: catalogAdminPage, permission: 'items.edit', group: 'admin' },
   { path: '/admin/storage-types', label: 'Types de rangement', icon: 'layers', page: storageTypesPage, permission: 'storage.edit', group: 'admin' },
@@ -59,6 +61,10 @@ const session = {
   settings: {},
   can(permission) {
     return this.me?.permissions.includes(permission) ?? false;
+  },
+  /** Une route sans permission est ouverte à tous ; avec une liste, une seule suffit. */
+  allows(route) {
+    return !route.permission || [route.permission].flat().some((p) => this.can(p));
   },
 };
 let view = null;
@@ -141,7 +147,7 @@ function render() {
     }));
     return;
   }
-  if (route.permission && !session.can(route.permission)) {
+  if (!session.allows(route)) {
     document.title = `Accès refusé · ${appName()}`;
     append(view, emptyState("Votre rôle ne donne pas accès à cette page. Demandez à un administrateur si vous en avez besoin.", {
       title: 'Accès refusé', iconName: 'shield',
@@ -200,7 +206,7 @@ function renderShell() {
   const { user } = session.me;
   root.className = 'app';
   view = h('main', { id: 'view', class: 'view', tabindex: '-1' });
-  const visible = routes.filter((r) => r.nav !== false && (!r.permission || session.can(r.permission)));
+  const visible = routes.filter((r) => r.nav !== false && session.allows(r));
 
   const brand = () => h('a', { class: 'brand', href: '/' },
     h('span', { class: 'brand-mark', 'aria-hidden': 'true' }, icon('drawer')),

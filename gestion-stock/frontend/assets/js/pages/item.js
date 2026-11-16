@@ -77,11 +77,12 @@ export async function render(view, session, params) {
                 h('div', { class: 'location-row-actions' },
                   canTake && !single && h('button', { class: 'btn btn-small btn-tinted', type: 'button', 'aria-label': `Prendre ici : ${l.path}`, onclick: take(l) }, icon('take'), 'Prendre'),
                   // Actions moins fréquentes, nommées plutôt que figurées par des icônes ambiguës
-                  (can('stock.move') || can('stock.adjust')) && menuButton({
+                  (can('stock.move') || can('stock.adjust') || can('stock.add')) && menuButton({
                     label: `Autres actions pour ${l.path}`,
                     items: [
                       can('stock.move') && { label: 'Déplacer…', icon: 'move', onSelect: async () => { if (await moveDialog(item, l)) after(); } },
                       can('stock.adjust') && { label: 'Corriger la quantité…', icon: 'edit', onSelect: async () => { if (await adjustDialog(item, l)) after(); } },
+                      (can('stock.adjust') || can('stock.add')) && item.is_active && { label: 'Compter à la caméra…', icon: 'camera', onSelect: () => navigate(`/count?item=${item.id}&unit=${l.unit_id}`) },
                     ],
                   }),
                 ))))

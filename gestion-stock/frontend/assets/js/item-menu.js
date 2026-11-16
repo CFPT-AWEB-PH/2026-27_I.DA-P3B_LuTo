@@ -74,6 +74,7 @@ export function itemMenuItems(item, session, { reload = () => {}, location = nul
       return place && moveDialog(full, place);
     }) },
     active && !borrowed && can('stock.add') && { label: 'Ajouter du stock…', icon: 'plus', onSelect: run(() => addDialog(item, location)) },
+    active && !borrowed && (can('stock.adjust') || can('stock.add')) && { label: 'Compter à la caméra…', icon: 'camera', onSelect: () => navigate(`/count?item=${item.id}${location ? `&unit=${location.unit_id}` : ''}`) },
     { separator: true },
     can('history.view') && { label: "Consulter l'historique", icon: 'history', onSelect: () => navigate(`/movements?item_id=${item.id}`) },
   ];

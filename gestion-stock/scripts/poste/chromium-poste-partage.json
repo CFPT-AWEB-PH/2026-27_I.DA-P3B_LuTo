@@ -28,6 +28,8 @@
   "RestoreOnStartupURLs": ["http://localhost/"],
   "URLBlocklist": ["*", "chrome://*", "file://*", "view-source:*"],
   "URLAllowlist": ["http://localhost", "http://127.0.0.1", "chrome://print"],
+  "VideoCaptureAllowedUrls": ["http://localhost", "http://127.0.0.1"],
+  "AudioCaptureAllowed": false,
   "ClearBrowsingDataOnExitList": [
     "browsing_history",
     "download_history",

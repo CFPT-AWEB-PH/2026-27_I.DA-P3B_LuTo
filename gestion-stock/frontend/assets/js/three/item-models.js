@@ -2,7 +2,7 @@
 // (un seul appel de rendu par objet, quel que soit le nombre de pièces affichées).
 // Le nombre de pièces visibles suit la quantité jusqu'à un plafond : c'est une représentation,
 // la quantité exacte reste celle du panneau de propriétés.
-// Formes et cotes relevées sur photos et fiches techniques (Raspberry Pi 4, HC-SR04, LCD 1602, NEMA 17…).
+// Formes et cotes relevées sur photos et fiches techniques (Raspberry Pi 4, HC-SR04, LCD 1602, NEMA 17, modules Gadgeteer…).
 
 import * as THREE from '/vendor/three/three.module.min.js';
 import { batterySize, resolveVisual, sizeFromName } from '../visuals.js';
@@ -24,7 +24,10 @@ const MAX_NEAT = 36;
 // Petites pièces en vrac ; les autres sont rangées côte à côte
 const LOOSE = new Set(['screw', 'nut', 'washer', 'resistor', 'capacitor', 'chip', 'box',
   'standoff', 'hex_spacer', 'insert', 'rivet', 'grommet', 'bracket', 'coupler', 'film_cap', 'trimmer', 'led', 'ic_socket', 'relay', 'toggle', 'rocker', 'push_button', 'knob',
-  'rj45', 'rj45_boot', 'idc', 'terminal_block', 'crimp', 'banana', 'alligator', 'binding_post', 'dc_jack', 'sd_card', 'sensor', 'grove_module', 'caster', 'potentiometer', 'fuse_holder', 'pin_header', 'dsub']);
+  'rj45', 'rj45_boot', 'idc', 'terminal_block', 'crimp', 'banana', 'alligator', 'binding_post', 'dc_jack', 'sd_card', 'sensor', 'grove_module', 'caster', 'potentiometer', 'fuse_holder', 'pin_header', 'dsub',
+  'gadgeteer_button', 'gadgeteer_light', 'gadgeteer_led7', 'gadgeteer_led_strip', 'gadgeteer_usb_dp', 'gadgeteer_usb_edp', 'gadgeteer_usb_sp', 'gadgeteer_extender', 'gadgeteer_breakout', 'gadgeteer_tb10',
+  'gadgeteer_joystick', 'joystick_cap', 'gadgeteer_ethernet', 'gadgeteer_enc28', 'gadgeteer_motor', 'gadgeteer_relay', 'seeed_module', 'gadgeteer_small', 'gadgeteer_pot', 'gadgeteer_rs232', 'gadgeteer_sd', 'gadgeteer_tunes',
+  'sd_full', 'dc_adapter_f', 'dc_adapter_m', 'set_screw', 'ir_sensor']);
 const PCB_GREEN = '#1f6b3f';
 const PCB_BLUE = '#1b3f8f';
 const PCB_BLACK = '#17181c';
@@ -41,6 +44,14 @@ const DEFAULT_TINT = {
   battery: '#17181c', battery_9v: '#17181c', battery_holder: '#1d1e22',
   precision_driver: '#8d9198', driver_set: '#1d1e22', cutter: '#c4263c', hex_key: '#26282e', tweezers: STEEL, ruler: '#d6d9dd', knife: '#f2c230', brush: '#c8a06a', punch: '#8f949c', pouch: '#1d1e22', desolder: '#3a78d0',
   case: '#2f6fd6', bag: '#dfe6ea', foam: '#5b5f66',
+  // Modules Gadgeteer : circuits noirs, sauf l'alimentation (rouge) et les modules processeur (bleu)
+  gadgeteer_button: PCB_BLACK, gadgeteer_button_s7: PCB_BLACK, gadgeteer_light: PCB_BLACK, gadgeteer_led7: PCB_BLACK, gadgeteer_led_strip: PCB_BLACK,
+  gadgeteer_usb_dp: '#c9262f', gadgeteer_usb_edp: '#c9262f', gadgeteer_usb_sp: '#c9262f', gadgeteer_extender: PCB_BLACK, gadgeteer_breakout: PCB_BLACK, gadgeteer_tb10: PCB_BLACK,
+  gadgeteer_display: PCB_BLACK, gadgeteer_t35: PCB_BLACK, keypad: '#1d1e22', fez_spider: PCB_BLACK, fez_cerbuino: '#c9262f', g120_th: PCB_BLUE,
+  gadgeteer_joystick: PCB_BLACK, joystick_cap: '#1d1e22', gadgeteer_ethernet: PCB_BLACK, gadgeteer_enc28: PCB_BLACK, gadgeteer_motor: PCB_BLACK, gadgeteer_relay: PCB_BLACK,
+  gadgeteer_io60: PCB_BLACK, gadgeteer_maxo: PCB_BLACK, gadgeteer_hub: PCB_BLACK, seeed_module: PCB_BLACK, gadgeteer_small: PCB_BLACK, gadgeteer_pot: PCB_BLACK,
+  gadgeteer_rs232: PCB_BLACK, gadgeteer_sd: PCB_BLACK, gadgeteer_tunes: PCB_BLACK,
+  sd_full: '#2452b5', holey_board: PCB_BLACK, holder_18650: '#1d1e22', dc_adapter_f: '#1d1e22', dc_adapter_m: '#1d1e22', set_screw: '#26282e', ir_sensor: PCB_GREEN, student_board: '#c9a05e',
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -218,6 +229,98 @@ const dupont = (color) => [
   [flats([[-55, 0, 6, 1.4]], 'y', 2.53), '#3a3c42'], [flats([[52, 0, 6, 1.4]], 'y', 2.53), '#3a3c42'],
   [box(6, 0.64, 0.64, -65, 1.25, 0), GOLD],
   [flats([[0, 1.25, 1, 1]], 'x', 59.01), HOLE],
+];
+
+// ---------------------------------------------------------------------------------------------
+// Modules .NET Gadgeteer (GHI Electronics, Seeed Studio), d'après les photos des tiroirs et la norme mécanique :
+// trous de 3,2 mm sur une grille de 5 mm, centrés à 3,5 mm des bords, coins de rayon 3,5 mm (côtés de 7 + 5 n mm),
+// connecteur 10 points au pas de 1,27 mm.
+
+const G_TOP = 1.6;
+const RING = '#d5d8dc';
+const TANTALUM = '#e2ab35';
+const TERMINAL_GREEN = '#3f9c58';
+
+/** Carte Gadgeteer w x d. holes : « all », « left », « right », « none » ou liste de [x, z]. */
+function gboard(w, d, holes = 'all', color = null) {
+  const hx = w / 2 - 3.5; const hz = d / 2 - 3.5;
+  const at = Array.isArray(holes) ? holes : { all: [[-hx, -hz], [hx, -hz], [-hx, hz], [hx, hz]], left: [[-hx, -hz], [-hx, hz]], right: [[hx, -hz], [hx, hz]], none: [] }[holes];
+  return [
+    [slab(roundRect(w, d, 3.5, at.map(([x, z]) => hole(x, z, 1.6))), G_TOP, 0, 0, 8), color],
+    ...at.map(([x, z]) => [new THREE.RingGeometry(1.6, 3, 14).rotateX(-Math.PI / 2).translate(x, G_TOP + 0.02, z), RING]),
+  ];
+}
+/** Connecteur 10 points : sur la carte (cavité et broches visibles) ou dessous (down). alongX : grand côté le long de X. */
+function gsocket(x, z, alongX = true, down = false) {
+  const [lx, lz] = alongX ? [12, 5.6] : [5.6, 12];
+  if (down) return [[box(lx, 5.5, lz, x, -2.75, z), BLACK]];
+  const top = G_TOP + 5.5;
+  return [
+    [box(lx, 5.5, lz, x, G_TOP + 2.75, z), BLACK],
+    [flats([[x, z, lx - 1.8, lz - 1.8]], 'y', top + 0.01), HOLE],
+    [flats(alongX ? grid(5, 2, 1.27, 1.27, 0.5, x, z) : grid(2, 5, 1.27, 1.27, 0.5, x, z), 'y', top + 0.02), GOLD],
+    [flats([alongX ? [x, z + lz / 2 - 0.45, 3, 0.9] : [x + lx / 2 - 0.45, z, 0.9, 3]], 'y', top + 0.02), '#3a3c42'],
+  ];
+}
+/** Sérigraphie blanche : rectangles [x, z, largeur, profondeur] tenant lieu de texte. */
+const silk = (rects, y = G_TOP + 0.02) => [flats(rects, 'y', y), SILK];
+/** Composant monté en surface posé sur la carte. */
+const smd = (x, z, lx, lz, h = 0.8, color = '#17181c') => [box(lx, h, lz, x, G_TOP + h / 2, z), color];
+/** Pastille « GHI », roue dentée Gadgeteer et logo carré du fabricant. */
+const glogo = (x, z) => [cyl(1.8, 0.03, x, G_TOP, z, 12), SILK];
+const ggear = (x, z) => [slab(gear(8, 2.3, 1.6, 0.8), 0.03, G_TOP).translate(x, 0, z), SILK];
+const gmark = (x, z) => [[flats([[x, z, 3.2, 3.2]], 'y', G_TOP + 0.02), SILK], [flats([[x + 0.3, z + 0.3, 1.6, 1.6]], 'y', G_TOP + 0.03), null]];
+/** Condensateur tantale jaune, bande du pôle positif. */
+const tant = (x, z) => [[box(3.5, 1.9, 2.8, x, G_TOP + 0.95, z), TANTALUM], [flats([[x - 1.25, z, 0.5, 2.8]], 'y', G_TOP + 1.91), '#8a5a12']];
+/** Poussoir tactile 6 x 6. */
+const tact = (x, z, cap = '#26282e') => [
+  [box(6, 3.4, 6, x, G_TOP + 1.7, z), '#2a2b30'],
+  [box(6.2, 0.3, 6.2, x, G_TOP + 3.5, z), STEEL],
+  [cyl(1.7, 1.4, x, G_TOP + 3.6, z, 12), cap],
+];
+/** Embase jack d'alimentation 5,5 mm, ouverture vers −X. */
+const barrel = (x, z) => [
+  [box(14, 11, 9, x, G_TOP + 5.5, z), '#1d1e22'],
+  [cylX(3.2, 0.1, x - 7.02, G_TOP + 6, z, 16), HOLE],
+  [cylX(1, 0.14, x - 7.04, G_TOP + 6, z, 8), STEEL],
+];
+/** Embase mini-USB (dorée, comme sur les photos) ou micro-USB, ouverture vers −Z. */
+const usbPort = (x, z, mini = true) => {
+  const [w, hgt, d] = mini ? [7.7, 3.9, 9.2] : [7.5, 2.6, 5.6];
+  return [
+    [box(w, hgt, d, x, G_TOP + hgt / 2, z), mini ? '#d4b24c' : STEEL],
+    [flats([[x, G_TOP + hgt / 2, w - 1.2, hgt - 1.2]], '-z', z - d / 2 - 0.01), HOLE],
+  ];
+};
+/** Embase RJ45 blindée, ouverture vers −X, deux voyants. */
+const rj45Jack = (x, z) => [
+  [box(21, 13.5, 16, x, G_TOP + 6.75, z), STEEL],
+  [flats([[z, G_TOP + 6, 12, 8.5]], '-x', x - 10.51), HOLE],
+  [flats([[z - 5.5, G_TOP + 12, 2, 1.2]], '-x', x - 10.52), '#e8c33a'], [flats([[z + 5.5, G_TOP + 12, 2, 1.2]], '-x', x - 10.52), '#3ad06a'],
+];
+/** Bornier à vis de n points, centré sur l'origine, entrées de fil vers +Z, posé sur la carte. */
+function terminal(n, pitch, color) {
+  const k = Math.max(pitch / 5.08, 0.8);
+  const d = 4.1 * k; const top = 10 * k;
+  const xs = Array.from({ length: n }, (_, i) => (i - (n - 1) / 2) * pitch);
+  return [
+    [extrudeX(outline([[d, 0], [-d, 0], [-d, top * 0.75], [-d * 0.63, top], [d * 0.63, top], [d, top * 0.8]]), n * pitch).translate(0, G_TOP, 0), color],
+    [flats(xs.map((x) => [x, G_TOP + top * 0.38, pitch * 0.66, top * 0.36]), 'z', d + 0.01), HOLE],
+    ...xs.flatMap((x) => [[cyl(pitch * 0.3, 0.3, x, G_TOP + top - 0.25, 0, 10), STEEL], [box(pitch * 0.56, 0.1, 0.4, x, G_TOP + top + 0.08, 0), '#55595f']]),
+  ];
+}
+/** Tourne un groupe de pièces autour de Y puis le déplace. */
+const turn = (parts, angle, x, z) => parts.map(([g, c]) => [g.rotateY(angle).translate(x, 0, z), c]);
+/** Rangée de pastilles traversantes étamées. */
+const pads = (points, size = 1.9, color = RING) => [
+  [flats(points.map(([x, z]) => [x, z, size, size]), 'y', G_TOP + 0.02), color],
+  [flats(points.map(([x, z]) => [x, z, size * 0.48, size * 0.48]), 'y', G_TOP + 0.03), HOLE],
+];
+/** Bornier vert deux points des adaptateurs d'alimentation, entrées de fil vers −X. */
+const dcTerminal = () => [
+  [rbox(13, 11.5, 13, 1, -6.5, 5.75, 0, 0.4), TERMINAL_GREEN],
+  [flats([[-3.2, 4, 4, 4.4], [3.2, 4, 4, 4.4]], '-x', -13.01), HOLE],
+  ...[-3.2, 3.2].flatMap((z) => [[cyl(1.9, 0.3, -6.5, 11.4, z, 10), STEEL], [box(2.8, 0.1, 0.5, -6.5, 11.74, z), '#55595f']]),
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -1048,6 +1151,369 @@ const MODELS = {
     [box(90, 22, 60, 0, 11, 0), null],
     [flats([...Array.from({ length: 11 }, (_, i) => [-37.5 + i * 7.5, 0, 0.6, 60]), ...Array.from({ length: 7 }, (_, i) => [0, -22.5 + i * 7.5, 90, 0.6])], 'y', 22.01), '#33363b'],
   ],
+
+  // === Modules .NET Gadgeteer (photos des tiroirs de modules, novembre 2026) ===
+  // Button 1.4 (27 x 22) : poussoir, LED, connecteur dessous
+  gadgeteer_button: () => [
+    ...gboard(27, 22), ...tact(0, -0.5), ...gsocket(0, 0, true, true),
+    smd(8.2, -0.5, 1.6, 0.9, 0.6, '#f4f1e2'), smd(-8.2, -0.5, 1.6, 0.8, 0.5, '#3a3c42'),
+    silk([[0, 8.6, 10, 1.3], [0, -8.6, 6, 0.9]]),
+  ],
+  // Button S7 1.0 (62 x 77) : croix directionnelle, validation, retour et avance, une LED par touche
+  gadgeteer_button_s7: () => {
+    const keys = [[0, -29], [-18, -11], [0, -11], [18, -11], [0, 7], [-17, 27], [17, 27]];
+    const line = (x, z, angle) => [box(35, 0.04, 0.5, 0, G_TOP + 0.03, 0).rotateY(angle).translate(x, 0, z), SILK];
+    return [
+      ...gboard(62, 77), ...gsocket(0, 31, true, true),
+      ...keys.flatMap(([x, z]) => [
+        [box(12, 3.6, 12, x, G_TOP + 1.8, z), '#26282e'],
+        [lathe([[0, 3.6], [4.9, 3.6], [4.9, 8.2, 1], [4.5, 8.8, 1], [0, 9]], 16).translate(x, G_TOP, z), '#141518'],
+        smd(x + 7.6, z - 5, 1.6, 0.9, 0.6, '#f4f1e2'),
+      ]),
+      // Sérigraphie : losange de la croix, cercle de la validation, cadres des deux touches du bas
+      line(-12.5, -23.5, Math.PI / 4), line(12.5, -23.5, -Math.PI / 4), line(-12.5, 1.5, -Math.PI / 4), line(12.5, 1.5, Math.PI / 4),
+      [new THREE.RingGeometry(9.2, 9.7, 28).rotateX(-Math.PI / 2).translate(0, G_TOP + 0.03, -11), SILK],
+      silk([[-17, 18.8, 16, 0.5], [-17, 35.2, 16, 0.5], [17, 18.8, 16, 0.5], [17, 35.2, 16, 0.5], [-20, 15, 14, 1.5]]),
+      ggear(0, 22), glogo(0, 34.5),
+    ];
+  },
+  // LightSense 1.3 (22 x 22) : photorésistance, connecteur dessous
+  gadgeteer_light: () => [
+    ...gboard(22, 22, 'left'), ...gsocket(4, 0, false, true),
+    [cyl(2.6, 2, 4, G_TOP, -3.5, 16), '#d9d2c0'],
+    [cyl(2.3, 0.05, 4, G_TOP + 2, -3.5, 16), '#c8642a'],
+    [flats([[4, -4.5, 3.4, 0.35], [4, -3.5, 3.4, 0.35], [4, -2.5, 3.4, 0.35]], 'y', G_TOP + 2.07), '#f0dcc0'],
+    smd(4, 3, 1.6, 0.8, 0.5, '#3a3c42'),
+    silk([[2.5, 8.2, 13, 1.2]]), glogo(-7.5, 0),
+  ],
+  // LED7R (27 x 27) : six LED rouges en cercle autour d'une septième
+  gadgeteer_led7: () => [
+    ...gboard(27, 27), ...gsocket(0, 0, true, true),
+    [new THREE.RingGeometry(8.6, 9.1, 28).rotateX(-Math.PI / 2).translate(0, G_TOP + 0.02, 0), SILK],
+    ...[[0, 0], ...around(6, (a) => [Math.cos(a) * 6, Math.sin(a) * 6])].flatMap(([x, z]) => [
+      smd(x, z, 2, 1.3, 0.7, '#f4f1e2'), [flats([[x, z, 1.1, 0.9]], 'y', G_TOP + 0.72), '#e0503a'],
+    ]),
+  ],
+  // LED Strip (42 x 17) : sept LED en ligne
+  gadgeteer_led_strip: () => [
+    ...gboard(42, 17), ...gsocket(0, 0, true, true),
+    silk(Array.from({ length: 7 }, (_, i) => [-12 + i * 4, 0.6, 3.3, 3.3])),
+    ...Array.from({ length: 7 }, (_, i) => smd(-12 + i * 4, 0.6, 1.9, 1.2, 0.7, '#f4f1e2')),
+    silk([[0, -5.6, 12, 1.1]]),
+  ],
+  // USB Client DP 1.3 (42 x 37, rouge) : jack 7 à 30 V, mini-USB, régulateur à découpage et son inductance
+  gadgeteer_usb_dp: () => [
+    ...gboard(42, 37),
+    ...barrel(-14.5, -4), ...usbPort(3, -14, true), ...gsocket(4, 14.5),
+    [cyl(5, 4.4, 13.5, G_TOP, -2, 20), '#1c1d21'],
+    [flats([[13.5, -3, 6, 0.9], [13.5, -1, 5, 0.9]], 'y', G_TOP + 4.42), '#c9ccd2'],
+    ...tant(1, -4), ...tant(-3, 6.5), ...tant(13, 7),
+    smd(3.5, 3, 5, 4, 1.5), smd(-11, 8, 6.5, 3.5, 1.6), smd(-3.5, 0, 2.6, 1.6, 1), smd(8, -8.5, 4.3, 2.6, 2.2, '#2a2b30'),
+    silk([[-8, 16.2, 9, 1]]), glogo(-10, 13),
+  ],
+  // USB Client EDP 1.1 (32 x 27, rouge) : version compacte, micro-USB et jack
+  gadgeteer_usb_edp: () => [
+    ...gboard(32, 27),
+    ...barrel(-9.5, -2.5), ...usbPort(4, -10.8, false), ...gsocket(3, 9.5),
+    ...tant(1, -4.5), ...tant(8, 2.5),
+    smd(1.5, 1.5, 6.5, 3.5, 1.6), smd(9.5, -3.5, 3, 1.6, 1), smd(-6, 7.5, 4.3, 2.6, 2.2, '#2a2b30'),
+    silk([[-7, 3.8, 8, 0.9]]),
+  ],
+  // USB Client SP (27 x 22, rouge) : alimentation par mini-USB seule
+  gadgeteer_usb_sp: () => [
+    ...gboard(27, 22), ...usbPort(0, -6.4, true), ...gsocket(0, 6.6),
+    smd(-8.5, 0, 4, 3, 1.5), ...tant(8.5, 0),
+  ],
+  // Extender 1.3 (32 x 27) : deux connecteurs et les dix signaux sur pastilles (3V3, 5V, P3 à P9, GND)
+  gadgeteer_extender: () => {
+    const rows = Array.from({ length: 10 }, (_, i) => -11.43 + i * 2.54);
+    return [
+      ...gboard(32, 27, 'left'), ...gsocket(-2.5, -7.6), ...gsocket(-2.5, 7.6),
+      ...pads(rows.map((z) => [12.6, z])),
+      silk(rows.map((z) => [9.4, z, 2.6, 1])),
+      ggear(-2.5, 0), glogo(-12.5, 0),
+    ];
+  },
+  // Breakout 1.0 (27 x 12) : un connecteur, dix pastilles au pas de 2,54
+  gadgeteer_breakout: () => [
+    [slab(roundRect(27, 12, 1), G_TOP), null],
+    ...gsocket(-6, -2.4),
+    ...pads(Array.from({ length: 10 }, (_, i) => [-11.43 + i * 2.54, 4.3])),
+    ...gmark(4.5, -2.6), glogo(10.3, -2.6),
+  ],
+  // Breakout TB10 (52 x 22) : bornier à vis dix points au pas de 3,5
+  gadgeteer_tb10: () => [
+    ...gboard(52, 22), ...gsocket(0, -6.6),
+    ...turn(terminal(10, 3.5, TERMINAL_GREEN), 0, 0, 6.6),
+    silk(Array.from({ length: 10 }, (_, i) => [-15.75 + i * 3.5, 1.6, 2.2, 0.9])),
+    glogo(-13, -6.5), ...gmark(13, -6.5),
+  ],
+  // Character Display (87 x 42) : afficheur HD44780 16 x 2 rétroéclairé, barrette de liaison rose des photos
+  gadgeteer_display: () => [
+    ...gboard(87, 42), ...gsocket(-25, 6, true, true),
+    [box(71.2, 7.5, 24.2, 0, G_TOP + 3.75, -2), '#141518'],
+    [box(64.5, 0.1, 14.5, 0, G_TOP + 7.52, -2), '#3d7be0'],
+    [flats(Array.from({ length: 32 }, (_, i) => [-26.6 + (i % 16) * 3.55, (i < 16 ? -5 : 1), 2.95, 5.55]), 'y', G_TOP + 7.58), '#5d95ee'],
+    [flats(Array.from({ length: 6 }, (_, i) => [-26.6 + i * 3.55, -5, 2.9, 5.5]), 'y', G_TOP + 7.59), '#e9f1ff'],
+    [box(41, 2.5, 2.6, 0, G_TOP + 1.25, 15.5), '#d98aa8'],
+  ],
+  // Display T35 (92 x 72) : écran TFT tactile 3,5 pouces, cadre métallique, nappe orange
+  gadgeteer_t35: () => [
+    ...gboard(92, 72), ...gsocket(-28, 27, true, true), ...gsocket(28, 27, true, true),
+    [rbox(77, 3.4, 64, 1, 0, G_TOP + 1.7, -1.5, 0.3), '#c3c7cd'],
+    [box(74, 0.2, 59, 0, G_TOP + 3.5, -1.5), '#23252e'],
+    [box(70.1, 0.1, 52.6, 0, G_TOP + 3.66, -2), '#3a3f52'],
+    [box(18, 0.3, 5, 12, G_TOP + 0.15, 33), '#c98a3a'],
+  ],
+  // Clavier 16 touches (4 x 4) : boîtier, touches caoutchouc à légende blanche, circuit et broches en bas
+  keypad: () => {
+    const keys = grid(4, 4, 12, 13.2, 0, 0, -1);
+    return [
+      [box(53, 1.6, 70, 0, 0.8, 2), PCB_GREEN],
+      [rbox(51, 7, 64, 2.5, 0, 5.1, -1, 0.8), null],
+      ...keys.map(([x, z]) => [rbox(9.2, 2.6, 9.2, 1.4, x, 9.5, z, 0.6), '#2a2b30']),
+      [flats(keys.map(([x, z]) => [x, z, 2.6, 4]), 'y', 10.82), SILK],
+      [flats(Array.from({ length: 8 }, (_, i) => [-8.89 + i * 2.54, 35, 1.4, 1.4]), 'y', 1.62), GOLD],
+    ];
+  },
+  // FEZ Spider II (57 x 52) : module processeur bleu et son étiquette, connecteurs sur le pourtour, remise à zéro, interrupteurs
+  fez_spider: () => [
+    ...gboard(57, 52),
+    [rbox(37, 1, 27, 1, -3.5, G_TOP + 0.5, -9.5, 0.2), '#2148a6'],
+    [box(13, 1.3, 13, -10, G_TOP + 1.65, -9.5), '#141518'],
+    [box(7.5, 1.1, 10, 6, G_TOP + 1.55, -11), '#141518'],
+    [flats([[-10, -9.5, 9, 4.2]], 'y', G_TOP + 2.32), '#f4f4f0'],
+    [flats([[6, -2, 9, 1], [-17, 1.6, 5, 1]], 'y', G_TOP + 1.02), SILK],
+    ...[-13, 0].flatMap((z) => gsocket(22.6, z, false)),
+    ...[-17, -3.5].flatMap((x) => gsocket(x, 9.6)),
+    ...[-13, 0.5, 14].flatMap((x) => gsocket(x, 19.4)),
+    ...tact(10, 9.6, '#d8d8d2'), smd(19.5, 10, 4, 5.5, 2.2, '#c4263c'),
+    smd(-25, 6, 1.6, 0.9, 0.6, '#e03a3a'), smd(-25, 9, 1.6, 0.9, 0.6, '#3ad06a'),
+  ],
+  // FEZ Cerbuino Bee (68,6 x 53,3, format Arduino, rouge) : barrettes, embase XBee, USB hôte et client, microSD, 3 connecteurs Gadgeteer
+  fez_cerbuino: () => {
+    const header = (x, z, n) => [
+      [box(n * 2.54, 8.5, 2.5, x, G_TOP + 4.25, z), BLACK],
+      [flats(Array.from({ length: n }, (_, i) => [x + (i - (n - 1) / 2) * 2.54, z, 1, 1]), 'y', G_TOP + 8.52), HOLE],
+    ];
+    return [
+      [slab(roundRect(68.6, 53.3, 2, [[-20.3, -24.1], [-19, 24.1], [31.8, -19], [31.8, 8.9]].map(([x, z]) => hole(x, z, 1.6))), G_TOP, 0, 0, 8), null],
+      ...header(-2, -24.6, 10), ...header(21, -24.6, 8), ...header(4.5, 24.6, 8), ...header(23.5, 24.6, 6),
+      // Embase XBee : deux rangées de dix contacts au pas de 2 mm
+      ...[-11, 11].flatMap((z) => [[box(20, 4.5, 2, 9, G_TOP + 2.25, z), '#2a2b30'], [flats(Array.from({ length: 10 }, (_, i) => [0 + i * 2, z, 0.8, 0.8]), 'y', G_TOP + 4.52), HOLE]]),
+      ...gsocket(9, 0), ...gsocket(25, -5, false), ...gsocket(25, 14, false),
+      smd(-10, 2, 10, 10, 1.4), [flats([[-10, 2, 6, 1], [-10, 4, 4, 0.8]], 'y', G_TOP + 1.42), '#8a8d94'],
+      [rbox(11, 3.5, 4.7, 2, -10, G_TOP + 1.75, -9, 0.4), CHROME],
+      ...barrel(-27.5, -15),
+      [box(9.2, 3.9, 7.7, -30, G_TOP + 1.95, -2), '#d4b24c'], [flats([[-2, G_TOP + 1.95, 6.5, 2.7]], '-x', -34.61), HOLE],
+      [box(14, 7, 13, -28, G_TOP + 3.5, 14), STEEL], [flats([[14, G_TOP + 3.5, 11.5, 5]], '-x', -35.01), HOLE], [flats([[14, G_TOP + 2.6, 10.5, 1.6]], '-x', -35.02), '#f1efe7'],
+      [box(11.5, 1.6, 12, -8, G_TOP + 0.8, 16.5), STEEL],
+      ...tact(-20, 5, '#d8d8d2'),
+      smd(-3, -16, 1.6, 0.9, 0.6, '#3ad06a'),
+      silk([[12, -18.5, 16, 1.2], [-6, -19, 6, 1]]),
+    ];
+  },
+  // G120 TH (61 x 38, bleu) : processeur et mémoire, pastilles traversantes sur les deux longs côtés, micro-USB
+  g120_th: () => {
+    const xs = Array.from({ length: 22 }, (_, i) => -26.67 + i * 2.54);
+    return [
+      [slab(roundRect(61, 38, 1), G_TOP), null],
+      ...pads(xs.flatMap((x) => [[x, -17.2], [x, 17.2]]), 1.7, GOLD),
+      smd(-15, 0, 10.2, 22.3, 1.2, '#141518'), smd(5, 0, 15, 15, 1.3, '#141518'),
+      [flats([[5, 0, 9, 1.2], [5, 2.4, 6, 0.9]], 'y', G_TOP + 1.32), '#8a8d94'],
+      [box(5.6, 2.6, 7.5, 27.8, G_TOP + 1.3, 0), STEEL], [flats([[0, G_TOP + 1.3, 6.3, 1.5]], 'x', 30.61), HOLE],
+      smd(18, -9, 5, 3.2, 1, CHROME), smd(19, 9, 3, 3, 1.5, '#d8d8d2'),
+      silk([[16, 13.4, 12, 1.2], [-3, -13.4, 8, 1]]),
+    ];
+  },
+  // Joystick (32 x 32) : mécanisme deux axes à poussoir, capot métallique, deux potentiomètres, axe nu
+  gadgeteer_joystick: () => [
+    ...gboard(32, 32), ...gsocket(0, 0, true, true),
+    [box(16, 10.5, 16, 0, G_TOP + 5.25, 0), STEEL],
+    [lathe([[0, 10.5], [6.5, 10.5], [5.6, 12.2, 1], [3, 13, 1], [0, 13]], 16).translate(0, G_TOP, 0), '#a9adb4'],
+    [box(4.5, 9, 10, -10.2, G_TOP + 4.5, 0), '#3f6f4a'], [box(10, 9, 4.5, 0, G_TOP + 4.5, 10.2), '#3f6f4a'],
+    [box(5, 5, 5, 10.2, G_TOP + 2.5, 0), '#2a2b30'],
+    [lathe([[0, 13], [2, 13], [2, 21], [1.6, 21.5], [0, 21.5]], 10).translate(0, G_TOP, 0), '#2a2b30'],
+  ],
+  // Capuchon de joystick : calotte creuse à jupe, puits central
+  joystick_cap: () => [
+    [lathe([[2, 0], [3.4, 0], [3.4, 6], [10.5, 7], [12.6, 8.2, 1], [13, 10, 1], [12.2, 13, 1], [9.5, 15.8, 1], [5.5, 17.4, 1], [2.5, 17.8, 1], [0, 17.5]], 24), null],
+    [lathe([[0, 17.52], [2.4, 17.82]], 12), '#33353b'],
+  ],
+  // Ethernet J11D (32 x 27) : embase RJ45 à transformateur intégré
+  gadgeteer_ethernet: () => [
+    ...gboard(32, 27, 'right'), ...rj45Jack(-6.5, 0), ...gsocket(9.5, 0, false),
+    silk([[2, 11, 8, 1]]),
+  ],
+  // Ethernet ENC28 (47 x 32) : embase RJ45, contrôleur ENC28J60, quartz
+  gadgeteer_enc28: () => [
+    ...gboard(47, 32, 'right'), ...rj45Jack(-14, 0), ...gsocket(8.5, 11),
+    smd(8, -8.5, 18, 7.6, 2.3), [flats([[8, -12.7, 17, 0.8], [8, -4.3, 17, 0.8]], 'y', G_TOP + 0.4), STEEL],
+    [rbox(11, 3.5, 4.7, 2, 8, G_TOP + 1.75, 1.5, 0.4), CHROME],
+    smd(-0.5, 1.5, 2, 1.25, 1, '#b48a3c'), smd(-0.5, 11, 2, 1.25, 1, '#b48a3c'),
+  ],
+  // Motor Driver L298 (47 x 42) : pont en H et sa semelle, deux borniers de moteur, diodes, condensateur
+  gadgeteer_motor: () => [
+    ...gboard(47, 42), ...gsocket(0, -15.5),
+    smd(-3, -1, 16, 11, 3.2), [flats([[-3, -1, 13, 5]], 'y', G_TOP + 3.22), STEEL],
+    ...turn(terminal(2, 5.08, TERMINAL_GREEN), 0, -9, 15.5), ...turn(terminal(2, 5.08, TERMINAL_GREEN), 0, 6, 15.5),
+    [cyl(4, 8, 15, G_TOP, -1, 16), '#1d1e22'], [cyl(3.9, 0.1, 15, G_TOP + 8, -1, 16), STEEL],
+    ...[-13, -9, -5, -1].map((x) => smd(x, 8, 2.6, 1.6, 1.1, '#2a2b30')),
+  ],
+  // Relay X1 (42 x 27) : relais 5 V, bornier trois points, LED témoin
+  gadgeteer_relay: () => [
+    ...gboard(42, 27, 'right'),
+    ...turn(terminal(3, 5.08, '#2a6fd0'), -Math.PI / 2, -16.5, 0),
+    [rbox(19, 15.5, 15.5, 0.6, 0.5, G_TOP + 7.75, -1.5, 0.4), '#2a6fd0'],
+    [flats([[-2.5, -5, 9, 2], [-1.5, -1.5, 11, 1.1], [-1.5, 1, 11, 1.1]], 'y', G_TOP + 15.52), SILK],
+    ...gsocket(14.5, 0, false),
+    smd(-6, 10.5, 1.6, 0.9, 0.6, '#e03a3a'), silk([[3, 10.6, 10, 1.1]]),
+  ],
+  // IO60P16 (52 x 47) : extension de 60 entrées-sorties, pastilles par port, deux connecteurs
+  gadgeteer_io60: () => {
+    const xs = Array.from({ length: 14 }, (_, i) => -16.51 + i * 2.54);
+    return [
+      ...gboard(52, 47), ...gsocket(-19.5, 0, false), ...gsocket(19.5, 0, false),
+      ...pads(xs.flatMap((x) => [[x, -20.3], [x, -17.76], [x, 17.76], [x, 20.3]]), 1.7),
+      smd(0, 0, 14, 14, 1.4), [flats([[0, -7.6, 12, 0.7], [0, 7.6, 12, 0.7], [-7.6, 0, 0.7, 12], [7.6, 0, 0.7, 12]], 'y', G_TOP + 0.3), STEEL],
+      [flats([[0, 0, 6, 1], [0, 2, 4, 0.8]], 'y', G_TOP + 1.42), '#8a8d94'],
+      silk([[-11, -14.5, 6, 0.9], [0, -14.5, 6, 0.9], [11, -14.5, 6, 0.9], [-11, 14.5, 6, 0.9], [0, 14.5, 6, 0.9], [11, 14.5, 6, 0.9]]),
+    ];
+  },
+  // MaxO (72 x 22) : quatre registres à décalage, 32 sorties sur pastilles
+  gadgeteer_maxo: () => {
+    const xs = Array.from({ length: 20 }, (_, i) => -24.13 + i * 2.54);
+    return [
+      ...gboard(72, 22), ...gsocket(-20, 0, true, true), ...gsocket(20, 0, true, true),
+      ...pads(xs.flatMap((x) => [[x, -8.6], [x, 8.6]]), 1.8),
+      ...[-19.5, -6.5, 6.5, 19.5].flatMap((x) => [smd(x, 0, 10, 4, 1.6), [flats([[x, -2.6, 9, 0.7], [x, 2.6, 9, 0.7]], 'y', G_TOP + 0.3), STEEL]]),
+    ];
+  },
+  // Hub AP5 (82 x 27) : alimentation par jack, régulateur à découpage, connecteurs en ligne
+  gadgeteer_hub: () => [
+    ...gboard(82, 27),
+    ...barrel(-34, 0),
+    [cyl(5, 4.4, -19.5, G_TOP, -4, 20), '#1c1d21'], [flats([[-19.5, -4.6, 6, 0.9], [-19.5, -2.8, 5, 0.9]], 'y', G_TOP + 4.42), '#c9ccd2'],
+    ...tant(-19.5, 6.5), ...tant(-10.5, -7),
+    smd(-10, 3, 5, 4, 1.5),
+    ...[-1.5, 8, 17.5, 27].flatMap((x) => gsocket(x, 0, false)),
+    silk([[13, 10.8, 14, 1.1]]),
+  ],
+  // Module Seeed Studio (boussole, gyroscope, accéléromètre) : carte 37 x 22, capteur et découplage
+  seeed_module: () => [
+    ...gboard(37, 22), ...gsocket(-3, 4.8),
+    smd(6.5, -4, 4, 4, 1), smd(-2, -5.5, 1.6, 0.8, 0.6, '#b48a3c'), smd(1, -5.5, 1.6, 0.8, 0.6, '#b48a3c'),
+    silk([[-1, -8.9, 15, 0.9], [7.5, 4.5, 6, 0.9], [7.5, 6.3, 5, 0.9]]),
+  ],
+  // Petit module Gadgeteer (Accel G248 et autres capteurs 22 x 22) : circuit, tantale, connecteur dessous
+  gadgeteer_small: () => [
+    ...gboard(22, 22, 'left'), ...gsocket(4.5, 0, false, true),
+    smd(2.5, -4.5, 3, 3, 1), ...tant(3.5, 2.5), smd(-2, -1, 1.6, 0.8, 0.6, '#b48a3c'),
+    silk([[3, 8.4, 12, 1.1]]), glogo(-7.5, 0),
+  ],
+  // Potentiometer (27 x 22) : potentiomètre 9 mm, axe moleté
+  gadgeteer_pot: () => [
+    ...gboard(27, 22), ...gsocket(0, 0, true, true),
+    [box(9.8, 6.5, 11, 0, G_TOP + 3.25, 0), '#2a2b30'],
+    [lathe([[0, 6.5], [3.5, 6.5], [3.5, 11.5], [3, 11.5], [3, 20.5], [2.6, 21], [0, 21]], 16).translate(0, G_TOP, 0), '#b9bcc2'],
+    ...around(12, (a) => [box(0.5, 7, 0.6, 3, G_TOP + 16.5, 0).rotateY(a), '#8f949c']),
+    silk([[0, 8.8, 9, 1]]),
+  ],
+  // RS232 (42 x 32) : embase DB9 mâle, convertisseur de niveaux et ses condensateurs
+  gadgeteer_rs232: () => [
+    ...gboard(42, 32, 'right'), ...gsocket(13, 0, false),
+    [box(12.5, 12.5, 30.8, -15.5, G_TOP + 6.25, 0), STEEL],
+    [flats([[0, G_TOP + 6.25, 17, 8.5]], '-x', -21.76), '#2a2b30'],
+    [flats([...Array.from({ length: 5 }, (_, i) => [-5.54 + i * 2.77, G_TOP + 7.7, 1, 1]), ...Array.from({ length: 4 }, (_, i) => [-4.155 + i * 2.77, G_TOP + 4.8, 1, 1])], '-x', -21.77), GOLD],
+    ...[-12.5, 12.5].map((z) => [cylX(2.4, 5, -23.5, G_TOP + 6.25, z, 6), STEEL]),
+    smd(1, -6, 10, 4, 1.6), ...[[-4, 3], [1, 3], [-4, 8], [1, 8]].map(([x, z]) => smd(x, z, 2, 1.25, 1, '#b48a3c')),
+    silk([[1, 13, 9, 1]]),
+  ],
+  // SD Card (42 x 37) : logement de carte SD en tôle, fente vers le bord
+  gadgeteer_sd: () => [
+    ...gboard(42, 37), ...gsocket(0, 0, true, true),
+    [rbox(26, 3, 28.5, 0.6, 0, G_TOP + 1.5, 0, 0.2), '#c3c7cd'],
+    [flats([[0, G_TOP + 1.6, 25, 1.8]], '-x', -13.01), HOLE],
+    [flats([[0, -6, 14, 0.6], [0, 6, 14, 0.6], [7, 0, 0.6, 12]], 'y', G_TOP + 3.02), '#8e939a'],
+  ],
+  // Tunes (27 x 22) : buzzer piézo
+  gadgeteer_tunes: () => [
+    ...gboard(27, 22), ...gsocket(0, 0, true, true),
+    [lathe([[0, 0], [6, 0], [6, 4.6], [5.6, 5], [1.2, 5], [1.2, 4.2], [0, 4.2]], 20).translate(0, G_TOP, 0), '#141518'],
+    silk([[0, 8.8, 8, 1]]),
+  ],
+
+  // === Autres pièces des mêmes tiroirs ===
+  // Carte SD (24 x 32 x 2,1) : coin coupé, verrou d'écriture, étiquette ; contacts dessous
+  sd_full: () => [
+    [slab(outline([[-12, -16], [8, -16], [12, -12], [12, 16], [-12, 16]]), 2.1, 0, 0.3), null],
+    [flats([[0, 3.5, 20, 21]], 'y', 2.11), '#f1efe7'],
+    [flats([[0, -3, 20, 5]], 'y', 2.12), null],
+    [flats([[-3, 5, 10, 2.2], [-5, 9, 6, 1.4]], 'y', 2.13), '#2a2b30'],
+    [box(1, 1.4, 4, -12.2, 1.05, -4), '#e8e4d6'],
+    [flats(Array.from({ length: 8 }, (_, i) => [-8.75 + i * 2.5, -12.5, 1.6, 5]), '-y', -0.01), GOLD],
+  ],
+  // Holey Board (97 x 57) : plaque de prototypage noire, pastilles étamées au pas de 2,54
+  holey_board: () => [
+    ...gboard(97, 57),
+    ...pads(grid(32, 18, 2.54, 2.54, 0), 1.7),
+  ],
+  // Support 3 accus 18650 : bac, cloisons, ressorts côté négatif, contacts
+  holder_18650: () => {
+    const walls = [-30.2, -10.3, 10.3, 30.2];
+    return [
+      [box(77, 1.6, 62, 0, 0.8, 0), null],
+      [box(1.6, 19, 62, -37.7, 9.5, 0), null], [box(1.6, 19, 62, 37.7, 9.5, 0), null],
+      ...walls.map((z) => [box(77, 9, 1.4, 0, 4.5, z), null]),
+      ...walls.flatMap((z) => [-28, 28].map((x) => [box(12, 17, 1.4, x, 8.5, z), null])),
+      ...[-20.2, 0, 20.2].flatMap((z) => [
+        [coil(5, 5, 0.5, 1.5).rotateZ(-Math.PI / 2).translate(-36.5, 9.8, z), STEEL],
+        [box(0.5, 10, 9, 36.7, 9.8, z), STEEL],
+        [flats([[z, 15.5, 5, 1]], 'x', -36.88), SILK],
+      ]),
+    ];
+  },
+  // Adaptateur d'alimentation : embase jack femelle 5,5 mm vers bornier à vis
+  dc_adapter_f: () => [
+    ...dcTerminal(),
+    [latheX([[0, 0], [6.2, 0], [6.2, 4], [5.6, 5], [5.6, 23], [5, 24], [3.2, 24], [3.2, 12]], 18, 0, 6), null],
+    [cylX(1, 10, 18, 6, 0, 8), STEEL],
+    ...around(8, (a) => [box(12, 0.5, 0.8, 13, 5.6, 0).rotateX(a).translate(0, 6, 0), null]),
+  ],
+  // Adaptateur d'alimentation : fiche jack mâle 5,5 x 2,1 vers bornier à vis
+  dc_adapter_m: () => [
+    ...dcTerminal(),
+    [latheX([[0, 0], [6.2, 0], [6.2, 4], [5.4, 5], [5.4, 15], [4.6, 20, 1], [3.6, 24], [2.75, 24]], 18, 0, 6), null],
+    [latheX([[2.75, 23.9], [2.75, 33.5], [2.4, 34], [1.05, 34], [1.05, 27]], 16, 0, 6), CHROME],
+  ],
+  // Vis sans tête à six pans creux (DIN 913) M3 x 6 ; mise à l'échelle d'après le nom
+  set_screw: () => [
+    [latheX([[0.9, 0], [1.25, 0], [1.5, 0.3], ...thread(1.5, 1.24, 0.5, 5.5, 0.5), [1.2, 6], [0, 6]], 12), null],
+    [cylX(0.92, 0.08, 0.03, 0, 0, 6), HOLE],
+  ],
+  // Capteur de distance infrarouge (type Sharp GP2Y0A21) : deux optiques, pattes de fixation, connecteur JST
+  ir_sensor: () => [
+    [box(29.5, 1.2, 13, 0, 0.6, 0), null],
+    [box(29.5, 10.5, 13, 0, 6.45, 0), '#17181c'],
+    [slab(roundRect(44.5, 8, 4, [hole(-18.5, 0, 1.6), hole(18.5, 0, 1.6)]), 2, 6, 0.2, 8), '#17181c'],
+    [box(7.5, 3, 8, -8.5, 13.2, 0), '#17181c'], [box(15, 3, 8, 6, 13.2, 0), '#17181c'],
+    [flats([[-8.5, 0, 5.5, 6]], 'y', 14.71), '#3a2f38'], [flats([[6, 0, 12, 6]], 'y', 14.71), '#2a2030'],
+    [box(8, 5.5, 4.5, 0, 3.95, 8.5), WHITE],
+    [flats([[0, 4.2, 6, 3]], 'z', 10.76), HOLE],
+  ],
+  // Montage d'élève sur plaque à bandes : poussoirs, LED, résistances, adaptateur Gadgeteer, buzzer
+  student_board: () => [
+    [slab(roundRect(62, 47, 0.8), G_TOP), null],
+    [flats(grid(23, 17, 2.54, 2.54, 0.9), 'y', G_TOP + 0.02), '#5a4326'],
+    ...[-20, -10, 0].flatMap((x) => tact(x, 14)),
+    ...[['#e03a3a', -20], ['#e8c33a', -10], ['#3ad06a', 0]].map(([color, x]) => [lathe([[0, 0], [2.6, 0], [2.6, 1], [2.5, 4.5, 1], [2, 6, 1], [0, 6.8]], 12).translate(x, G_TOP + 1.5, 3), color]),
+    ...[-20, -10, 0].flatMap((x) => resistorBody('#d9bd8c').map(([g, c]) => [g.rotateY(Math.PI / 2).translate(x, G_TOP + 1.3, -7), c])),
+    [box(27, 1.6, 12, -9, G_TOP + 3.3, -17), '#17181c'],
+    [box(12, 5.5, 5.6, -13, G_TOP + 6.85, -17.5), BLACK],
+    [flats([[-13, -17.5, 10.2, 3.8]], 'y', G_TOP + 9.61), HOLE],
+    [lathe([[0, 0], [6, 0], [6, 9], [5.5, 9.5], [1, 9.5], [1, 8.7], [0, 8.7]], 20).translate(19, G_TOP, 6), '#141518'],
+    [rbox(15, 10, 12, 0.6, 19, G_TOP + 5, -13, 0.4), '#2a6fd0'],
+  ],
 };
 
 export const MODEL_NAMES = Object.keys(MODELS);
@@ -1123,6 +1589,15 @@ function scaleFor(visual, name) {
     return new THREE.Vector3(((length ?? 12) + 1.8) / 13.8, d, d);
   }
   if ((visual === 'nut' || visual === 'washer') && diameter) return new THREE.Vector3(diameter / 3, diameter / 3, diameter / 3);
+  if (visual === 'set_screw' && (diameter || length)) {
+    const d = (diameter ?? 3) / 3;
+    return new THREE.Vector3((length ?? 6) / 6, d, d);
+  }
+  // « Entretoise 25 mm » : la longueur du nom remplace les 15 mm du modèle
+  if (visual === 'standoff') {
+    const mm = String(name ?? '').match(/(\d+(?:[.,]\d+)?)\s*mm\b/i);
+    if (mm) return new THREE.Vector3(Math.min(60, Math.max(3, Number(mm[1].replace(',', '.')))) / 15, 1, 1);
+  }
   return new THREE.Vector3(1, 1, 1);
 }
 

@@ -391,3 +391,34 @@ Demande de l'utilisateur.
 - **HTTPS** sur l'adresse IP (autorité interne de Caddy, `HTTPS_IP`) : Let's Encrypt est impossible sans nom de domaine. Sans SNI et derrière Docker, Caddy cherchait un certificat pour l'adresse du conteneur : bloc dédié avec `tls internal` et `default_sni`, vérifié en local puis sur le Pi (racine valide, HSTS). Le poste du Pi reste sur `http://localhost`.
 - **IP fixe** : `ip-fixe.sh` tourne détaché de SSH et revient seul en arrière si la passerelle ne répond pas (essai de 10.5.35.176, hors du réseau de la prise : retour automatique). Puis **10.5.35.30**, avec certificat, `APP_URL` et pare-feu mis à jour automatiquement.
 - **Publication** : projet publié dans le dépôt GitHub de la classe, dossier `gestion-stock/`, avec son historique ; ajout du cahier des charges, du journal de bord, du README et de captures d'écran.
+
+## Comptage à la caméra et modules Gadgeteer (2026-11-12)
+
+Demande de l'utilisateur : mettre le stock à jour en montrant les pièces à une caméra, posées sur une table blanche, et ajouter les modèles 3D des pièces de 20 nouvelles photos de tiroirs.
+
+**Comptage à la caméra** (page « Comptage », `pages/count.js`, `vision/count.js`)
+- Flux de la caméra (`getUserMedia`) analysé **dans le navigateur**, sans bibliothèque ni modèle appris : blanc du fond estimé par tuiles (éclairage inégal toléré), pixels plus sombres ou colorés, nettoyage, trous de fixation bouchés, zones connexes. La surface d'une pièce seule est déduite des zones les plus fréquentes : deux pièces qui se touchent comptent pour deux (« ×2 » sur l'image). Pièces blanches : sur une feuille de couleur claire, elles sont reconnues parce qu'elles sont moins colorées que le fond.
+- **Aucune image ne quitte l'appareil** et rien n'est conservé. Seul le nombre validé part au serveur, par les routes existantes `/stock/adjust` (inventaire : la quantité de l'emplacement est remplacée) ou `/stock/add` (arrivage), donc avec les mêmes permissions, le même verrou et une ligne d'historique « Comptage à la caméra : 18 + 9 ». **Aucune route ni table nouvelle.**
+- Déroulement : compte en direct (médiane des dernières images), « Figer et compter » (image à 960 px), correction d'une zone au doigt, « Ajouter ce lot » (plusieurs lots pour un bac qui ne tient pas dans l'image), total modifiable, puis enregistrement. On peut compter d'abord et choisir l'objet ensuite. « Mémoriser la taille d'une pièce » sert quand tout se touche.
+- Signalés et non comptés : pièces coupées par le bord, poussières ; image trop sombre ou sans fond clair : message, pas de compte.
+- Sans HTTPS (donc sans `getUserMedia`) : « Prendre une photo » ouvre l'appareil photo du téléphone, même analyse.
+- Accès : `stock.adjust` ou `stock.add` (une route peut désormais demander une permission parmi plusieurs). Entrées : menu, onglet mobile, menu d'un emplacement sur la fiche d'un objet, menu contextuel d'un objet.
+- Caddy : `Permissions-Policy` passe de `camera=()` à `camera=(self)` ; micro et position restent interdits. Poste du Pi : la règle Chromium `VideoCaptureAllowedUrls` autorise la caméra pour `localhost` sans question (le profil est effacé à chaque ouverture) ; relancer `installer-poste.sh`.
+
+**39 modèles 3D de plus (128 au total)**, `three/item-models.js`
+- Modules .NET Gadgeteer de GHI Electronics et Seeed, d'après les inscriptions lues sur les photos : Button 1.4, Button S7, LightSense, LED7R, LED Strip, USB Client DP / EDP / SP, Extender, Breakout, Breakout TB10, Character Display, Display T35, clavier KP16, FEZ Spider, FEZ Cerbuino Bee, G120 TH, Joystick et ses capuchons, Ethernet J11D et ENC28, Motor Driver L298, Relay X1, IO60P16, MaxO, Hub AP5, modules Seeed, Accel G248, Potentiometer, RS232, SD Card, Tunes.
+- Autres pièces des mêmes tiroirs : carte SD, Holey Board, support 3 accus 18650, adaptateurs jack mâle et femelle à bornier, vis sans tête, capteur de distance infrarouge, montage d'élève sur plaque à bandes.
+- Cotes : norme mécanique Gadgeteer retrouvée en ligne (trous de 3,2 mm sur une grille de 5 mm, connecteur 10 points au pas de 1,27 mm), FEZ Spider 57 × 52 mm, format Arduino pour la Cerbuino. **Le fabricant ne publie plus les plans de chaque module** (produits retirés, documentation hors ligne) : les autres dimensions sont estimées sur les photos, à partir de la grille de 5 mm.
+- Reconnaissance par le nom (« Module Button 1.4 » → modèle bouton) placée avant les règles générales ; les anciennes règles sont inchangées (contrôlé). « Entretoise 25 mm » : la longueur du nom est appliquée au modèle.
+- `backend/bin/ajouter-modules-gadgeteer.php` : sans option, montre ce qu'il ferait ; avec `--appliquer`, corrige 13 objets du premier inventaire décrits de trop loin (« Encodeurs rotatifs sur module » étaient des LED7R, « Cartes rouges à joystick » des USB Client DP…) en gardant stock, emplacement et historique, et ajoute 33 objets **sans stock**, à compter à la caméra. Un objet déjà renommé à la main n'est pas touché. Rejouable.
+
+**Tests**
+- `tests/frontend/vision_test.mjs` (Node, 25 vérifications sur images de synthèse) : pièces noires, grises, colorées, percées, paires collées, ombres, éclairage à −40 %, bord sombre de la table, pièce coupée, poussières, feuille de couleur, image sombre, 960 × 720 en moins de 0,1 s sur le poste de développement.
+- `tests/frontend/visuals_test.mjs` : mêmes modèles côté serveur, formulaire et moteur 3D, identifiants de 20 caractères au plus (taille de la colonne), 54 noms reconnus.
+- Pile Docker locale avec les données de l'atelier : caméra simulée par un flux vidéo de synthèse (18 puis 9 pièces, lot de 27 enregistré, historique vérifié), photo importée, arrivage, correction d'une zone, arrêt de la caméra en quittant la page, profil Élève (page refusée, 403 du serveur), 375 px sans débordement, script du catalogue appliqué deux fois. Suites serveur : toutes passent, sauf les 3 vérifications de `stock_test.php` déjà connues avec le catalogue de l'atelier chargé.
+
+**Limites**
+- **Pas essayé avec une vraie caméra ni sur le Pi** : le comptage n'a vu que des images de synthèse. Reflets, ombres dures et mise au point réelle restent à éprouver ; le curseur de sensibilité est prévu pour cela.
+- Compte des pièces identiques, sans reconnaître de quel objet il s'agit. Des pièces empilées ou qui se chevauchent sont sous-comptées. Pièces blanches sur table blanche : non détectées (feuille de couleur).
+- Les identifications « Hub AP5 », « MaxO » et « IO60P16 » reposent sur la forme, les inscriptions étant illisibles sur les photos ; les petits modules noirs du premier tiroir restent « à trier ».
+- Le script du catalogue n'a pas été lancé sur le Pi, et rien n'est déployé.

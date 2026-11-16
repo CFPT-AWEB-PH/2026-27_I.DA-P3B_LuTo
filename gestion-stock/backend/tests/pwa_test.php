@@ -88,6 +88,8 @@ echo "== En-têtes\n";
 $r = fetchRaw("{$base}/");
 $csp = $r['headers']['content-security-policy'] ?? '';
 check('CSP : worker et manifeste limités au site', str_contains($csp, "worker-src 'self'") && str_contains($csp, "manifest-src 'self'"), $csp);
+$policy = $r['headers']['permissions-policy'] ?? '';
+check('Caméra réservée au site (comptage), micro et position interdits', str_contains($policy, 'camera=(self)') && str_contains($policy, 'microphone=()') && str_contains($policy, 'geolocation=()'), $policy);
 check('Page : manifeste et icônes référencés', str_contains($r['body'], 'rel="manifest"') && str_contains($r['body'], 'apple-touch-icon'));
 $r = fetchRaw("{$base}/api/health");
 check('API jamais en cache', ($r['headers']['cache-control'] ?? '') === 'no-store', $r['headers']['cache-control'] ?? null);

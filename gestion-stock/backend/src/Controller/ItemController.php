@@ -31,6 +31,12 @@ final class ItemController
         'battery', 'battery_9v', 'battery_holder',
         'screwdriver', 'precision_driver', 'driver_set', 'pliers', 'cutter', 'wrench', 'hex_key', 'hammer', 'tweezers', 'ruler', 'knife', 'brush', 'punch', 'pouch', 'desolder',
         'box', 'case', 'bag', 'foam',
+        // Modules .NET Gadgeteer et pièces des mêmes tiroirs (photos de novembre 2026)
+        'gadgeteer_button', 'gadgeteer_button_s7', 'gadgeteer_light', 'gadgeteer_led7', 'gadgeteer_led_strip', 'gadgeteer_usb_dp', 'gadgeteer_usb_edp', 'gadgeteer_usb_sp',
+        'gadgeteer_extender', 'gadgeteer_breakout', 'gadgeteer_tb10', 'gadgeteer_display', 'gadgeteer_t35', 'keypad', 'fez_spider', 'fez_cerbuino', 'g120_th',
+        'gadgeteer_joystick', 'joystick_cap', 'gadgeteer_ethernet', 'gadgeteer_enc28', 'gadgeteer_motor', 'gadgeteer_relay', 'gadgeteer_io60', 'gadgeteer_maxo', 'gadgeteer_hub',
+        'seeed_module', 'gadgeteer_small', 'gadgeteer_pot', 'gadgeteer_rs232', 'gadgeteer_sd', 'gadgeteer_tunes',
+        'sd_full', 'holey_board', 'holder_18650', 'dc_adapter_f', 'dc_adapter_m', 'set_screw', 'ir_sensor', 'student_board',
     ];
 
     private const PHOTO_DIR = '/app/storage/uploads/items';

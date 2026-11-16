@@ -23,7 +23,8 @@
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
 		Referrer-Policy same-origin
-		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		# Caméra : seulement pour le site lui-même (page « Comptage à la caméra », analyse dans le navigateur)
+		Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=(), usb=()"
 		Cross-Origin-Opener-Policy same-origin
 		Cross-Origin-Resource-Policy same-origin
 		# Connexion Google, le jour où elle sera en place : ajouter https://accounts.google.com à form-action
