@@ -115,7 +115,7 @@ function guideFiches(): array
             'etapes' => [
                 'Touchez un combat depuis <a href="{base}index.php">Direct</a>, <a href="{base}arbre.php">Arbre</a> ou <a href="{base}scores.php">Résultats</a>.',
                 '{1} Le tableau de score : à gauche Aka (rouge), à droite Ao (bleu), avec le chrono.',
-                '{2} <strong>Points par arbitre</strong> : ce que chacun des trois arbitres a donné. Le total retenu est en gras.',
+                '{2} <strong>Points par arbitre</strong> : ce que chacun des trois arbitres a donné, puis le score officiel (moyenne ou total le plus bas, selon les réglages).',
                 '{3} <strong>Touches</strong> : les touches enregistrées par les sabres connectés.',
             ],
             'astuces' => ['Avant le début, la fiche affiche l\'heure de départ et les arbitres à la place du score.'],

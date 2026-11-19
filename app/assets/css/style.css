@@ -4178,3 +4178,17 @@ select.cp-actif, input.cp-actif { border-color: var(--primary) !important; }
 /* Panneau des touches */
 :where(:root[data-theme^="verre"]) .touch-list li { border-color: var(--glass-line); }
 :where(:root[data-theme^="verre"]) .touch-timeline { background: var(--glass-fill); border-radius: 8px; }
+
+/* =====================================================================
+   30 CORRECTIFS RELEVÉS PAR LES CAPTURES DU GUIDE
+   ===================================================================== */
+/* Menus déroulants presque opaques : un menu placé dans la barre du haut (déjà
+   floutée) ne peut pas flouter la page en dessous, le texte s'y lisait au travers */
+:where(:root[data-theme^="verre"]) .menu-panel {
+    background: var(--glass-sheen), color-mix(in srgb, var(--glass-tint) 96%, transparent);
+}
+/* Grand chiffre du pupitre : il occupe sa largeur réelle, pas toute la ligne */
+.pad-score { align-self: flex-start; }
+/* Noms très longs (plus de 18 caractères) : un peu plus petits pour tenir sur deux lignes */
+.duel-name.is-long { font-size: .84em; }
+.duel-lg .duel-name.is-long { font-size: calc(var(--fs-lg) * .84); }

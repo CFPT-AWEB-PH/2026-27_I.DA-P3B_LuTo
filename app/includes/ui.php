@@ -39,13 +39,13 @@ function duelScore(array $c, array $opt = []): string
     <div class="duel<?= !empty($opt['lg']) ? ' duel-lg' : '' ?><?= $avant ? ' duel-avant' : '' ?>">
         <div class="duel-side duel-aka<?= $etat1 ?>">
             <span class="side-label aka">Aka</span>
-            <span class="duel-name" title="<?= e($j1) ?>"><?= e($j1) ?></span>
+            <span class="duel-name<?= mb_strlen($j1) > 18 ? ' is-long' : '' ?>" title="<?= e($j1) ?>"><?= e($j1) ?></span>
             <?php if (!$avant): ?><span class="score-big<?= $live ? ' js-score1' : '' ?>" aria-label="Score de <?= e($j1) ?>"><?= $s1 ?></span><?php endif; ?>
         </div>
         <div class="vs-label" aria-hidden="true">contre</div>
         <div class="duel-side duel-ao<?= $etat2 ?>">
             <span class="side-label ao">Ao</span>
-            <span class="duel-name" title="<?= e($j2) ?>"><?= e($j2) ?></span>
+            <span class="duel-name<?= mb_strlen($j2) > 18 ? ' is-long' : '' ?>" title="<?= e($j2) ?>"><?= e($j2) ?></span>
             <?php if (!$avant): ?><span class="score-big<?= $live ? ' js-score2' : '' ?>" aria-label="Score de <?= e($j2) ?>"><?= $s2 ?></span><?php endif; ?>
         </div>
     </div>
