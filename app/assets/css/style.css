@@ -2988,9 +2988,9 @@ body:has(#pad[data-actif="1"]) { padding-bottom: 0 !important; }
 :where(:root[data-theme^="verre"]) thead th { letter-spacing: .04em; }
 
 /* ---------- 5. Panneaux en verre ---------- */
-:where(:root[data-theme^="verre"]) :is(.card, .stat-card, .table-wrap, .upcoming, .result-list, .control-panel, .segmented, .ec-fight, .ec-ref, .ec-table-wrap, .settings-nav, .empty-state, .joueur-rapide) {
-    -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter);
-}
+/* Pas de backdrop-filter sur les panneaux du contenu : il ferait d'eux le repère
+   des menus « ⋯ » positionnés en fixed (menus décalés et coupés). Sur le fond en
+   dégradés lisses, ce flou serait de toute façon invisible. */
 :where(:root[data-theme^="verre"]) :is(.card, .stat-card, .table-wrap, .upcoming, .result-list, .control-panel, .ec-fight, .ec-ref) {
     background: var(--glass-sheen), var(--surface);
     border-color: var(--glass-edge);
@@ -3069,8 +3069,7 @@ body:has(#pad[data-actif="1"]) { padding-bottom: 0 !important; }
 
 /* ---------- 8. Contrôles ---------- */
 /* Bouton principal : dégradé de l'accent + halo coloré */
-:where(:root[data-theme^="verre"]) .btn:not(.btn-secondary, .btn-ghost, .btn-danger, .btn-icon, .btn-link, .btn-success, .btn-warning, .btn-accent, :disabled, .is-disabled),
-:where(:root[data-theme^="verre"]) button[type="submit"]:not([class]) {
+:where(:root[data-theme^="verre"]) .btn:not(.btn-secondary, .btn-ghost, .btn-danger, .btn-icon, .btn-link, .btn-success, .btn-warning, .btn-accent, :disabled, .is-disabled) {
     background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 80%, #fff), var(--primary));
     color: var(--on-primary); border-color: transparent;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), inset 0 0 0 1px rgba(255, 255, 255, .08), 0 2px 6px -2px color-mix(in srgb, var(--primary) 45%, transparent);
@@ -3128,7 +3127,6 @@ body:has(#pad[data-actif="1"]) { padding-bottom: 0 !important; }
 /* Côtés Aka / Ao : verre teinté de la couleur du combattant */
 :where(:root[data-theme^="verre"]) .pad-aka { background: var(--glass-sheen), color-mix(in srgb, var(--p1) 12%, var(--surface)); border-color: var(--p1-line); box-shadow: var(--glass-hi), var(--glass-sh-sm); }
 :where(:root[data-theme^="verre"]) .pad-ao  { background: var(--glass-sheen), color-mix(in srgb, var(--p2) 12%, var(--surface)); border-color: var(--p2-line); box-shadow: var(--glass-hi), var(--glass-sh-sm); }
-:where(:root[data-theme^="verre"]) .pad-side { -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); }
 :where(:root[data-theme^="verre"]) .pad-aka .pad-btn { background: linear-gradient(180deg, color-mix(in srgb, var(--p1) 78%, #fff), var(--p1)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 4px 14px -6px var(--p1); }
 :where(:root[data-theme^="verre"]) .pad-ao .pad-btn  { background: linear-gradient(180deg, color-mix(in srgb, var(--p2) 78%, #fff), var(--p2)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 4px 14px -6px var(--p2); }
 :where(:root[data-theme^="verre"]) .pad-official { background: var(--glass-fill-2); box-shadow: var(--glass-hi); }
@@ -3220,7 +3218,6 @@ body:has(#pad[data-actif="1"]) { padding-bottom: 0 !important; }
     box-shadow: var(--field-inset);
     color: var(--text);
     font-size: 15px; line-height: 1.4;
-    -webkit-backdrop-filter: blur(10px) saturate(140%); backdrop-filter: blur(10px) saturate(140%);
     transition: border-color var(--dur-1), box-shadow var(--dur-2) var(--ease-out), background-color var(--dur-2);
 }
 @media (pointer: coarse) {
@@ -3617,13 +3614,11 @@ body:has(#pad[data-actif="1"]) { padding-bottom: 0 !important; }
     color: var(--on-primary); font-weight: 650;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 2px 8px -2px color-mix(in srgb, var(--primary) 60%, transparent);
 }
-.cp-panel ::-webkit-scrollbar { width: 6px; }
-.cp-panel ::-webkit-scrollbar-thumb { background: var(--glass-line-strong, var(--border-strong)); border-radius: 3px; }
 
 /* ---------- Liste déroulante ---------- */
 .cp-liste { min-width: 180px; }
 .cp-liste .cp-recherche { flex: none; min-height: 34px; margin-bottom: 6px; font-size: 14px; }
-.cp-options { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; outline: none; display: flex; flex-direction: column; gap: 1px; scrollbar-width: thin; }
+.cp-options { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; outline: none; display: flex; flex-direction: column; gap: 1px; }
 .cp-opt {
     display: flex; align-items: center; gap: 10px; flex: none;
     min-height: 34px; padding: 7px 10px; border-radius: 9px;
@@ -3674,3 +3669,59 @@ body:has(#pad[data-actif="1"]) { padding-bottom: 0 !important; }
 /* Champ dont le panneau est ouvert : reste en état « focus » */
 select.cp-actif, input.cp-actif { border-color: var(--primary) !important; }
 @media (prefers-reduced-motion: reduce) { .cp-panel { animation: none; } .cp-col { scroll-behavior: auto; } }
+
+
+/* =====================================================================
+   24 SÉLECTEUR DE COULEUR (champs.js) ET BARRES DE DÉFILEMENT
+   ===================================================================== */
+.cp-couleur { width: 296px; padding: 12px; gap: 12px; }
+.cp-sv {
+    position: relative; height: 150px; border-radius: 10px; cursor: crosshair; touch-action: none; outline: none;
+    background: linear-gradient(0deg, #000, transparent), linear-gradient(90deg, #fff, var(--teinte, red));
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12), inset 0 1px 0 rgba(255, 255, 255, .15);
+}
+.cp-sv:focus-visible { box-shadow: var(--focus-ring); }
+.cp-sv-pt, .cp-teinte-pt {
+    position: absolute; width: 16px; height: 16px; border-radius: 50%; pointer-events: none;
+    transform: translate(-50%, -50%);
+    border: 2.5px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .25), 0 2px 6px rgba(0, 0, 0, .35);
+}
+.cp-ligne-teinte { display: flex; align-items: center; gap: 10px; }
+.cp-apercu { flex: none; width: 30px; height: 30px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15), inset 0 1px 0 rgba(255, 255, 255, .25), 0 2px 8px -2px rgba(0, 0, 0, .4); }
+.cp-panel .cp-pipette { flex: none; width: 30px; height: 30px; color: var(--text-2); }
+.cp-teinte {
+    position: relative; flex: 1; height: 12px; border-radius: 6px; cursor: pointer; touch-action: none; outline: none;
+    background: linear-gradient(90deg, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15);
+}
+.cp-teinte:focus-visible { box-shadow: var(--focus-ring); }
+.cp-teinte-pt { top: 50%; width: 18px; height: 18px; }
+.cp-codes { display: grid; grid-template-columns: 1.7fr 1fr 1fr 1fr; gap: 6px; }
+.cp-code { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--text-3); text-transform: uppercase; }
+.cp-panel .cp-code input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=range]) {
+    width: 100%; min-width: 0; min-height: 32px; padding: 4px 2px; text-align: center;
+    font-size: 13px; font-variant-numeric: tabular-nums; border-radius: 8px;
+}
+.cp-panel .cp-code-hex input { font-family: var(--font-mono); text-transform: lowercase; }
+.cp-nuancier { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; padding-top: 10px; border-top: 1px solid var(--glass-line, var(--border)); }
+.cp-panel .cp-pastille { display: block; aspect-ratio: 1; width: 100%; border-radius: 50%; padding: 3px; }
+.cp-panel .cp-pastille i { display: block; width: 100%; height: 100%; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .18), inset 0 1px 0 rgba(255, 255, 255, .2); }
+.cp-panel .cp-pastille.is-sel { background: transparent; box-shadow: 0 0 0 2px var(--primary); }
+
+/* Barres de défilement : fine pastille arrondie, sans flèches, aux couleurs du thème */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--text) 22%, transparent);
+    border: 3px solid transparent; background-clip: padding-box; border-radius: 999px;
+    min-height: 40px;
+}
+::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--text) 38%, transparent); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:active { background: color-mix(in srgb, var(--primary) 70%, transparent); background-clip: padding-box; }
+.cp-panel ::-webkit-scrollbar { width: 8px; }
+.cp-panel ::-webkit-scrollbar-thumb { border-width: 2px; }
+/* Firefox (ne connaît pas ::-webkit-scrollbar) */
+@supports (-moz-appearance: none) {
+    html, .cp-options { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text) 26%, transparent) transparent; }
+}

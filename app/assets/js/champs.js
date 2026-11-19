@@ -7,7 +7,9 @@
  *  - <select> : liste avec coche, recherche dès 10 choix, clavier complet
  *    (↑ ↓ Début Fin Entrée Échap, saisie des premières lettres) ;
  *  - <input type="date"> et "datetime-local" : calendrier du mois, heures et
- *    minutes, « Aujourd'hui » et « Effacer », bornes min / max respectées.
+ *    minutes, « Aujourd'hui » et « Effacer », bornes min / max respectées ;
+ *  - <input type="color"> : carré saturation / luminosité, barre des teintes,
+ *    code hex et R V B, couleurs du thème, pipette (si le navigateur l'a).
  * Le vrai champ reste en place et garde la valeur : formulaires, validations
  * et scripts des pages fonctionnent comme avant (événements input + change).
  * Téléphones et tablettes (pointeur tactile) gardent les sélecteurs natifs.
@@ -26,12 +28,15 @@
 
     /* ───────────── Panneau commun : top layer, position, fermeture ───────────── */
 
-    function creerPanneau(classe) {
+    // Dans une fenêtre modale, tout ce qui est hors de la fenêtre est inerte (non
+    // cliquable) : le panneau est donc placé DANS la modale. Le « top layer » du
+    // popover le garde au-dessus d'elle.
+    function creerPanneau(classe, ancre) {
         const p = document.createElement('div');
         p.className = 'cp-panel ' + classe;
         p.id = 'cp-' + (++compteur);
         if (POPOVER) p.popover = 'manual';
-        document.body.appendChild(p);
+        (ancre.closest('dialog[open]') || document.body).appendChild(p);
         return p;
     }
 
@@ -39,7 +44,8 @@
         const r = ancre.getBoundingClientRect();
         const marge = 8;
         p.style.maxHeight = '';
-        p.style.minWidth = Math.max(r.width, 180) + 'px';
+        // Seule la liste prend la largeur du champ ; calendrier et couleur gardent la leur
+        p.style.minWidth = p.classList.contains('cp-liste') ? Math.max(r.width, 180) + 'px' : '';
         const vw = document.documentElement.clientWidth;   // sans la barre de défilement
         const dessous = window.innerHeight - r.bottom - marge - 6;
         const dessus = r.top - marge - 6;
@@ -63,8 +69,9 @@
 
     function fermer(rendreFocus) {
         if (!ouvert) return;
-        const { panneau, ancre } = ouvert;
+        const { panneau, ancre, aLaFermeture } = ouvert;
         ouvert = null;
+        if (aLaFermeture) aLaFermeture();
         ancre.removeAttribute('aria-expanded');
         ancre.classList.remove('cp-actif');
         try { if (POPOVER && panneau.matches(':popover-open')) panneau.hidePopover(); } catch (_) { /* déjà fermé */ }
@@ -94,7 +101,7 @@
 
     function ouvrirListe(sel) {
         fermer(false);
-        const p = creerPanneau('cp-liste');
+        const p = creerPanneau('cp-liste', sel);
         const options = [];
         let html = '';
         const avecRecherche = Array.from(sel.options).filter(o => !o.hidden).length > 10;
@@ -228,7 +235,7 @@
     function ouvrirCalendrier(champ) {
         fermer(false);
         const avecHeure = champ.type === 'datetime-local';
-        const p = creerPanneau('cp-cal' + (avecHeure ? ' cp-cal-heure' : ''));
+        const p = creerPanneau('cp-cal' + (avecHeure ? ' cp-cal-heure' : ''), champ);
         const min = jourDe(champ.min), max = jourDe(champ.max);
         let choisi = jourDe(champ.value);
         let heure = heureDe(champ.value);
@@ -381,4 +388,151 @@
             ouvrirCalendrier(champ);
         }
     });
+
+    /* ───────────────────────────── Couleur ───────────────────────────── */
+
+    const estCouleur = el => el instanceof HTMLInputElement && el.type === 'color' && !el.disabled && !el.hasAttribute('data-natif');
+    const borne = (v, a, b) => Math.min(b, Math.max(a, v));
+    const hexVersRgb = h => { const m = /^#?([0-9a-f]{6})$/i.exec(String(h).trim()); if (!m) return null; const n = parseInt(m[1], 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+    const rgbVersHex = ([r, g, b]) => '#' + [r, g, b].map(x => borne(Math.round(x), 0, 255).toString(16).padStart(2, '0')).join('');
+    function rgbVersHsv([r, g, b]) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+        let h = 0;
+        if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+        return [(h * 60 + 360) % 360, max ? d / max : 0, max];
+    }
+    function hsvVersRgb([h, s, v]) {
+        const f = n => { const k = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); };
+        return [f(5) * 255, f(3) * 255, f(1) * 255];
+    }
+    // Couleurs proposées : celles du thème actif, puis une palette courante
+    function couleursProposees() {
+        const cs = getComputedStyle(document.documentElement);
+        const theme = ['--p1', '--p2', '--primary', '--success', '--warning', '--danger', '--gold']
+            .map(v => cs.getPropertyValue(v).trim()).filter(c => /^#[0-9a-f]{6}$/i.test(c));
+        const fixes = ['#ff5a5f', '#4c9dff', '#8095ff', '#3ee0b0', '#f5b83d', '#e8650a', '#b78cff', '#14a3b8', '#ffffff', '#9aa1ad', '#2b2f38', '#000000'];
+        return [...new Set([...theme, ...fixes].map(c => c.toLowerCase()))].slice(0, 16);
+    }
+    const ICONE_PIPETTE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5l4 4M17 3l4 4-2.5 2.5-4-4L17 3zM14 8l-8.5 8.5L5 20l3.5-.5L17 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+    function ouvrirCouleur(champ) {
+        fermer(false);
+        const p = creerPanneau('cp-couleur', champ);
+        const depart = champ.value;
+        let hsv = rgbVersHsv(hexVersRgb(champ.value) || [128, 149, 255]);
+        const pipette = 'EyeDropper' in window
+            ? `<button type="button" class="cp-b cp-pipette" aria-label="Prendre une couleur à l’écran" title="Pipette">${ICONE_PIPETTE}</button>` : '';
+        p.innerHTML = `
+            <div class="cp-sv" tabindex="0" role="slider" aria-label="Saturation et luminosité"><span class="cp-sv-pt"></span></div>
+            <div class="cp-ligne-teinte">
+                ${pipette}
+                <span class="cp-apercu" aria-hidden="true"></span>
+                <div class="cp-teinte" tabindex="0" role="slider" aria-label="Teinte" aria-valuemin="0" aria-valuemax="360"><span class="cp-teinte-pt"></span></div>
+            </div>
+            <div class="cp-codes">
+                <label class="cp-code cp-code-hex"><input type="text" class="cp-hex" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Code hexadécimal"><span>Hex</span></label>
+                <label class="cp-code"><input type="number" class="cp-rgb" data-c="0" min="0" max="255" aria-label="Rouge"><span>R</span></label>
+                <label class="cp-code"><input type="number" class="cp-rgb" data-c="1" min="0" max="255" aria-label="Vert"><span>V</span></label>
+                <label class="cp-code"><input type="number" class="cp-rgb" data-c="2" min="0" max="255" aria-label="Bleu"><span>B</span></label>
+            </div>
+            <div class="cp-nuancier" role="listbox" aria-label="Couleurs proposées">
+                ${couleursProposees().map(c => `<button type="button" class="cp-b cp-pastille" role="option" data-c="${c}" aria-label="${c}" title="${c}"><i></i></button>`).join('')}
+            </div>`;
+        p.querySelectorAll('.cp-pastille').forEach(b => { b.querySelector('i').style.background = b.dataset.c; });
+        const sv = p.querySelector('.cp-sv'), svPt = p.querySelector('.cp-sv-pt');
+        const teinte = p.querySelector('.cp-teinte'), teintePt = p.querySelector('.cp-teinte-pt');
+        const apercu = p.querySelector('.cp-apercu'), hex = p.querySelector('.cp-hex');
+        const rgbs = Array.from(p.querySelectorAll('.cp-rgb'));
+
+        function rendu(source) {
+            const rgb = hsvVersRgb(hsv), h = rgbVersHex(rgb);
+            sv.style.setProperty('--teinte', `hsl(${hsv[0]}, 100%, 50%)`);
+            svPt.style.left = (hsv[1] * 100) + '%';
+            svPt.style.top = ((1 - hsv[2]) * 100) + '%';
+            svPt.style.background = h;
+            teintePt.style.left = (hsv[0] / 360 * 100) + '%';
+            teintePt.style.background = `hsl(${hsv[0]}, 100%, 50%)`;
+            teinte.setAttribute('aria-valuenow', Math.round(hsv[0]));
+            apercu.style.background = h;
+            if (source !== 'hex') hex.value = h;
+            if (source !== 'rgb') rgbs.forEach((i, k) => { i.value = Math.round(rgb[k]); });
+            p.querySelectorAll('.cp-pastille').forEach(b => b.classList.toggle('is-sel', b.dataset.c === h));
+            if (champ.value !== h) { champ.value = h; champ.dispatchEvent(new Event('input', { bubbles: true })); }
+        }
+        // Glisser dans le carré ou sur la barre (souris, stylet)
+        function glisser(zone, appliquer) {
+            zone.addEventListener('pointerdown', e => {
+                e.preventDefault();
+                zone.focus({ preventScroll: true });
+                zone.setPointerCapture(e.pointerId);
+                const bouger = ev => {
+                    const r = zone.getBoundingClientRect();
+                    appliquer(borne((ev.clientX - r.left) / r.width, 0, 1), borne((ev.clientY - r.top) / r.height, 0, 1));
+                    rendu();
+                };
+                bouger(e);
+                zone.addEventListener('pointermove', bouger);
+                zone.addEventListener('pointerup', () => zone.removeEventListener('pointermove', bouger), { once: true });
+            });
+        }
+        glisser(sv, (x, y) => { hsv = [hsv[0], x, 1 - y]; });
+        glisser(teinte, x => { hsv = [Math.min(359.9, x * 360), hsv[1], hsv[2]]; });
+        sv.addEventListener('keydown', e => {
+            const pas = e.shiftKey ? .1 : .02;
+            const d = { ArrowLeft: [-pas, 0], ArrowRight: [pas, 0], ArrowUp: [0, pas], ArrowDown: [0, -pas] }[e.key];
+            if (!d) return;
+            e.preventDefault();
+            hsv = [hsv[0], borne(hsv[1] + d[0], 0, 1), borne(hsv[2] + d[1], 0, 1)];
+            rendu();
+        });
+        teinte.addEventListener('keydown', e => {
+            const d = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
+            if (!d) return;
+            e.preventDefault();
+            hsv = [(hsv[0] + d * (e.shiftKey ? 15 : 3) + 360) % 360, hsv[1], hsv[2]];
+            rendu();
+        });
+        hex.addEventListener('input', () => {
+            const v = hex.value.trim();
+            const rgb = hexVersRgb(v.startsWith('#') ? v : '#' + v);
+            if (rgb) { hsv = rgbVersHsv(rgb); rendu('hex'); }
+        });
+        hex.addEventListener('blur', () => { hex.value = champ.value; });
+        rgbs.forEach(i => i.addEventListener('input', () => {
+            hsv = rgbVersHsv(rgbs.map(x => borne(parseInt(x.value, 10) || 0, 0, 255)));
+            rendu('rgb');
+        }));
+        p.addEventListener('click', async e => {
+            const b = e.target.closest('.cp-b');
+            if (!b) return;
+            if (b.dataset.c) { hsv = rgbVersHsv(hexVersRgb(b.dataset.c)); rendu(); }
+            else if (b.classList.contains('cp-pipette')) {
+                try {
+                    const r = await new window.EyeDropper().open();
+                    const rgb = hexVersRgb(r.sRGBHex);
+                    if (rgb) { hsv = rgbVersHsv(rgb); rendu(); }
+                } catch (_) { /* pipette annulée */ }
+            }
+        });
+        p.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fermer(true); }
+            else if (e.key === 'Enter' && e.target !== sv && e.target !== teinte) { e.preventDefault(); fermer(true); }
+        });
+
+        // « change » à la fermeture si la couleur a changé (comme le sélecteur natif)
+        ouvert = { panneau: p, ancre: champ, aLaFermeture: () => { if (champ.value !== depart) champ.dispatchEvent(new Event('change', { bubbles: true })); } };
+        montrer(p, champ);
+        rendu();
+        sv.focus({ preventScroll: true });
+    }
+
+    // Le clic (souris, ou Entrée / Espace au clavier) ouvrirait la fenêtre du système
+    document.addEventListener('click', e => {
+        const champ = e.target;
+        if (!estCouleur(champ)) return;
+        e.preventDefault();
+        if (ouvert && ouvert.ancre === champ) { fermer(true); return; }
+        ouvrirCouleur(champ);
+    }, true);
 })();
