@@ -108,12 +108,14 @@ require __DIR__ . '/includes/header.php';
     </div>
     <div class="btn-row no-print">
         <?php if ($peutChangerImages): ?>
-            <form method="post" action="aide.php" class="btn-row" aria-label="Couleur des images du guide">
+            <form method="post" action="aide.php" class="guide-mode-images" aria-label="Couleur des captures d'écran du guide">
                 <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
-                <span class="hint">Images :</span>
-                <?php foreach (['noir' => 'Noir', 'blanc' => 'Blanc'] as $valeur => $libelle): ?>
-                    <button type="submit" name="images_mode" value="<?= $valeur ?>" class="btn <?= $imagesMode === $valeur ? '' : 'btn-secondary' ?>" aria-pressed="<?= $imagesMode === $valeur ? 'true' : 'false' ?>"><?= $libelle ?></button>
-                <?php endforeach; ?>
+                <span class="guide-mode-lib">Captures</span>
+                <span class="segmented">
+                    <?php foreach (['noir' => 'Sombres', 'blanc' => 'Claires'] as $valeur => $libelle): ?>
+                        <button type="submit" name="images_mode" value="<?= $valeur ?>" class="<?= $imagesMode === $valeur ? 'is-active' : '' ?>" aria-pressed="<?= $imagesMode === $valeur ? 'true' : 'false' ?>"><?= $libelle ?></button>
+                    <?php endforeach; ?>
+                </span>
             </form>
         <?php endif; ?>
         <button type="button" class="btn btn-secondary" id="guide-imprimer" title="Imprimer tout le guide, ou l'enregistrer en PDF (Ctrl+P)"><?= icon('printer') ?>Imprimer le guide</button>
@@ -161,47 +163,77 @@ require __DIR__ . '/includes/header.php';
 </section>
 
 <?php if ($user): ?>
-<section class="card mb-5" aria-labelledby="h-mon-identifiant">
-    <h2 id="h-mon-identifiant" class="h-inline"><?= icon('user') ?> Mon identifiant : <code><?= e($user['username']) ?></code></h2>
+<section class="card guide-moi" aria-labelledby="h-mon-identifiant">
     <p class="print-only"><strong>Document confidentiel : il contient des mots de passe, ne le laissez pas traîner.</strong></p>
-    <p><strong>Mon mot de passe :</strong><?= $monMdp !== null ? '<code>' . e($monMdp) . '</code>' : '<span class="muted">pas encore connu : il s\'affichera après votre prochaine connexion</span>' ?></p>
-    <p class="hint">Rôle <?= e(nomRole($pdo, $user['role'])) ?>. Le mot de passe est donné par l'organisation et ne se change pas.</p>
-    <?php if (estSuperAdmin()): ?>
-    <p><strong>Compte système :</strong> identifiant <code><?= e(COMPTE_SYSTEME) ?></code> · mot de passe <code><?= e(MDP_COMPTE_SYSTEME) ?></code> <span class="hint">(imposé, il ne peut pas être modifié)</span></p>
-    <div class="wifi-guide">
-        <h3>Tous les identifiants et mots de passe (administrateurs seulement)</h3>
-        <div class="table-wrap">
-            <table>
-                <caption class="visually-hidden">Comptes de l'application</caption>
-                <thead><tr><th scope="col">Compte</th><th scope="col">Rôle</th><th scope="col">Mot de passe</th></tr></thead>
-                <tbody>
-                <?php foreach ($tousComptes as $c): $mdp = estCompteSysteme($c['username']) ? MDP_COMPTE_SYSTEME : dechiffrerMotDePasse($c['mdp_chiffre']); ?>
-                    <tr class="<?= $c['actif'] ? '' : 'row-inactive' ?>">
-                        <td><code><?= e($c['username']) ?></code></td>
-                        <td><?= badgeRole($pdo, $c['role']) ?></td>
-                        <td><?= $mdp !== null ? '<code>' . e($mdp) . '</code>' : '<span class="muted">Connu après sa prochaine connexion, ou à générer dans <a href="' . BASE_URL . 'admin/users.php">Comptes</a></span>' ?></td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-        <div class="table-wrap">
-            <table>
-                <caption class="visually-hidden">Accès Wi-Fi</caption>
-                <thead><tr><th scope="col">Accès Wi-Fi</th><th scope="col">Description</th><th scope="col">Mot de passe</th></tr></thead>
-                <tbody>
-                <?php foreach ($tousWifi as $c): $mdp = $c['ecran_mdp'] ?? dechiffrerMotDePasse($c['mdp_chiffre']); ?>
-                    <tr class="<?= $c['actif'] ? '' : 'row-inactive' ?>">
-                        <td><code><?= e($c['identifiant']) ?></code></td>
-                        <td><?= e($c['description'] ?? '') ?></td>
-                        <td><?= $mdp !== null ? '<code>' . e($mdp) . '</code>' : '<span class="muted">Inconnu : à générer dans <a href="' . BASE_URL . 'admin/wifi.php">Wi-Fi</a></span>' ?></td>
-                    </tr>
-                <?php endforeach; ?>
-                <?php if (!$tousWifi): ?><tr><td colspan="3" class="muted">Aucun accès Wi-Fi.</td></tr><?php endif; ?>
-                </tbody>
-            </table>
+    <div class="guide-moi-tete">
+        <span class="avatar avatar-lg" aria-hidden="true"><?= e(mb_substr($user['username'], 0, 1)) ?></span>
+        <div>
+            <h2 id="h-mon-identifiant">Mon compte</h2>
+            <p class="hint">Rôle <?= badgeRole($pdo, $user['role']) ?> · le mot de passe est donné par l'organisation et ne se change pas.</p>
         </div>
     </div>
+    <dl class="guide-ids">
+        <div>
+            <dt>Identifiant</dt>
+            <dd><code><?= e($user['username']) ?></code><button type="button" class="btn btn-icon btn-sm no-print" data-copier="<?= e($user['username']) ?>" aria-label="Copier l'identifiant" title="Copier"><?= icon('copy') ?></button></dd>
+        </div>
+        <div>
+            <dt>Mot de passe</dt>
+            <?php if ($monMdp !== null): ?>
+                <dd><code><?= e($monMdp) ?></code><button type="button" class="btn btn-icon btn-sm no-print" data-copier="<?= e($monMdp) ?>" aria-label="Copier le mot de passe" title="Copier"><?= icon('copy') ?></button></dd>
+            <?php else: ?>
+                <dd class="muted">Pas encore connu : il s'affichera après votre prochaine connexion.</dd>
+            <?php endif; ?>
+        </div>
+        <?php if (estSuperAdmin()): ?>
+        <div>
+            <dt>Compte système</dt>
+            <dd><code><?= e(COMPTE_SYSTEME) ?></code><span class="guide-ids-sep">/</span><code><?= e(MDP_COMPTE_SYSTEME) ?></code><span class="hint">imposé, non modifiable</span></dd>
+        </div>
+        <?php endif; ?>
+    </dl>
+    <?php if (estSuperAdmin()): ?>
+    <details class="guide-secrets">
+        <summary>
+            <?= icon('lock') ?>
+            <span>Tous les identifiants et mots de passe <span class="hint">(administrateurs seulement)</span></span>
+            <span class="count"><?= count($tousComptes) + count($tousWifi) ?></span>
+            <span class="summary-arrow" aria-hidden="true"><?= icon('chevron-down') ?></span>
+        </summary>
+        <div class="guide-secrets-corps">
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">Comptes de l'application</caption>
+                    <thead><tr><th scope="col">Compte</th><th scope="col">Rôle</th><th scope="col">Mot de passe</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($tousComptes as $c): $mdp = estCompteSysteme($c['username']) ? MDP_COMPTE_SYSTEME : dechiffrerMotDePasse($c['mdp_chiffre']); ?>
+                        <tr class="<?= $c['actif'] ? '' : 'row-inactive' ?>">
+                            <td><code><?= e($c['username']) ?></code></td>
+                            <td><?= badgeRole($pdo, $c['role']) ?></td>
+                            <td><?= $mdp !== null ? '<code>' . e($mdp) . '</code>' : '<span class="muted">Connu après sa prochaine connexion, ou à générer dans <a href="' . BASE_URL . 'admin/users.php">Comptes</a></span>' ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">Accès Wi-Fi</caption>
+                    <thead><tr><th scope="col">Accès Wi-Fi</th><th scope="col">Description</th><th scope="col">Mot de passe</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($tousWifi as $c): $mdp = $c['ecran_mdp'] ?? dechiffrerMotDePasse($c['mdp_chiffre']); ?>
+                        <tr class="<?= $c['actif'] ? '' : 'row-inactive' ?>">
+                            <td><code><?= e($c['identifiant']) ?></code></td>
+                            <td><?= e($c['description'] ?? '') ?></td>
+                            <td><?= $mdp !== null ? '<code>' . e($mdp) . '</code>' : '<span class="muted">Inconnu : à générer dans <a href="' . BASE_URL . 'admin/wifi.php">Wi-Fi</a></span>' ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    <?php if (!$tousWifi): ?><tr><td colspan="3" class="muted">Aucun accès Wi-Fi.</td></tr><?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </details>
     <?php endif; ?>
 </section>
 <?php endif; ?>
@@ -228,7 +260,7 @@ require __DIR__ . '/includes/header.php';
             <header class="guide-section-head">
                 <span class="guide-section-ic" aria-hidden="true"><?= icon($ic) ?></span>
                 <div>
-                    <h2 id="h-section-<?= e($cle) ?>"><?= e($titre) ?></h2>
+                    <h2 id="h-section-<?= e($cle) ?>"><?= e($titre) ?> <span class="guide-section-nb"><?= count($parSection[$cle]) ?></span></h2>
                     <p><?= e($intro) ?></p>
                 </div>
             </header>
@@ -299,8 +331,8 @@ require __DIR__ . '/includes/header.php';
                         </div>
 
                         <?php if ($peutChangerImages): ?>
-                            <details class="wifi-guide no-print">
-                                <summary>Changer l'image</summary>
+                            <details class="guide-image-edit no-print">
+                                <summary><?= icon('upload') ?>Changer l'image<span class="summary-arrow" aria-hidden="true"><?= icon('chevron-down') ?></span></summary>
                                 <form method="post" action="aide.php" enctype="multipart/form-data" novalidate>
                                     <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
                                     <input type="hidden" name="fiche_id" value="<?= e($f['id']) ?>">
@@ -318,9 +350,10 @@ require __DIR__ . '/includes/header.php';
                         <?php endif; ?>
 
                         <?php if ($voir): ?>
-                            <p class="guide-voir"><span>Voir aussi :</span>
-                                <?php foreach ($voir as $id): ?><a href="#<?= e($id) ?>"><?= e($fiches[$id]['titre']) ?></a><?php endforeach; ?>
-                            </p>
+                            <nav class="guide-voir" aria-label="Voir aussi">
+                                <span class="guide-voir-lib">Voir aussi</span>
+                                <?php foreach ($voir as $id): ?><a href="#<?= e($id) ?>"><?= icon(guideSections()[$fiches[$id]['section']][1]) ?><?= e($fiches[$id]['titre']) ?></a><?php endforeach; ?>
+                            </nav>
                         <?php endif; ?>
                     </div>
                 </div>

@@ -24,7 +24,7 @@ function icon(string $name, string $class = ''): string
  * VERSION et PRECACHE de sw.js, force les navigateurs et l'app installée à
  * télécharger les nouveaux fichiers.
  */
-const ASSETS_VERSION = '29';
+const ASSETS_VERSION = '33';
 
 /** URL versionnée d'un fichier de assets/ : asset('js/live.js'). */
 function asset(string $chemin): string

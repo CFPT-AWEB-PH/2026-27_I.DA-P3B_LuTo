@@ -93,14 +93,34 @@
         if (f.open && !ouvertesParRecherche.has(f) && location.hash !== '#' + f.id) history.replaceState(null, '', location.pathname + location.search + '#' + f.id);
     }));
 
+    // Presse-papiers : l'API moderne n'existe qu'en HTTPS ; en HTTP (réseau du club)
+    // on passe par une zone de texte temporaire.
+    async function copierTexte(texte) {
+        try { await navigator.clipboard.writeText(texte); return true; } catch { /* essai suivant */ }
+        const zone = document.createElement('textarea');
+        zone.value = texte; zone.setAttribute('readonly', ''); zone.style.position = 'fixed'; zone.style.opacity = '0';
+        document.body.appendChild(zone); zone.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch { ok = false; }
+        zone.remove();
+        return ok;
+    }
+
     // ── Copier le lien d'une fiche ────────────────────────────────────
     document.querySelectorAll('[data-copier-lien]').forEach(btn => btn.addEventListener('click', async () => {
         const url = location.origin + location.pathname + '#' + btn.dataset.copierLien;
-        try {
-            await navigator.clipboard.writeText(url);
-            window.Toast?.success('Lien de la fiche copié.');
-        } catch {
-            window.prompt('Copiez le lien de la fiche :', url);
+        if (await copierTexte(url)) window.Toast?.success('Lien de la fiche copié.');
+        else window.prompt('Copiez le lien de la fiche :', url);
+    }));
+
+    // ── Copier un identifiant ou un mot de passe (carte « Mon compte ») ──
+    document.querySelectorAll('[data-copier]').forEach(btn => btn.addEventListener('click', async () => {
+        if (await copierTexte(btn.dataset.copier)) {
+            window.Toast?.success('Copié dans le presse-papiers.');
+            btn.classList.add('is-copie');
+            setTimeout(() => btn.classList.remove('is-copie'), 1200);
+        } else {
+            window.prompt('Copiez :', btn.dataset.copier);
         }
     }));
 
@@ -168,6 +188,9 @@
             ouvertes: fiches.filter(f => f.open),
         };
         fiches.forEach(f => { f.hidden = false; f.open = true; });
+        // Les mots de passe (administrateurs) sont imprimés : le volet replié s'ouvre
+        etatAvantImpression.secrets = [...document.querySelectorAll('.guide-secrets')].map(d => [d, d.open]);
+        etatAvantImpression.secrets.forEach(([d]) => { d.open = true; });
         sections.forEach(s => { s.hidden = false; });
         vide.hidden = true;
         // Les captures « lazy » doivent être chargées avant la mise en page
@@ -175,7 +198,8 @@
     });
     window.addEventListener('afterprint', () => {
         if (!etatAvantImpression) return;
-        const { q, ouvertes } = etatAvantImpression;
+        const { q, ouvertes, secrets } = etatAvantImpression;
+        (secrets || []).forEach(([d, etait]) => { d.open = etait; });
         etatAvantImpression = null;
         fiches.forEach(f => { f.open = ouvertes.includes(f); });
         input.value = q;
