@@ -15,6 +15,10 @@
 
 /** Thèmes fournis : clé => [nom, description, mode, couleur de la barre du navigateur, aperçu]. */
 const THEMES_FOURNIS = [
+    'verre'       => ['Verre', 'Verre dépoli sombre : fond en dégradés, panneaux translucides, accent indigo.', 'sombre', '#0c0e16',
+                      ['#0c0e16', '#1c1f2b', '#8095ff', '#ff6369', '#5db7ee']],
+    'verre-clair' => ['Verre clair', 'Le style verre en version claire.', 'clair', '#eef0f7',
+                      ['#e6e8f0', '#ffffff', '#3549d8', '#d0313a', '#1f66d1']],
     'basique' => ['Basique', 'Sombre, sobre, couleurs de combat rouge / bleu.', 'sombre', '#08090b',
                   ['#0b0d10', '#181c21', '#3ee0b0', '#ff5a5f', '#4c9dff']],
     'clair'   => ['Clair', 'Le thème basique en version blanche.', 'clair', '#ffffff',
@@ -28,6 +32,10 @@ const THEMES_FOURNIS = [
  * servent de point de départ à un thème personnalisé et au portail Wi-Fi.
  */
 const PALETTES_FOURNIES = [
+    'verre'       => ['fond' => '#0c0e16', 'surface' => '#1c1f2b', 'texte' => '#eceef2', 'primaire' => '#8095ff',
+                      'accent' => '#8095ff', 'barre' => '#0c0e16', 'p1' => '#ff6369', 'p2' => '#5db7ee'],
+    'verre-clair' => ['fond' => '#e6e8f0', 'surface' => '#ffffff', 'texte' => '#14161c', 'primaire' => '#3549d8',
+                      'accent' => '#3549d8', 'barre' => '#eef0f7', 'p1' => '#d0313a', 'p2' => '#1f66d1'],
     'basique' => ['fond' => '#0b0d10', 'surface' => '#121519', 'texte' => '#eceef1', 'primaire' => '#eceef1',
                   'accent' => '#3ee0b0', 'barre' => '#08090b', 'p1' => '#ff5a5f', 'p2' => '#4c9dff'],
     'clair'   => ['fond' => '#f4f5f7', 'surface' => '#ffffff', 'texte' => '#14171c', 'primaire' => '#14171c',
@@ -115,8 +123,8 @@ function themesDisponibles(?PDO $pdo = null): array
 
 function themeActif(PDO $pdo): string
 {
-    $t = getParametre($pdo, 'theme', 'basique');
-    return array_key_exists($t, themesDisponibles($pdo)) ? $t : 'basique';
+    $t = getParametre($pdo, 'theme', 'verre');
+    return array_key_exists($t, themesDisponibles($pdo)) ? $t : 'verre';
 }
 
 /** Attributs de la balise <html> pour le thème actif. */

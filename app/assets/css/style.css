@@ -2781,3 +2781,390 @@ body:has(#pad[data-actif="1"]) { padding-bottom: 0 !important; }
 .joueur-rapide .btn-row { align-items: center; flex-wrap: wrap; }
 .joueur-rapide .jr-erreur { margin: 0 0 var(--space-3); }
 .field .sub-label { margin-top: var(--space-2); font-size: var(--fs-xs); color: var(--text-3); font-weight: 600; }
+
+/* =====================================================================
+   21 STYLE « VERRE » (thèmes verre / verre-clair, Admin › Apparence)
+   ---------------------------------------------------------------------
+   Repris du design « Planify » : précision calme, neutres froids, un seul
+   accent indigo, typographie système (Inter / Segoe UI Variable), et une
+   couche de verre dépoli : fond en dégradés colorés, panneaux translucides
+   floutés, reflet sur le bord haut, boutons bombés, halo sur l'action
+   principale. Rouge (Aka) et bleu (Ao) gardent leur sens.
+
+   Le préfixe :where(…) a une spécificité nulle : ces règles remplacent les
+   styles de base à spécificité égale (elles viennent après) sans écraser
+   les variantes plus précises (pupitre, menus, états d'erreur…).
+
+   1. Tokens sombre · 2. Tokens clair · 3. Toile de fond · 4. Typographie
+   5. Panneaux · 6. Navigation · 7. Overlays · 8. Contrôles
+   9. Combat et pupitre · 10. Écran de salle · 11. Robustesse
+   ===================================================================== */
+
+/* ---------- 1. Tokens : verre sombre ---------- */
+:root[data-theme^="verre"] {
+    --glass-a: 56%;            /* opacité du verre standard */
+    --glass-a-strong: 78%;     /* barre, menus, modales : plus opaques pour la lisibilité */
+    --glass-blur: 22px;
+    --glass-blur-strong: 34px;
+    --glass-sat: 170%;
+    --glass-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+    --glass-filter-strong: blur(var(--glass-blur-strong)) saturate(var(--glass-sat));
+
+    /* Typographie système (aucune requête externe : l'app tourne hors ligne) */
+    --font-body: "Inter", "InterVariable", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-ui: var(--font-body);
+    --font-display: "Inter Display", "InterVariable", "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+    /* Grands chiffres (scores, chronos) : police étroite, lisible de loin */
+    --font-score: 'Barlow Condensed', 'Arial Narrow', 'Segoe UI', Arial, sans-serif;
+
+    --radius-xs: 4px;
+    --radius-sm: 8px;
+    --radius: 10px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 20px;
+}
+:root[data-theme="verre"] {
+    color-scheme: dark;
+    --glass-base: #080a10;
+    --glass-canvas:
+        radial-gradient(60vmax 48vmax at 6% -4%, rgba(84, 100, 255, .3), transparent 62%),
+        radial-gradient(48vmax 42vmax at 104% 18%, rgba(146, 86, 255, .22), transparent 60%),
+        radial-gradient(56vmax 48vmax at 72% 106%, rgba(18, 150, 182, .2), transparent 62%),
+        linear-gradient(160deg, #0c0e16 0%, #07080d 100%);
+    --glass-tint: #1c1f2b;
+    --glass-edge: rgba(255, 255, 255, .13);
+    --glass-edge-soft: rgba(255, 255, 255, .07);
+    --glass-hi: inset 0 1px 0 rgba(255, 255, 255, .08);
+    --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, 0) 56%);
+    --glass-line: rgba(255, 255, 255, .07);
+    --glass-line-strong: rgba(255, 255, 255, .13);
+    --glass-fill: rgba(255, 255, 255, .05);
+    --glass-fill-2: rgba(255, 255, 255, .09);
+    --glass-track: rgba(255, 255, 255, .18);
+    --glass-ink: rgba(36, 39, 52, .82);
+    --glass-sh-xs: 0 1px 2px rgba(0, 0, 0, .3);
+    --glass-sh-sm: 0 1px 2px rgba(0, 0, 0, .28), 0 10px 30px -6px rgba(0, 0, 0, .36);
+    --glass-sh-lg: 0 16px 40px -8px rgba(0, 0, 0, .5), 0 40px 100px -20px rgba(0, 0, 0, .6);
+
+    --bg: var(--glass-base);
+    --bg-deep: color-mix(in srgb, var(--glass-tint) var(--glass-a-strong), transparent);
+    --surface: color-mix(in srgb, var(--glass-tint) var(--glass-a), transparent);
+    --surface-raised: color-mix(in srgb, var(--glass-tint) var(--glass-a-strong), transparent);
+    --surface-2: var(--glass-fill);
+    --surface-3: var(--glass-fill-2);
+    --surface-hover: rgba(255, 255, 255, .035);
+    --overlay: rgba(0, 0, 0, .42);
+    --border-subtle: var(--glass-line);
+    --border: var(--glass-line);
+    --border-mid: rgba(255, 255, 255, .1);
+    --border-strong: var(--glass-line-strong);
+
+    --text: #eceef2;
+    --text-2: #a8abb5;
+    --text-3: #8a8d97;
+
+    /* Un seul accent : l'indigo d'encre (boutons principaux, liens, marque, direct) */
+    --primary: #8095ff;
+    --primary-hover: #97a8ff;
+    --primary-press: #aab7ff;
+    --on-primary: #0a0c19;
+    --accent: #8095ff;
+    --accent-hover: #97a8ff;
+    --accent-dim: rgba(128, 149, 255, .14);
+    --accent-line: rgba(128, 149, 255, .36);
+    --on-accent: #0a0c19;
+    --success: #4dc57b;
+    --success-dim: rgba(77, 197, 123, .13);
+    --success-line: rgba(77, 197, 123, .34);
+
+    --p1: #ff6369;        --p1-hover: #ff8186;   --p1-soft: #ff9fa3;
+    --p1-dim: rgba(255, 99, 105, .13);  --p1-line: rgba(255, 99, 105, .38);  --on-p1: #2a0708;
+    --p2: #5db7ee;        --p2-hover: #7fc7f2;   --p2-soft: #a7d8f6;
+    --p2-dim: rgba(93, 183, 238, .13);  --p2-line: rgba(93, 183, 238, .38);  --on-p2: #04162e;
+
+    --warning: #eeae45;   --warning-soft: #f5cd87; --warning-dim: rgba(238, 174, 69, .13); --warning-line: rgba(238, 174, 69, .36);
+    --danger: #ff6b6b;    --danger-soft: #ffa3a3;  --danger-dim: rgba(255, 107, 107, .13); --danger-line: rgba(255, 107, 107, .36);
+    --info: #5db7ee;      --info-soft: #a7d8f6;    --info-dim: rgba(93, 183, 238, .13);    --info-line: rgba(93, 183, 238, .34);
+
+    --highlight: var(--glass-hi);
+    --shadow-sm: var(--glass-sh-xs);
+    --shadow-pop: var(--glass-sh-lg);
+    --focus-ring: 0 0 0 3px rgba(128, 149, 255, .36);
+    --focus: var(--focus-ring);
+    --glass-btn: linear-gradient(180deg, color-mix(in srgb, var(--glass-tint) 82%, transparent), color-mix(in srgb, var(--glass-tint) 52%, transparent));
+    --glass-btn-hover: linear-gradient(180deg, color-mix(in srgb, var(--glass-tint) 94%, transparent), color-mix(in srgb, var(--glass-tint) 66%, transparent));
+}
+
+/* ---------- 2. Tokens : verre clair ---------- */
+:root[data-theme="verre-clair"] {
+    color-scheme: light;
+    --glass-base: #e6e8f0;
+    --glass-canvas:
+        radial-gradient(60vmax 48vmax at 6% -4%, rgba(118, 136, 255, .36), transparent 62%),
+        radial-gradient(48vmax 42vmax at 104% 18%, rgba(184, 140, 255, .26), transparent 60%),
+        radial-gradient(56vmax 48vmax at 72% 106%, rgba(86, 196, 220, .24), transparent 62%),
+        linear-gradient(160deg, #eef0f7 0%, #e2e5ef 100%);
+    --glass-tint: #ffffff;
+    --glass-edge: rgba(255, 255, 255, .7);
+    --glass-edge-soft: rgba(255, 255, 255, .45);
+    --glass-hi: inset 0 1px 0 rgba(255, 255, 255, .8);
+    --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, .42), rgba(255, 255, 255, 0) 56%);
+    --glass-line: rgba(28, 34, 58, .085);
+    --glass-line-strong: rgba(28, 34, 58, .15);
+    --glass-fill: rgba(28, 34, 58, .045);
+    --glass-fill-2: rgba(28, 34, 58, .085);
+    --glass-track: rgba(28, 34, 58, .2);
+    --glass-ink: rgba(22, 25, 36, .8);
+    --glass-sh-xs: 0 1px 2px rgba(22, 28, 52, .06);
+    --glass-sh-sm: 0 1px 2px rgba(22, 28, 52, .05), 0 8px 28px -6px rgba(22, 28, 52, .14);
+    --glass-sh-lg: 0 12px 32px -8px rgba(22, 28, 52, .2), 0 32px 80px -16px rgba(22, 28, 52, .26);
+
+    --bg: var(--glass-base);
+    --bg-deep: color-mix(in srgb, var(--glass-tint) var(--glass-a-strong), transparent);
+    --surface: color-mix(in srgb, var(--glass-tint) var(--glass-a), transparent);
+    --surface-raised: color-mix(in srgb, var(--glass-tint) var(--glass-a-strong), transparent);
+    --surface-2: var(--glass-fill);
+    --surface-3: var(--glass-fill-2);
+    --surface-hover: rgba(28, 34, 58, .03);
+    --overlay: rgba(22, 26, 44, .2);
+    --border-subtle: var(--glass-line);
+    --border: var(--glass-line);
+    --border-mid: rgba(28, 34, 58, .12);
+    --border-strong: var(--glass-line-strong);
+
+    --text: #14161c;
+    --text-2: #555a66;
+    --text-3: #626673;
+
+    --primary: #3549d8;
+    --primary-hover: #2b3dc0;
+    --primary-press: #23329e;
+    --on-primary: #ffffff;
+    --accent: #3549d8;
+    --accent-hover: #2b3dc0;
+    --accent-dim: #edf0fd;
+    --accent-line: #c3cbf6;
+    --on-accent: #ffffff;
+    --success: #137a3a;
+    --success-dim: #e7f5ec;
+    --success-line: #a9dcbb;
+
+    --p1: #d0313a; --p1-hover: #b3262e; --p1-soft: #b3262e; --p1-dim: rgba(208, 49, 58, .09); --p1-line: rgba(208, 49, 58, .32); --on-p1: #ffffff;
+    --p2: #1f66d1; --p2-hover: #1854b0; --p2-soft: #1854b0; --p2-dim: rgba(31, 102, 209, .09); --p2-line: rgba(31, 102, 209, .32); --on-p2: #ffffff;
+
+    --warning: #995405;   --warning-soft: #7a4304; --warning-dim: #fcf2e1; --warning-line: #efd394;
+    --danger: #c4282b;    --danger-soft: #a61f22;  --danger-dim: #fcecec;  --danger-line: #f2bfc4;
+    --info: #0a659c;      --info-soft: #08527f;    --info-dim: #e6f2f9;    --info-line: #b5d5ea;
+    --gold: #94700a;      --gold-dim: #fbf3d6;     --gold-line: #e6d18a;
+    --silver: #3a424d;    --silver-dim: #eef1f5;   --silver-line: #cfd5dd;
+    --bronze: #8a4b1a;    --bronze-dim: #fbeee2;   --bronze-line: #efc9a4;
+
+    --highlight: var(--glass-hi);
+    --shadow-sm: var(--glass-sh-xs);
+    --shadow-pop: var(--glass-sh-lg);
+    --focus-ring: 0 0 0 3px rgba(53, 73, 216, .26);
+    --focus: var(--focus-ring);
+    --glass-btn: linear-gradient(180deg, color-mix(in srgb, var(--glass-tint) 82%, transparent), color-mix(in srgb, var(--glass-tint) 52%, transparent));
+    --glass-btn-hover: linear-gradient(180deg, color-mix(in srgb, var(--glass-tint) 94%, transparent), color-mix(in srgb, var(--glass-tint) 66%, transparent));
+}
+
+/* ---------- 3. Toile de fond : dégradés doux derrière le verre ---------- */
+:root[data-theme^="verre"] body { background: var(--glass-base); }
+:root[data-theme^="verre"] body::before {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: var(--glass-canvas);
+    animation: fade-in 500ms var(--ease-out) both;
+}
+
+/* ---------- 4. Typographie ---------- */
+:where(:root[data-theme^="verre"]) body { font-size: 15px; line-height: 1.5; letter-spacing: -.003em; }
+:where(:root[data-theme^="verre"]) :is(h1, h2, h3, .page-head h1, .player-names) { font-family: var(--font-display); font-weight: 650; letter-spacing: -.02em; }
+:where(:root[data-theme^="verre"]) h1 { letter-spacing: -.024em; }
+:where(:root[data-theme^="verre"]) :is(.brand, .ec-brand) { font-family: var(--font-display); font-weight: 700; letter-spacing: -.01em; text-transform: none; }
+:where(:root[data-theme^="verre"]) :is(.score-big, .pad-score, .timer, .ec-score, .ec-timer, .ec-clock, .server-clock, .when-cell strong, .score-cell, .stat-card-value, .cp-value, .result-row .r-score, .ref-table td.num, .touch-tally .n, .upcoming .when, .ec-table .t, .start-time, .ref-points .rp-s, .pad-official strong) {
+    font-family: var(--font-score);
+}
+:where(:root[data-theme^="verre"]) thead th { letter-spacing: .04em; }
+
+/* ---------- 5. Panneaux en verre ---------- */
+:where(:root[data-theme^="verre"]) :is(.card, .stat-card, .table-wrap, .upcoming, .result-list, .control-panel, .segmented, .ec-fight, .ec-ref, .ec-table-wrap, .settings-nav, .empty-state, .joueur-rapide) {
+    -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter);
+}
+:where(:root[data-theme^="verre"]) :is(.card, .stat-card, .table-wrap, .upcoming, .result-list, .control-panel, .ec-fight, .ec-ref) {
+    background: var(--glass-sheen), var(--surface);
+    border-color: var(--glass-edge);
+    box-shadow: var(--glass-hi), var(--glass-sh-sm);
+}
+/* Un menu ouvert dans un panneau passe au-dessus des panneaux suivants
+   (le flou crée un contexte d'empilement par panneau) */
+:where(:root[data-theme^="verre"]) :is(.card, .table-wrap, .upcoming, .result-list, .control-panel, .settings-group):has(details[open], .menu-panel) { position: relative; z-index: 30; }
+:where(:root[data-theme^="verre"]) .card-link:hover { background: var(--glass-sheen), var(--surface-raised); border-color: var(--glass-edge); }
+@media (hover: hover) {
+    :where(:root[data-theme^="verre"]) .card-link { transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out), background-color var(--dur-2); }
+    :where(:root[data-theme^="verre"]) .card-link:hover { transform: translateY(-2px); box-shadow: var(--glass-hi), var(--glass-sh-lg); }
+}
+:where(:root[data-theme^="verre"]) .empty-state { background: var(--glass-fill); border-color: var(--glass-line-strong); }
+:where(:root[data-theme^="verre"]) td .empty-state { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+:where(:root[data-theme^="verre"]) .settings-group > header { background: var(--glass-fill); border-bottom-color: var(--glass-line); }
+:where(:root[data-theme^="verre"]) .settings-group-icon { background: var(--glass-btn); box-shadow: var(--glass-hi), 0 0 0 1px var(--glass-edge-soft); color: var(--primary); }
+:where(:root[data-theme^="verre"]) .control-panel > div + div { border-left-color: var(--glass-line); }
+:where(:root[data-theme^="verre"]) .stat-card.is-live .stat-card-value { color: var(--success); }
+
+/* Tableaux : en-tête en verre, lignes séparées par un trait léger */
+:where(:root[data-theme^="verre"]) thead th { background: var(--glass-fill); border-bottom-color: var(--glass-line); }
+:where(:root[data-theme^="verre"]) :is(tbody tr + tr td, tbody tr + tr th) { border-top-color: var(--glass-line); }
+:where(:root[data-theme^="verre"]) .row-live { background: linear-gradient(90deg, var(--p1-dim), transparent 45%); }
+
+/* ---------- 6. Navigation ---------- */
+:where(:root[data-theme^="verre"]) :is(.topbar, .bottom-nav, .ec-top) {
+    background: var(--glass-sheen), var(--surface-raised);
+    border-color: var(--glass-edge-soft);
+    -webkit-backdrop-filter: var(--glass-filter-strong); backdrop-filter: var(--glass-filter-strong);
+}
+:where(:root[data-theme^="verre"]) .topbar { box-shadow: 0 1px 0 var(--glass-line), var(--glass-sh-xs); }
+/* Onglet actif : pastille de verre bombée (plus de soulignement) */
+:where(:root[data-theme^="verre"]) .main-nav a { border-radius: var(--radius-sm); }
+:where(:root[data-theme^="verre"]) .main-nav a:hover { background: var(--glass-fill); }
+:where(:root[data-theme^="verre"]) .main-nav a[aria-current="page"] {
+    background: var(--glass-btn); color: var(--text);
+    box-shadow: var(--glass-hi), 0 0 0 1px var(--glass-edge-soft), var(--glass-sh-xs);
+}
+:where(:root[data-theme^="verre"]) .main-nav a[aria-current="page"]::after { display: none; }
+:where(:root[data-theme^="verre"]) .workspace-link {
+    background: var(--glass-btn); border-color: var(--glass-edge);
+    box-shadow: var(--glass-hi), var(--glass-sh-xs);
+}
+:where(:root[data-theme^="verre"]) .workspace-link[aria-current="page"] { background: var(--accent-dim); border-color: var(--accent-line); color: var(--text); }
+:where(:root[data-theme^="verre"]) .avatar { background: var(--glass-btn); border-color: var(--glass-edge); box-shadow: var(--glass-hi); }
+:where(:root[data-theme^="verre"]) .brand-blade { background: linear-gradient(90deg, var(--primary), color-mix(in srgb, var(--primary) 55%, #b78cff)); box-shadow: 0 0 12px color-mix(in srgb, var(--primary) 60%, transparent); }
+:where(:root[data-theme^="verre"]) .footer { border-top-color: var(--glass-line); background: color-mix(in srgb, var(--glass-tint) 22%, transparent); }
+:where(:root[data-theme^="verre"]) .retard-banner { -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); }
+
+/* Filtres segmentés : piste en verre, segment actif bombé */
+:where(:root[data-theme^="verre"]) .segmented { background: var(--glass-fill); border-color: var(--glass-edge-soft); }
+:where(:root[data-theme^="verre"]) :is(.segmented [aria-current="true"], .segmented [aria-current="page"], .segmented .is-active) {
+    background: var(--glass-btn-hover); color: var(--text);
+    box-shadow: var(--glass-hi), 0 0 0 1px var(--glass-edge), var(--glass-sh-xs);
+}
+
+/* ---------- 7. Overlays : menus, modales, toasts ---------- */
+:where(:root[data-theme^="verre"]) :is(.menu-panel, .modal, .sticky-save, .bulk-bar, .conn-status) {
+    background: var(--glass-sheen), var(--surface-raised);
+    border-color: var(--glass-edge);
+    box-shadow: var(--glass-hi), var(--glass-sh-lg);
+    -webkit-backdrop-filter: var(--glass-filter-strong); backdrop-filter: var(--glass-filter-strong);
+}
+:where(:root[data-theme^="verre"]) .modal { box-shadow: 0 0 0 1px var(--glass-edge), var(--glass-hi), var(--glass-sh-lg); }
+:where(:root[data-theme^="verre"]) .modal::backdrop { background: var(--overlay); -webkit-backdrop-filter: blur(6px) saturate(120%); backdrop-filter: blur(6px) saturate(120%); }
+:where(:root[data-theme^="verre"]) :is(.modal-header, .modal-footer) { border-color: var(--glass-line); background: transparent; }
+:where(:root[data-theme^="verre"]) :is(.menu-panel a:hover, .menu-panel button:hover, .menu-panel a[aria-current="page"]) { background: var(--glass-fill-2); }
+:where(:root[data-theme^="verre"]) .toast {
+    background: var(--glass-ink); color: #fff; border-color: rgba(255, 255, 255, .1);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), inset 0 1px 0 rgba(255, 255, 255, .12), var(--glass-sh-lg);
+    -webkit-backdrop-filter: var(--glass-filter-strong); backdrop-filter: var(--glass-filter-strong);
+}
+:where(:root[data-theme^="verre"]) .toast .toast-close { color: rgba(255, 255, 255, .78); }
+:where(:root[data-theme^="verre"]) .flash { -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); box-shadow: var(--glass-hi); }
+
+/* ---------- 8. Contrôles ---------- */
+/* Bouton principal : dégradé de l'accent + halo coloré */
+:where(:root[data-theme^="verre"]) .btn:not(.btn-secondary, .btn-ghost, .btn-danger, .btn-icon, .btn-link, .btn-success, .btn-warning, .btn-accent, :disabled, .is-disabled),
+:where(:root[data-theme^="verre"]) button[type="submit"]:not([class]) {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 80%, #fff), var(--primary));
+    color: var(--on-primary); border-color: transparent;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), inset 0 0 0 1px rgba(255, 255, 255, .08), 0 2px 6px -2px color-mix(in srgb, var(--primary) 45%, transparent);
+    transition: background-color var(--dur-1), color var(--dur-1), transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out), filter var(--dur-1);
+}
+@media (hover: hover) {
+    :where(:root[data-theme^="verre"]) .btn:not(.btn-secondary, .btn-ghost, .btn-danger, .btn-icon, .btn-link, .btn-success, .btn-warning, .btn-accent, :disabled, .is-disabled):hover:not(:active) {
+        background: linear-gradient(180deg, color-mix(in srgb, var(--primary-hover) 76%, #fff), var(--primary-hover));
+        color: var(--on-primary); transform: translateY(-1px);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, .34), inset 0 0 0 1px rgba(255, 255, 255, .1), 0 4px 12px -4px color-mix(in srgb, var(--primary) 55%, transparent);
+    }
+}
+/* Boutons secondaires : verre bombé avec reflet */
+:where(:root[data-theme^="verre"]) :is(.btn-secondary, button.btn-secondary, .btn-danger, button.btn-danger) {
+    background: var(--glass-btn);
+    border-color: var(--glass-edge);
+    box-shadow: var(--glass-hi), var(--glass-sh-xs);
+    -webkit-backdrop-filter: blur(12px) saturate(150%); backdrop-filter: blur(12px) saturate(150%);
+    transition: background-color var(--dur-1), border-color var(--dur-1), color var(--dur-1), transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out);
+}
+@media (hover: hover) {
+    :where(:root[data-theme^="verre"]) :is(.btn-secondary, button.btn-secondary):hover:not(:active, :disabled) {
+        background: var(--glass-btn-hover); border-color: var(--glass-edge); color: var(--text);
+        transform: translateY(-1px); box-shadow: var(--glass-hi), var(--glass-sh-sm);
+    }
+}
+:where(:root[data-theme^="verre"]) :is(.btn-danger, button.btn-danger):hover { background: var(--danger); color: #fff; border-color: transparent; }
+:where(:root[data-theme^="verre"]) :is(.modal .btn-danger, .modal button.btn-danger) { background: linear-gradient(180deg, color-mix(in srgb, var(--danger) 82%, #fff), var(--danger)); color: #fff; border-color: transparent; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25); }
+:where(:root[data-theme^="verre"]) :is(.btn-success, button.btn-success, .btn-accent) { background: linear-gradient(180deg, color-mix(in srgb, var(--success) 80%, #fff), var(--success)); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 2px 6px -2px color-mix(in srgb, var(--success) 45%, transparent); }
+:where(:root[data-theme^="verre"]) :is(.btn-ghost:hover, button.btn-ghost:hover, .btn-icon:hover, button.btn-icon:hover, .btn-link:hover) { background: var(--glass-fill-2); }
+:where(:root[data-theme^="verre"]) :is(.btn, button):focus-visible { box-shadow: var(--glass-hi), var(--focus-ring); }
+
+/* Champs : verre légèrement creusé, s'éclaircit au focus */
+:where(:root[data-theme^="verre"]) :is(input:not([type=checkbox], [type=radio], [type=color], [type=file], [type=range]), select, textarea) {
+    background-color: var(--glass-fill);
+    border-color: var(--glass-line-strong);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .05), 0 1px 0 color-mix(in srgb, var(--glass-edge) 50%, transparent);
+}
+:where(:root[data-theme^="verre"]) :is(input, select, textarea):focus {
+    background-color: var(--surface-raised); border-color: var(--primary);
+    box-shadow: var(--focus-ring);
+}
+:where(:root[data-theme^="verre"]) select option { background: var(--glass-base); color: var(--text); }
+:where(:root[data-theme^="verre"]) .switch input[type=checkbox]:checked {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 82%, #fff), var(--primary));
+    border-color: transparent;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 0 12px -2px color-mix(in srgb, var(--primary) 60%, transparent);
+}
+:where(:root[data-theme^="verre"]) .badge { box-shadow: var(--glass-hi); }
+:where(:root[data-theme^="verre"]) kbd { background: var(--glass-fill); border-color: var(--glass-line-strong); }
+:where(:root[data-theme^="verre"]) details.form-section { background: var(--glass-fill); border-color: var(--glass-edge-soft); }
+:where(:root[data-theme^="verre"]) fieldset { border-color: var(--glass-line-strong); }
+
+/* ---------- 9. Combat et pupitre ---------- */
+/* Côtés Aka / Ao : verre teinté de la couleur du combattant */
+:where(:root[data-theme^="verre"]) .pad-aka { background: var(--glass-sheen), color-mix(in srgb, var(--p1) 12%, var(--surface)); border-color: var(--p1-line); box-shadow: var(--glass-hi), var(--glass-sh-sm); }
+:where(:root[data-theme^="verre"]) .pad-ao  { background: var(--glass-sheen), color-mix(in srgb, var(--p2) 12%, var(--surface)); border-color: var(--p2-line); box-shadow: var(--glass-hi), var(--glass-sh-sm); }
+:where(:root[data-theme^="verre"]) .pad-side { -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); }
+:where(:root[data-theme^="verre"]) .pad-aka .pad-btn { background: linear-gradient(180deg, color-mix(in srgb, var(--p1) 78%, #fff), var(--p1)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 4px 14px -6px var(--p1); }
+:where(:root[data-theme^="verre"]) .pad-ao .pad-btn  { background: linear-gradient(180deg, color-mix(in srgb, var(--p2) 78%, #fff), var(--p2)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 4px 14px -6px var(--p2); }
+:where(:root[data-theme^="verre"]) .pad-official { background: var(--glass-fill-2); box-shadow: var(--glass-hi); }
+/* Barre « qui gagne » et points de victoire : léger halo */
+:where(:root[data-theme^="verre"]) .lead-bar { box-shadow: inset 0 1px 1px rgba(0, 0, 0, .12); }
+:where(:root[data-theme^="verre"]) .lead-aka { box-shadow: 0 0 10px -1px color-mix(in srgb, var(--p1) 70%, transparent); }
+:where(:root[data-theme^="verre"]) .lead-pv i { background: var(--glass-track); }
+:where(:root[data-theme^="verre"]) .ref-points .rp { background: var(--glass-btn); border-color: var(--glass-edge-soft); box-shadow: var(--glass-hi); }
+:where(:root[data-theme^="verre"]) .ref-points .rp-off { background: var(--accent-dim); border-color: var(--accent-line); }
+:where(:root[data-theme^="verre"]) .touch-tally > div { background: var(--glass-fill); border-color: var(--glass-edge-soft); box-shadow: var(--glass-hi); }
+:where(:root[data-theme^="verre"]) .duel-side .score-big { text-shadow: 0 0 24px color-mix(in srgb, currentColor 35%, transparent); }
+:where(:root[data-theme^="verre"]) .live-dot { background: var(--success); }
+
+/* ---------- 10. Écran de salle ---------- */
+:where(:root[data-theme^="verre"]) .ec-page { background: transparent; }
+:where(:root[data-theme^="verre"]) .ec-score { text-shadow: 0 0 40px color-mix(in srgb, currentColor 35%, transparent); }
+:where(:root[data-theme^="verre"]) .ec-ref.busy { border-color: var(--p1-line); background: var(--glass-sheen), color-mix(in srgb, var(--p1) 10%, var(--surface)); }
+:where(:root[data-theme^="verre"]) .ec-nav { background: transparent; }
+:where(:root[data-theme^="verre"]) .ec-tab.active { background: var(--glass-btn); box-shadow: var(--glass-hi), 0 0 0 1px var(--glass-edge-soft); }
+
+/* ---------- 11. Robustesse ---------- */
+/* Sans backdrop-filter, le verre devient presque opaque (texte toujours lisible) */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    :root[data-theme^="verre"] { --glass-a: 90%; --glass-a-strong: 96%; }
+}
+@media (prefers-reduced-transparency: reduce) {
+    :root[data-theme^="verre"] { --glass-a: 92%; --glass-a-strong: 97%; --glass-blur: 8px; --glass-blur-strong: 12px; }
+}
+/* Téléphones / tablettes : flou plus léger, meilleure fluidité */
+@media (max-width: 860px) {
+    :root[data-theme^="verre"] { --glass-blur: 16px; --glass-blur-strong: 24px; --glass-a-strong: 84%; }
+}
+@media (forced-colors: active) {
+    :root[data-theme^="verre"] body::before { display: none; }
+}
+@media print {
+    :root[data-theme^="verre"] body::before { display: none; }
+    :where(:root[data-theme^="verre"]) * { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; box-shadow: none !important; }
+}

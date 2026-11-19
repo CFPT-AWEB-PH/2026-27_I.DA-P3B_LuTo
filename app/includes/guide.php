@@ -850,12 +850,13 @@ function guideFiches(): array
             'capture' => 'apparence.webp', 'legende' => 'Admin › Apparence.',
             'etapes' => [
                 'Ouvrez <a href="{base}admin/apparence.php">Admin › Apparence</a>.',
-                '{1} Choisissez un thème (<em>Basique</em>, <em>Clair</em>, <em>Orange · blanc · bleu</em>…) puis <strong>Appliquer le thème</strong>.',
+                '{1} Choisissez un thème (<em>Verre</em>, <em>Verre clair</em>, <em>Basique</em>, <em>Clair</em>, <em>Orange · blanc · bleu</em>…) puis <strong>Appliquer le thème</strong>.',
+                '<strong>Verre</strong> (thème par défaut) et <strong>Verre clair</strong> : verre dépoli sur un fond en dégradés, panneaux translucides, boutons bombés et accent indigo. Le rouge (Aka) et le bleu (Ao) gardent leur sens.',
                 '{2} <strong>Créer un thème</strong> : choisissez 8 couleurs avec un aperçu en direct, puis <strong>Enregistrer le thème</strong>.',
                 'Plus bas, <strong>Logo</strong> : envoyez une image (PNG, JPEG ou WebP, 2 Mo max), puis <strong>Utiliser</strong>.',
             ],
             'astuces' => ['Le logo remplace aussi l\'icône de l\'application installée et le favicon.', '« Lame d\'origine » revient au logo de départ.'],
-            'mots' => 'thème couleur logo apparence design personnaliser club',
+            'mots' => 'thème couleur logo apparence design personnaliser club verre glass glassmorphism style',
         ],
         [
             'id' => 'guide-images', 'section' => 'reglages', 'acces' => ['parametres.modifier'],
