@@ -3168,3 +3168,406 @@ body:has(#pad[data-actif="1"]) { padding-bottom: 0 !important; }
     :root[data-theme^="verre"] body::before { display: none; }
     :where(:root[data-theme^="verre"]) * { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; box-shadow: none !important; }
 }
+
+/* =====================================================================
+   22 STYLE « VERRE » : CHAMPS DE SAISIE ET NAVIGATION
+   ---------------------------------------------------------------------
+   Tous les types de champs (texte, nombre, date, heure, recherche, mot
+   de passe, liste, zone de texte, case, bouton radio, interrupteur,
+   curseur, couleur, fichier) et les barres de navigation (barre du haut,
+   onglets de l'administration, barre basse du téléphone).
+   Mêmes mesures partout : hauteur 40 px, rayon 10 px, verre creusé au
+   repos, verre clair + anneau indigo au focus.
+   ===================================================================== */
+
+:root[data-theme^="verre"] {
+    --field-h: 40px;
+    --field-r: 10px;
+    --field-bg: var(--glass-fill);
+    --field-bg-focus: var(--surface-raised);
+    --field-line: var(--glass-line-strong);
+    --field-line-hover: color-mix(in srgb, var(--text) 26%, transparent);
+    --field-inset: inset 0 1px 2px rgba(0, 0, 0, .08), 0 1px 0 color-mix(in srgb, var(--glass-edge) 45%, transparent);
+    --nav-h: 34px;
+    --nav-r: 10px;
+}
+:root[data-theme="verre"] {
+    --field-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' stroke='%23a8abb5' stroke-width='1.7' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    --field-search: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a8d97' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+}
+:root[data-theme="verre-clair"] {
+    --field-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' stroke='%23555a66' stroke-width='1.7' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    --field-search: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23626673' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+    --field-inset: inset 0 1px 2px rgba(22, 28, 52, .06), 0 1px 0 rgba(255, 255, 255, .7);
+    --field-line: rgba(28, 34, 58, .17);
+}
+
+/* ---------- Libellés ---------- */
+:where(:root[data-theme^="verre"]) label, :where(:root[data-theme^="verre"]) legend { font-weight: 600; font-size: 13.5px; color: var(--text); }
+:where(:root[data-theme^="verre"]) legend { font-size: 11.5px; letter-spacing: .06em; color: var(--text-3); }
+:where(:root[data-theme^="verre"]) .field { gap: 7px; }
+
+/* ---------- Champs texte, nombre, date, heure, recherche, mot de passe, liste, zone de texte ---------- */
+/* Même sélecteur (et donc même poids) que le style de base : il le remplace */
+:where(:root[data-theme^="verre"]) input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=range]),
+:where(:root[data-theme^="verre"]) select,
+:where(:root[data-theme^="verre"]) textarea {
+    min-height: var(--field-h);
+    padding: 8px 12px;
+    background-color: var(--field-bg);
+    border: 1px solid var(--field-line);
+    border-radius: var(--field-r);
+    box-shadow: var(--field-inset);
+    color: var(--text);
+    font-size: 15px; line-height: 1.4;
+    -webkit-backdrop-filter: blur(10px) saturate(140%); backdrop-filter: blur(10px) saturate(140%);
+    transition: border-color var(--dur-1), box-shadow var(--dur-2) var(--ease-out), background-color var(--dur-2);
+}
+@media (pointer: coarse) {
+    /* 16 px : iOS ne zoome pas sur le champ */
+    :where(:root[data-theme^="verre"]) input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=range]),
+    :where(:root[data-theme^="verre"]) select,
+    :where(:root[data-theme^="verre"]) textarea { font-size: 16px; min-height: 44px; }
+}
+:where(:root[data-theme^="verre"]) textarea { min-height: 104px; padding: 10px 12px; line-height: 1.5; }
+:where(:root[data-theme^="verre"]) :is(input, textarea)::placeholder { color: var(--text-3); opacity: .75; }
+:where(:root[data-theme^="verre"]) :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=range]), select, textarea):hover:not(:focus, :disabled) { border-color: var(--field-line-hover); }
+:where(:root[data-theme^="verre"]) :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=range]), select, textarea):focus,
+:where(:root[data-theme^="verre"]) :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=range]), select, textarea):focus-visible {
+    outline: none;
+    background-color: var(--field-bg-focus);
+    border-color: var(--primary);
+    border-radius: var(--field-r);
+    box-shadow: var(--field-inset), var(--focus-ring);
+}
+:where(:root[data-theme^="verre"]) :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=range]), select, textarea):disabled {
+    opacity: .55; cursor: not-allowed; background-color: var(--glass-fill); border-color: var(--glass-line); box-shadow: none;
+}
+:where(:root[data-theme^="verre"]) :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=range]), select, textarea)[readonly] { background-color: transparent; border-style: dashed; }
+/* Erreur : trait et anneau rouges */
+:where(:root[data-theme^="verre"]) :is(.field.has-error input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=range]), .field.has-error select, .field.has-error textarea, input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=range])[aria-invalid="true"]) {
+    border-color: var(--danger);
+    box-shadow: var(--field-inset), 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);
+}
+/* Remplissage automatique du navigateur : garde le verre au lieu du jaune / blanc */
+:where(:root[data-theme^="verre"]) input:-webkit-autofill,
+:where(:root[data-theme^="verre"]) input:-webkit-autofill:hover,
+:where(:root[data-theme^="verre"]) input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--text);
+    -webkit-box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--glass-tint) 92%, var(--primary) 8%);
+    caret-color: var(--text);
+    transition: background-color 9999s;
+}
+
+/* Liste déroulante : flèche dessinée à la couleur du thème */
+:where(:root[data-theme^="verre"]) select {
+    padding-right: 36px;
+    background-image: var(--field-arrow);
+    background-repeat: no-repeat; background-position: right 13px center; background-size: 12px 8px;
+}
+:where(:root[data-theme^="verre"]) select[multiple] { background-image: none; padding-right: 12px; }
+:where(:root[data-theme^="verre"]) select option { background: var(--glass-base); color: var(--text); }
+:where(:root[data-theme="verre-clair"]) select option { background: #ffffff; }
+
+/* Nombre : flèches discrètes, chiffres alignés */
+:where(:root[data-theme^="verre"]) input[type=number] { font-variant-numeric: tabular-nums; }
+/* Flèches du navigateur masquées (elles chevauchaient l'unité) : clavier ↑ ↓ et molette restent actifs */
+:where(:root[data-theme^="verre"]) input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+:where(:root[data-theme^="verre"]) input[type=number]::-webkit-inner-spin-button,
+:where(:root[data-theme^="verre"]) input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Dates et heures : icône du calendrier aux couleurs du thème */
+:where(:root[data-theme^="verre"]) :is(input[type=date], input[type=time], input[type=datetime-local], input[type=month], input[type=week]) { font-variant-numeric: tabular-nums; }
+:where(:root[data-theme^="verre"]) input::-webkit-calendar-picker-indicator {
+    opacity: .55; cursor: pointer; padding: 4px; margin-right: -4px; border-radius: 6px;
+    transition: opacity var(--dur-1), background-color var(--dur-1);
+}
+:where(:root[data-theme^="verre"]) input::-webkit-calendar-picker-indicator:hover { opacity: 1; background-color: var(--glass-fill-2); }
+:where(:root[data-theme^="verre"]) input::-webkit-datetime-edit-fields-wrapper { padding: 0; }
+:where(:root[data-theme^="verre"]) input::-webkit-datetime-edit-text { color: var(--text-3); padding: 0 1px; }
+:where(:root[data-theme^="verre"]) input::-webkit-datetime-edit-day-field:focus,
+:where(:root[data-theme^="verre"]) input::-webkit-datetime-edit-month-field:focus,
+:where(:root[data-theme^="verre"]) input::-webkit-datetime-edit-year-field:focus,
+:where(:root[data-theme^="verre"]) input::-webkit-datetime-edit-hour-field:focus,
+:where(:root[data-theme^="verre"]) input::-webkit-datetime-edit-minute-field:focus { background: var(--accent-dim); color: var(--text); border-radius: 4px; }
+
+/* Recherche : loupe à gauche, croix discrète */
+:where(:root[data-theme^="verre"]) input[type=search]:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=range]) {
+    padding-left: 36px;
+    background-image: var(--field-search);
+    background-repeat: no-repeat; background-position: 12px center; background-size: 16px 16px;
+    -webkit-appearance: none; appearance: none;
+}
+:where(:root[data-theme^="verre"]) input[type=search]::-webkit-search-cancel-button {
+    -webkit-appearance: none; width: 16px; height: 16px; cursor: pointer; border-radius: 50%;
+    background: var(--text-3);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm4 13-1 1-3-3-3 3-1-1 3-3-3-3 1-1 3 3 3-3 1 1-3 3z'/%3E%3C/svg%3E") center / contain no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm4 13-1 1-3-3-3 3-1-1 3-3-3-3 1-1 3 3 3-3 1 1-3 3z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+:where(:root[data-theme^="verre"]) input[type=search]::-webkit-search-cancel-button:hover { background: var(--text); }
+
+/* Mot de passe : bouton « afficher » intégré au champ */
+:where(:root[data-theme^="verre"]) .password-toggle-btn { right: 4px; min-height: 32px; width: 36px; border-radius: 8px; color: var(--text-3); background: transparent; box-shadow: none; }
+:where(:root[data-theme^="verre"]) .password-toggle-btn:hover { background: var(--glass-fill-2); color: var(--text); }
+/* Unité (kg, min, s…) : petite étiquette dans le champ */
+:where(:root[data-theme^="verre"]) .input-suffix .suffix {
+    right: 6px; padding: 2px 8px; border-radius: 7px;
+    background: var(--glass-fill-2); color: var(--text-2); font-size: 12px; font-weight: 600; line-height: 1.5;
+}
+:where(:root[data-theme^="verre"]) .input-icon > .icon { color: var(--text-3); }
+
+/* ---------- Cases à cocher et boutons radio ---------- */
+:where(:root[data-theme^="verre"]) input[type=checkbox],
+:where(:root[data-theme^="verre"]) input[type=radio] {
+    width: 18px; height: 18px;
+    background: var(--glass-btn);
+    border: 1px solid var(--glass-line-strong);
+    border-radius: 6px;
+    box-shadow: var(--glass-hi), inset 0 1px 2px rgba(0, 0, 0, .06), var(--glass-sh-xs);
+    transition: background-color var(--dur-1), border-color var(--dur-1), box-shadow var(--dur-2) var(--ease-out), transform var(--dur-1) var(--ease-out);
+}
+:where(:root[data-theme^="verre"]) input[type=radio] { border-radius: 50%; }
+:where(:root[data-theme^="verre"]) input[type=checkbox]:hover:not(:disabled),
+:where(:root[data-theme^="verre"]) input[type=radio]:hover:not(:disabled) { border-color: color-mix(in srgb, var(--primary) 60%, transparent); }
+:where(:root[data-theme^="verre"]) input[type=checkbox]:active:not(:disabled),
+:where(:root[data-theme^="verre"]) input[type=radio]:active:not(:disabled) { transform: scale(.9); }
+:where(:root[data-theme^="verre"]) input[type=checkbox]:checked,
+:where(:root[data-theme^="verre"]) input[type=checkbox]:indeterminate,
+:where(:root[data-theme^="verre"]) input[type=radio]:checked {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 78%, #fff), var(--primary));
+    border-color: transparent;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 2px 8px -2px color-mix(in srgb, var(--primary) 60%, transparent);
+}
+:where(:root[data-theme^="verre"]) input[type=checkbox]::before { background: var(--on-primary); }
+:where(:root[data-theme^="verre"]) input[type=radio]::before { width: 7px; height: 7px; background: var(--on-primary); box-shadow: 0 1px 1px rgba(0, 0, 0, .2); }
+:where(:root[data-theme^="verre"]) input[type=checkbox]:focus-visible,
+:where(:root[data-theme^="verre"]) input[type=radio]:focus-visible { outline: none; box-shadow: var(--glass-hi), var(--focus-ring); }
+:where(:root[data-theme^="verre"]) input[type=radio]:focus-visible { border-radius: 50%; }
+:where(:root[data-theme^="verre"]) input[type=checkbox]:focus-visible { border-radius: 6px; }
+
+/* Ligne cliquable autour d'une case (listes de sélection, « cocher pour… ») */
+:where(:root[data-theme^="verre"]) .pick-list { background: var(--glass-fill); border-color: var(--glass-edge-soft); border-radius: var(--radius-lg); }
+:where(:root[data-theme^="verre"]) .pick-list label { border-radius: 9px; }
+:where(:root[data-theme^="verre"]) .pick-list label:hover { background: var(--glass-fill-2); }
+:where(:root[data-theme^="verre"]) .pick-list label:has(input:checked) { background: var(--accent-dim); box-shadow: inset 0 0 0 1px var(--accent-line); }
+:where(:root[data-theme^="verre"]) .check-row { border-radius: 9px; }
+
+/* ---------- Interrupteur ---------- */
+:where(:root[data-theme^="verre"]) .switch input[type=checkbox] {
+    width: 42px; height: 24px; border-radius: 12px;
+    background: var(--glass-track); border: 0;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .18), inset 0 0 0 1px var(--glass-line);
+}
+:where(:root[data-theme^="verre"]) .switch input[type=checkbox]::before {
+    left: 3px; top: 3px; width: 18px; height: 18px;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 2px 6px -1px rgba(0, 0, 0, .25);
+    transition: transform var(--dur-2) cubic-bezier(.34, 1.3, .64, 1), width var(--dur-1) var(--ease-out);
+}
+:where(:root[data-theme^="verre"]) .switch input[type=checkbox]:active:not(:disabled)::before { width: 22px; }
+:where(:root[data-theme^="verre"]) .switch input[type=checkbox]:checked {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 82%, #fff), var(--primary));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 0 12px -2px color-mix(in srgb, var(--primary) 60%, transparent);
+}
+:where(:root[data-theme^="verre"]) .switch input[type=checkbox]:checked::before { transform: translateX(18px); background: #ffffff; }
+:where(:root[data-theme^="verre"]) .switch input[type=checkbox]:checked:active:not(:disabled)::before { transform: translateX(14px); }
+:where(:root[data-theme^="verre"]) .switch input[type=checkbox]:focus-visible { border-radius: 12px; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .18), var(--focus-ring); }
+:where(:root[data-theme^="verre"]) .switch input[type=checkbox]:disabled { opacity: .45; }
+
+/* ---------- Curseur ---------- */
+:where(:root[data-theme^="verre"]) input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 24px; background: transparent; cursor: pointer; accent-color: var(--primary);
+}
+:where(:root[data-theme^="verre"]) input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--text) 22%, transparent); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .15); }
+:where(:root[data-theme^="verre"]) input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--text) 22%, transparent); }
+:where(:root[data-theme^="verre"]) input[type=range]::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--primary); }
+:where(:root[data-theme^="verre"]) input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px; border-radius: 50%;
+    background: #ffffff; border: 0; box-shadow: 0 0 0 3px var(--primary), 0 2px 6px rgba(0, 0, 0, .3);
+    transition: transform var(--dur-1) var(--ease-out);
+}
+:where(:root[data-theme^="verre"]) input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #ffffff; border: 3px solid var(--primary); box-shadow: 0 2px 6px rgba(0, 0, 0, .3); }
+:where(:root[data-theme^="verre"]) input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
+:where(:root[data-theme^="verre"]) input[type=range]:focus-visible { outline: none; }
+:where(:root[data-theme^="verre"]) input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--primary), var(--focus-ring); }
+
+/* ---------- Couleur : pastille arrondie dans un cadre de verre ---------- */
+:where(:root[data-theme^="verre"]) input[type=color] {
+    -webkit-appearance: none; appearance: none;
+    height: var(--field-h); padding: 4px; cursor: pointer;
+    background: var(--field-bg); border: 1px solid var(--field-line); border-radius: var(--field-r);
+    box-shadow: var(--field-inset);
+    transition: border-color var(--dur-1), box-shadow var(--dur-2) var(--ease-out);
+}
+:where(:root[data-theme^="verre"]) input[type=color]:hover { border-color: var(--field-line-hover); }
+:where(:root[data-theme^="verre"]) input[type=color]:focus-visible { outline: none; border-color: var(--primary); box-shadow: var(--field-inset), var(--focus-ring); }
+:where(:root[data-theme^="verre"]) input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+:where(:root[data-theme^="verre"]) input[type=color]::-webkit-color-swatch { border: 0; border-radius: 7px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15), inset 0 1px 0 rgba(255, 255, 255, .25); }
+:where(:root[data-theme^="verre"]) input[type=color]::-moz-color-swatch { border: 0; border-radius: 7px; }
+
+/* ---------- Fichier : zone de dépôt en pointillés, bouton de verre ---------- */
+:where(:root[data-theme^="verre"]) input[type=file] {
+    padding: 10px; border: 1.5px dashed var(--glass-line-strong); border-radius: var(--radius-lg);
+    background: var(--glass-fill); color: var(--text-2); font-size: 13.5px;
+    transition: border-color var(--dur-1), background-color var(--dur-1);
+}
+:where(:root[data-theme^="verre"]) input[type=file]:hover { border-color: color-mix(in srgb, var(--primary) 60%, transparent); background: var(--accent-dim); }
+:where(:root[data-theme^="verre"]) input[type=file]:focus-visible { outline: none; border-color: var(--primary); box-shadow: var(--focus-ring); }
+:where(:root[data-theme^="verre"]) input[type=file]::file-selector-button {
+    margin-right: 12px; padding: 7px 14px; border-radius: 8px;
+    background: var(--glass-btn); border: 1px solid var(--glass-edge); color: var(--text);
+    box-shadow: var(--glass-hi), var(--glass-sh-xs); font-weight: 600;
+    transition: background-color var(--dur-1), transform var(--dur-1) var(--ease-out);
+}
+:where(:root[data-theme^="verre"]) input[type=file]::file-selector-button:hover { background: var(--glass-btn-hover); }
+
+/* ---------- Champs de la page Paramètres et des barres d'outils ---------- */
+:where(:root[data-theme^="verre"]) .setting-row.is-modifie { background: color-mix(in srgb, var(--warning) 7%, transparent); }
+:where(:root[data-theme^="verre"]) .control-panel .retard-form input { min-height: 34px; }
+
+/* =====================================================================
+   NAVIGATION
+   ===================================================================== */
+
+/* ---------- Barre du haut ---------- */
+:where(:root[data-theme^="verre"]) .topbar-inner { gap: 20px; }
+:where(:root[data-theme^="verre"]) .brand { gap: 10px; font-size: 17px; font-weight: 700; letter-spacing: -.015em; }
+:where(:root[data-theme^="verre"]) .brand .brand-logo { height: 28px; }
+
+/* Navigation principale : une piste de verre, l'onglet actif est une pastille bombée */
+:where(:root[data-theme^="verre"]) .main-nav {
+    height: auto; gap: 2px; padding: 3px;
+    background: var(--glass-fill);
+    border: 1px solid var(--glass-edge-soft);
+    border-radius: calc(var(--nav-r) + 3px);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .06);
+}
+:where(:root[data-theme^="verre"]) .main-nav a {
+    height: 30px; padding: 0 14px; border-radius: var(--nav-r);
+    color: var(--text-2); font-size: 13.5px; font-weight: 600; letter-spacing: -.005em;
+    transition: color var(--dur-1), background-color var(--dur-1), box-shadow var(--dur-2) var(--ease-out);
+}
+:where(:root[data-theme^="verre"]) .main-nav a:hover { color: var(--text); background: var(--glass-fill-2); }
+:where(:root[data-theme^="verre"]) .main-nav a[aria-current="page"],
+:where(:root[data-theme^="verre"]) .main-nav a[aria-current="page"]:hover {
+    color: var(--text);
+    background: var(--glass-btn-hover);
+    box-shadow: var(--glass-hi), 0 0 0 1px var(--glass-edge), var(--glass-sh-xs);
+}
+:where(:root[data-theme^="verre"]) .main-nav a[aria-current="page"]::after { display: none; }
+
+/* Groupe de droite : heure, espaces de travail, aide, écran de salle, compte (même hauteur) */
+:where(:root[data-theme^="verre"]) .topbar-end { gap: 6px; }
+:where(:root[data-theme^="verre"]) .server-clock {
+    align-items: center; height: var(--nav-h); line-height: var(--nav-h); padding: 0 10px; margin-right: 4px;
+    border-radius: var(--nav-r); font-size: 17px; font-weight: 600; letter-spacing: .03em; color: var(--text-2);
+}
+:where(:root[data-theme^="verre"]) .topbar-sep { height: 22px; margin: 0 4px; background: var(--glass-line-strong); }
+:where(:root[data-theme^="verre"]) .workspace-link {
+    height: var(--nav-h); padding: 0 12px 0 10px; gap: 7px; border-radius: var(--nav-r);
+    background: var(--glass-btn); border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-hi), var(--glass-sh-xs);
+    color: var(--text); font-size: 13.5px; font-weight: 600;
+    transition: background-color var(--dur-1), border-color var(--dur-1), transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out);
+}
+:where(:root[data-theme^="verre"]) .workspace-link .icon { width: 16px; height: 16px; color: var(--text-3); }
+@media (hover: hover) {
+    :where(:root[data-theme^="verre"]) .workspace-link:hover { background: var(--glass-btn-hover); border-color: var(--glass-edge); transform: translateY(-1px); box-shadow: var(--glass-hi), var(--glass-sh-sm); }
+}
+:where(:root[data-theme^="verre"]) .workspace-link[aria-current="page"],
+:where(:root[data-theme^="verre"]) .workspace-link[aria-current="page"]:hover {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 26%, transparent), color-mix(in srgb, var(--primary) 14%, transparent));
+    border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 2px 10px -4px color-mix(in srgb, var(--primary) 60%, transparent);
+    transform: none;
+}
+:where(:root[data-theme^="verre"]) .workspace-link[aria-current="page"] .icon { color: var(--primary); }
+/* Boutons ronds (aide, écran de salle) */
+:where(:root[data-theme^="verre"]) .topbar .btn-icon {
+    min-height: var(--nav-h); width: var(--nav-h); border-radius: var(--nav-r);
+    background: transparent; border: 1px solid transparent; color: var(--text-2); box-shadow: none;
+}
+:where(:root[data-theme^="verre"]) .topbar .btn-icon .icon { width: 18px; height: 18px; }
+:where(:root[data-theme^="verre"]) .topbar .btn-icon:hover { background: var(--glass-fill-2); color: var(--text); }
+:where(:root[data-theme^="verre"]) .topbar .btn-icon[aria-current="page"] { background: var(--glass-btn); border-color: var(--glass-edge); color: var(--text); box-shadow: var(--glass-hi); }
+/* Compte : pastille dégradée à l'initiale */
+:where(:root[data-theme^="verre"]) .account-menu > summary { height: var(--nav-h); padding: 0 1px; margin-left: 2px; }
+:where(:root[data-theme^="verre"]) .account-menu > summary:hover { background: transparent; }
+:where(:root[data-theme^="verre"]) .topbar .avatar {
+    width: 32px; height: 32px; border: 0;
+    background: linear-gradient(145deg, color-mix(in srgb, var(--primary) 85%, #fff), color-mix(in srgb, var(--primary) 70%, #8b5cf6));
+    color: var(--on-primary); font-size: 13px; font-weight: 700;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 0 0 2px color-mix(in srgb, var(--glass-tint) 70%, transparent), 0 2px 8px -2px color-mix(in srgb, var(--primary) 60%, transparent);
+    transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out);
+}
+:where(:root[data-theme^="verre"]) .account-menu > summary:hover .avatar,
+:where(:root[data-theme^="verre"]) .account-menu[open] > summary .avatar { transform: scale(1.06); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 0 0 2px var(--primary), 0 4px 12px -2px color-mix(in srgb, var(--primary) 60%, transparent); }
+:where(:root[data-theme^="verre"]) .nav-login { height: var(--nav-h); min-height: var(--nav-h); border-radius: var(--nav-r); }
+:where(:root[data-theme^="verre"]) .account-head strong { font-size: 14px; }
+:where(:root[data-theme^="verre"]) .menu-panel { border-radius: 14px; padding: 6px; }
+:where(:root[data-theme^="verre"]) .menu-panel :is(a, button) { border-radius: 9px; }
+:where(:root[data-theme^="verre"]) .menu-sep { background: var(--glass-line); }
+/* L'heure n'est affichée qu'à partir de 1024 px (masquée en dessous par la base) */
+@media (min-width: 1024px) { :where(:root[data-theme^="verre"]) .server-clock { display: inline-flex; } }
+/* Tablette : boutons d'espace réduits à l'icône, tout reste aligné */
+@media (min-width: 760px) and (max-width: 1023px) {
+    :where(:root[data-theme^="verre"]) .workspace-link { width: var(--nav-h); padding: 0; justify-content: center; }
+    :where(:root[data-theme^="verre"]) .main-nav a { padding: 0 11px; }
+}
+
+/* ---------- Onglets de l'administration : piste de verre collée sous la barre ---------- */
+:where(:root[data-theme^="verre"]) .tabs {
+    position: sticky; top: calc(var(--topbar-h) + 10px); z-index: 60;
+    gap: 2px; padding: 4px; margin: calc(var(--space-2) * -1) 0 var(--space-6);
+    background: var(--glass-sheen), var(--surface-raised);
+    border: 1px solid var(--glass-edge);
+    border-radius: 14px;
+    box-shadow: var(--glass-hi), var(--glass-sh-sm);
+    -webkit-backdrop-filter: var(--glass-filter-strong); backdrop-filter: var(--glass-filter-strong);
+    -webkit-mask-image: none; mask-image: none;
+    scroll-padding-inline: 8px; scroll-snap-type: x proximity;
+}
+:where(:root[data-theme^="verre"]) .tabs a {
+    height: 34px; padding: 0 12px; gap: 7px; border-radius: var(--nav-r);
+    color: var(--text-2); font-size: 13.5px; font-weight: 600; scroll-snap-align: start;
+    transition: color var(--dur-1), background-color var(--dur-1), box-shadow var(--dur-2) var(--ease-out);
+}
+:where(:root[data-theme^="verre"]) .tabs a .icon { width: 16px; height: 16px; color: var(--text-3); }
+:where(:root[data-theme^="verre"]) .tabs a:hover { color: var(--text); background: var(--glass-fill-2); }
+:where(:root[data-theme^="verre"]) .tabs a:hover .icon { color: var(--text-2); }
+:where(:root[data-theme^="verre"]) .tabs a[aria-current="page"],
+:where(:root[data-theme^="verre"]) .tabs a[aria-current="page"]:hover {
+    color: var(--text);
+    background: var(--glass-btn-hover);
+    box-shadow: var(--glass-hi), 0 0 0 1px var(--glass-edge), var(--glass-sh-xs);
+}
+:where(:root[data-theme^="verre"]) .tabs a[aria-current="page"] .icon { color: var(--primary); }
+:where(:root[data-theme^="verre"]) .tabs a::after { display: none; }
+:where(:root[data-theme^="verre"]) .tabs a:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--nav-r); }
+@media (max-width: 759px) {
+    :where(:root[data-theme^="verre"]) .tabs { top: calc(var(--topbar-h) + 6px); margin-inline: calc(var(--content-pad-inline) * -.5); }
+    :where(:root[data-theme^="verre"]) .tabs a { padding: 0 11px; }
+}
+
+/* ---------- Barre basse (téléphone) : verre, pastille sous l'icône active ---------- */
+@media (max-width: 759px) {
+    :where(:root[data-theme^="verre"]) .bottom-nav { border-top: 1px solid var(--glass-edge-soft); box-shadow: 0 -8px 24px -12px rgba(0, 0, 0, .35); }
+    :where(:root[data-theme^="verre"]) .bottom-nav-item { gap: 4px; color: var(--text-3); font-size: 11px; }
+    :where(:root[data-theme^="verre"]) .bottom-nav-item .icon {
+        width: 52px; height: 28px; padding: 4px 15px; border-radius: 14px; box-sizing: border-box;
+        transition: background-color var(--dur-2) var(--ease-out), color var(--dur-1), transform var(--dur-2) var(--ease-out);
+    }
+    :where(:root[data-theme^="verre"]) .bottom-nav-item[aria-current="page"] { color: var(--text); }
+    :where(:root[data-theme^="verre"]) .bottom-nav-item[aria-current="page"] .icon {
+        background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 30%, transparent), color-mix(in srgb, var(--primary) 16%, transparent));
+        color: var(--primary);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), inset 0 0 0 1px color-mix(in srgb, var(--primary) 35%, transparent);
+    }
+    :where(:root[data-theme^="verre"]) .bottom-nav-item[aria-current="page"]::before { display: none; }
+}
+/* Les onglets collants prennent ~56 px sous la barre : les ancres (#section) en tiennent compte */
+:root[data-theme^="verre"]:has(.tabs) { scroll-padding-top: calc(var(--topbar-h) + 76px); }
+:where(:root[data-theme^="verre"]:has(.tabs)) :is(.settings-group, #heading-grades, #champs-joueurs, .guide-section) { scroll-margin-top: calc(var(--topbar-h) + 76px); }
+/* Réglages à liste déroulante : colonne plus large, le choix se lit en entier */
+:where(:root[data-theme^="verre"]) .setting-row:has(select) { grid-template-columns: minmax(0, 1fr) minmax(200px, 320px); }
+@media (max-width: 640px) { :where(:root[data-theme^="verre"]) .setting-row:has(select) { grid-template-columns: minmax(0, 1fr); } }
