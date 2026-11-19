@@ -18,6 +18,7 @@
     </div>
 </footer>
 <?= scriptJs('app.js') ?>
+<?= scriptJs('champs.js') ?>
 <?= scriptJs('pwa.js') ?>
 </body>
 </html>

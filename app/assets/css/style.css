@@ -3571,3 +3571,106 @@ body:has(#pad[data-actif="1"]) { padding-bottom: 0 !important; }
 /* Réglages à liste déroulante : colonne plus large, le choix se lit en entier */
 :where(:root[data-theme^="verre"]) .setting-row:has(select) { grid-template-columns: minmax(0, 1fr) minmax(200px, 320px); }
 @media (max-width: 640px) { :where(:root[data-theme^="verre"]) .setting-row:has(select) { grid-template-columns: minmax(0, 1fr); } }
+
+/* =====================================================================
+   23 LISTES DÉROULANTES ET CALENDRIER (assets/js/champs.js)
+   ---------------------------------------------------------------------
+   Remplacent les fenêtres natives du système (impossibles à styliser).
+   Panneau dans le « top layer » (popover) : il passe au-dessus des
+   modales. Valeurs de repli pour les thèmes sans verre.
+   ===================================================================== */
+.cp-panel {
+    position: fixed; inset: auto; margin: 0; z-index: 3000;
+    width: auto; height: auto; max-width: calc(100vw - 16px);
+    display: flex; flex-direction: column;
+    padding: 6px; overflow: hidden;
+    color: var(--text);
+    background: var(--glass-sheen, none), color-mix(in srgb, var(--glass-tint, var(--surface-2)) 95%, transparent);
+    border: 1px solid var(--glass-edge, var(--border-mid));
+    border-radius: 14px;
+    box-shadow: var(--glass-hi, none), var(--glass-sh-lg, var(--shadow-pop));
+    -webkit-backdrop-filter: blur(34px) saturate(170%); backdrop-filter: blur(34px) saturate(170%);
+    font-family: var(--font-body); font-size: 14px; line-height: 1.35;
+    animation: cp-in 160ms var(--ease-out) both;
+}
+.cp-panel[data-cote="haut"] { animation-name: cp-in-haut; }
+.cp-panel:not(:popover-open):not(.cp-sans-popover) { display: none; }
+.cp-panel::backdrop { background: transparent; }
+@keyframes cp-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes cp-in-haut { from { opacity: 0; transform: translateY(4px) scale(.98); } to { opacity: 1; transform: none; } }
+/* Boutons internes : neutres (le style des boutons de l'app ne s'applique pas) */
+.cp-panel .cp-b {
+    min-height: 0; padding: 0; margin: 0; border: 0; border-radius: 9px;
+    background: transparent; color: inherit; box-shadow: none; transform: none;
+    font: inherit; font-weight: 500; letter-spacing: 0; line-height: 1;
+    display: inline-grid; place-items: center; cursor: pointer;
+    transition: background-color 120ms, color 120ms, box-shadow 160ms;
+}
+.cp-panel .cp-b:hover:not(:disabled) { background: var(--glass-fill-2, var(--surface-3)); color: var(--text); }
+.cp-panel .cp-b:active:not(:disabled) { transform: scale(.94); }
+.cp-panel .cp-b:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.cp-panel .cp-b:disabled { opacity: .3; cursor: not-allowed; background: transparent; }
+.cp-panel .cp-b svg { width: 18px; height: 18px; }
+.cp-panel .is-sel,
+.cp-panel .cp-b.is-sel:hover {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 80%, #fff), var(--primary));
+    color: var(--on-primary); font-weight: 650;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 2px 8px -2px color-mix(in srgb, var(--primary) 60%, transparent);
+}
+.cp-panel ::-webkit-scrollbar { width: 6px; }
+.cp-panel ::-webkit-scrollbar-thumb { background: var(--glass-line-strong, var(--border-strong)); border-radius: 3px; }
+
+/* ---------- Liste déroulante ---------- */
+.cp-liste { min-width: 180px; }
+.cp-liste .cp-recherche { flex: none; min-height: 34px; margin-bottom: 6px; font-size: 14px; }
+.cp-options { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; outline: none; display: flex; flex-direction: column; gap: 1px; scrollbar-width: thin; }
+.cp-opt {
+    display: flex; align-items: center; gap: 10px; flex: none;
+    min-height: 34px; padding: 7px 10px; border-radius: 9px;
+    color: var(--text-2); cursor: pointer; user-select: none;
+}
+.cp-opt-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-opt.is-act { background: var(--glass-fill-2, var(--surface-3)); color: var(--text); }
+.cp-opt.is-sel { background: transparent; box-shadow: none; color: var(--text); font-weight: 600; }
+.cp-opt.is-sel.is-act { background: var(--accent-dim); }
+.cp-coche { flex: none; width: 16px; height: 16px; color: var(--primary); opacity: 0; transform: scale(.6); transition: opacity 120ms, transform 160ms var(--ease-out); }
+.cp-coche svg { width: 16px; height: 16px; display: block; }
+.cp-opt.is-sel .cp-coche { opacity: 1; transform: none; }
+.cp-opt.is-off { opacity: .4; cursor: not-allowed; }
+.cp-opt[hidden], .cp-groupe[hidden] { display: none; }
+.cp-groupe { padding: 10px 10px 4px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+.cp-vide .cp-options::after { content: "Aucun résultat"; padding: 12px 10px; color: var(--text-3); font-size: 13px; }
+
+/* ---------- Calendrier ---------- */
+.cp-cal { display: grid; grid-template-columns: auto; grid-template-areas: "corps" "pied"; padding: 10px; gap: 8px; }
+.cp-cal-heure { grid-template-columns: auto auto; grid-template-areas: "corps heures" "pied pied"; }
+.cp-cal-corps { grid-area: corps; }
+.cp-cal-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.cp-mois { flex: 1; text-align: center; font-family: var(--font-display); font-size: 15px; font-weight: 650; letter-spacing: -.01em; text-transform: capitalize; }
+.cp-panel .cp-nav { width: 32px; height: 32px; color: var(--text-2); }
+.cp-semaine, .cp-ligne { display: grid; grid-template-columns: repeat(7, 38px); gap: 2px; }
+.cp-semaine { margin-bottom: 4px; }
+.cp-semaine span { text-align: center; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); padding: 4px 0; }
+.cp-jours { display: grid; gap: 2px; }
+.cp-panel .cp-jour { width: 38px; height: 34px; font-variant-numeric: tabular-nums; font-size: 14px; color: var(--text); }
+.cp-panel .cp-jour.is-autre { color: var(--text-3); opacity: .55; }
+.cp-panel .cp-jour.is-auj:not(.is-sel) { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--primary) 70%, transparent); color: var(--primary); font-weight: 650; }
+.cp-heures { grid-area: heures; display: flex; gap: 4px; padding-left: 10px; border-left: 1px solid var(--glass-line, var(--border)); }
+.cp-col { width: 52px; height: 270px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 2px; padding: 2px; scrollbar-width: none; scroll-behavior: smooth;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%); }
+.cp-col::-webkit-scrollbar { display: none; }
+.cp-panel .cp-t { flex: none; height: 32px; width: 100%; font-variant-numeric: tabular-nums; font-size: 14px; color: var(--text-2); }
+.cp-panel .cp-jour.is-sel, .cp-panel .cp-t.is-sel { color: var(--on-primary); opacity: 1; }
+.cp-pied { grid-area: pied; display: flex; align-items: center; gap: 4px; padding-top: 8px; border-top: 1px solid var(--glass-line, var(--border)); }
+.cp-panel .cp-lien { height: 30px; padding: 0 10px; font-size: 13px; font-weight: 600; color: var(--primary); }
+.cp-panel .cp-lien[data-act="effacer"] { color: var(--text-2); }
+.cp-panel .cp-ok {
+    margin-left: auto; height: 30px; padding: 0 16px; font-size: 13px; font-weight: 650;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 80%, #fff), var(--primary)); color: var(--on-primary);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 2px 6px -2px color-mix(in srgb, var(--primary) 50%, transparent);
+}
+.cp-panel .cp-ok:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--primary-hover) 76%, #fff), var(--primary-hover)); color: var(--on-primary); }
+.cp-cal:not(.cp-cal-heure) .cp-lien[data-act="aujourdhui"] { margin-left: auto; }
+/* Champ dont le panneau est ouvert : reste en état « focus » */
+select.cp-actif, input.cp-actif { border-color: var(--primary) !important; }
+@media (prefers-reduced-motion: reduce) { .cp-panel { animation: none; } .cp-col { scroll-behavior: auto; } }
