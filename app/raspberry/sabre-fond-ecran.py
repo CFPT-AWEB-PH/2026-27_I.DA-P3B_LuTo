@@ -12,6 +12,7 @@
 #
 # Lancé (root) toutes les 15 s par sabre-fond-ecran.timer : l'image n'est redessinée
 # que si une de ces informations a changé (--forcer : toujours).
+# Aperçu sans rien toucher au bureau : sabre-fond-ecran --apercu image.png [800x480]
 # Raspberry principal : infos lues en local dans le conteneur de l'app.
 # Autres Raspberry (/etc/sabre/client.env, écrit par install_ecran_client.sh) : lues
 # sur le Wi-Fi avec leur jeton, en passant le portail si besoin.
@@ -21,7 +22,7 @@
 import hashlib, json, os, re, shlex, subprocess, sys, urllib.parse, urllib.request
 
 import qrcode
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 CONF = "/etc/sabre/ap.env"
 COMPTE = "/etc/sabre/ecran-compte"
@@ -206,26 +207,221 @@ def appliquer():
                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
 
 
-def image_de_base(W, H, chemin):
-    """Fond uni, ou image choisie assombrie pour que le texte par-dessus reste lisible."""
-    fond = Image.new("RGB", (W, H), FOND)
-    if not chemin:
-        return fond
+# ── Dessin (style « Verre » de l'application) ─────────────────────────────────
+# Fond sombre avec halos colorés, cartes en verre dépoli, pastilles d'étape en
+# dégradé indigo, valeurs dans des étiquettes, QR codes sur tuiles lumineuses.
+POLICE_TEXTE = "/usr/share/fonts/truetype/nunito-sans/NunitoSans-VariableFont_YTLC,opsz,wdth,wght.ttf"
+POLICE_VALEUR = "/usr/share/fonts/truetype/noto/NotoSansMono-Bold.ttf"
+BASE, TEXTE_V, TEXTE_2, TEXTE_3 = (8, 10, 16), (236, 238, 242), (168, 171, 181), (138, 141, 151)
+INDIGO, INDIGO_FONCE, VIOLET, CYAN = (128, 149, 255), (84, 100, 240), (146, 86, 255), (18, 150, 182)
+
+
+def police(taille, graisse=400, mono=False):
+    """Nunito Sans à la graisse voulue (police variable) ; DejaVu si elle manque."""
+    taille = max(9, int(taille))
+    if mono:
+        for chemin in (POLICE_VALEUR, POLICE_MONO):
+            try:
+                return ImageFont.truetype(chemin, taille)
+            except OSError:
+                pass
     try:
-        return Image.blend(ImageOps.fit(Image.open(chemin).convert("RGB"), (W, H)), fond, 0.55)
-    except OSError as e:
-        print(f"Image de fond illisible : {e}", file=sys.stderr)
-        return fond
+        p = ImageFont.truetype(POLICE_TEXTE, taille)
+        try:
+            axes = p.get_variation_axes()
+            valeurs = []
+            for a in axes:
+                nom = a.get("name", b"")
+                nom = nom.decode() if isinstance(nom, bytes) else str(nom)
+                if "eight" in nom or nom.lower().startswith("wght"):
+                    valeurs.append(max(a["minimum"], min(a["maximum"], graisse)))
+                elif "ptical" in nom or nom.lower().startswith("opsz"):
+                    valeurs.append(max(a["minimum"], min(a["maximum"], taille)))
+                else:
+                    valeurs.append(a.get("default", a["minimum"]))
+            p.set_variation_by_axes(valeurs)
+        except (OSError, AttributeError, KeyError):
+            pass
+        return p
+    except OSError:
+        return ImageFont.truetype(POLICE_GRAS if graisse >= 600 else POLICE, taille)
 
 
-def texte_ajuste(d, xy, texte, chemin_police, taille, largeur, fill):
-    """Écrit le texte en réduisant la police s'il dépasse la largeur disponible."""
+def ajuster(d, texte, taille, largeur, **kw):
+    """Police aussi grande que possible (≤ taille) pour que le texte tienne dans la largeur."""
     while taille > 10:
-        police = ImageFont.truetype(chemin_police, int(taille))
-        if d.textlength(texte, font=police) <= largeur:
-            break
+        p = police(taille, **kw)
+        if d.textlength(texte, font=p) <= largeur:
+            return p
         taille -= 1
-    d.text(xy, texte, font=ImageFont.truetype(chemin_police, int(max(taille, 10))), fill=fill)
+    return police(10, **kw)
+
+
+def calque(W, H):
+    return Image.new("RGBA", (W, H), (0, 0, 0, 0))
+
+
+def fond_verre(W, H, chemin_image):
+    """Toile de fond : dégradé sombre + halos indigo / violet / cyan (ou image choisie assombrie)."""
+    img = Image.new("RGB", (W, H), BASE)
+    haut = Image.new("RGB", (W, H), (12, 14, 22))
+    masque = Image.linear_gradient("L").resize((W, H))
+    img = Image.composite(img, haut, masque)
+    if chemin_image:
+        try:
+            perso = ImageOps.fit(Image.open(chemin_image).convert("RGB"), (W, H))
+            img = Image.blend(perso, img, 0.62)
+        except OSError as e:
+            print(f"Image de fond illisible : {e}", file=sys.stderr)
+    halos = calque(W, H)
+    d = ImageDraw.Draw(halos)
+    m = max(W, H)
+    for (cx, cy, r, couleur, a) in ((0.06, -0.04, 0.48, (84, 100, 255), 120), (1.04, 0.18, 0.40, VIOLET, 92),
+                                     (0.72, 1.06, 0.46, CYAN, 82)):
+        x, y, rr = cx * W, cy * H, r * m
+        d.ellipse((x - rr, y - rr * .8, x + rr, y + rr * .8), fill=couleur + (a,))
+    halos = halos.filter(ImageFilter.GaussianBlur(m * 0.12))
+    return Image.alpha_composite(img.convert("RGBA"), halos)
+
+
+def carte_verre(img, box, rayon, u):
+    """Panneau de verre : remplissage translucide, reflet en haut, liseré lumineux, ombre douce."""
+    x0, y0, x1, y1 = box
+    ombre = calque(*img.size)
+    ImageDraw.Draw(ombre).rounded_rectangle((x0, y0 + 8 * u, x1, y1 + 10 * u), rayon, fill=(0, 0, 0, 110))
+    img.alpha_composite(ombre.filter(ImageFilter.GaussianBlur(16 * u)))
+    c = calque(*img.size)
+    d = ImageDraw.Draw(c)
+    d.rounded_rectangle(box, rayon, fill=(28, 31, 43, 150))
+    # Reflet : dégradé blanc du haut vers le milieu de la carte
+    reflet = Image.linear_gradient("L").resize((int(x1 - x0), int(y1 - y0))).point(lambda v: int((255 - v) * 0.075))
+    masque = Image.new("L", reflet.size, 0)
+    ImageDraw.Draw(masque).rounded_rectangle((0, 0, reflet.size[0] - 1, reflet.size[1] - 1), rayon, fill=255)
+    blanc = Image.new("RGBA", reflet.size, (255, 255, 255, 0))
+    blanc.putalpha(Image.composite(reflet, Image.new("L", reflet.size, 0), masque))
+    c.alpha_composite(blanc, (int(x0), int(y0)))
+    d.rounded_rectangle(box, rayon, outline=(255, 255, 255, 34), width=max(1, int(1.6 * u)))
+    d.line((x0 + rayon, y0 + 1, x1 - rayon, y0 + 1), fill=(255, 255, 255, 46), width=max(1, int(1.4 * u)))
+    img.alpha_composite(c)
+
+
+def pastille(img, cx, cy, r, texte, u):
+    """Numéro d'étape : disque en dégradé indigo avec halo."""
+    halo = calque(*img.size)
+    ImageDraw.Draw(halo).ellipse((cx - r * 1.5, cy - r * 1.5, cx + r * 1.5, cy + r * 1.5), fill=INDIGO + (90,))
+    img.alpha_composite(halo.filter(ImageFilter.GaussianBlur(r * 0.7)))
+    disque = Image.linear_gradient("L").resize((2 * r, 2 * r))
+    couleur = Image.composite(Image.new("RGB", (2 * r, 2 * r), INDIGO_FONCE), Image.new("RGB", (2 * r, 2 * r), (160, 176, 255)), disque)
+    masque = Image.new("L", (2 * r, 2 * r), 0)
+    ImageDraw.Draw(masque).ellipse((0, 0, 2 * r - 1, 2 * r - 1), fill=255)
+    img.paste(couleur, (cx - r, cy - r), masque)
+    d = ImageDraw.Draw(img)
+    d.text((cx, cy + 1), texte, font=police(r * 1.15, 800), fill=(255, 255, 255), anchor="mm")
+
+
+def lame(img, x, y, l, h, u):
+    """Signature : la lame lumineuse (dégradé indigo → violet, avec halo)."""
+    halo = calque(*img.size)
+    ImageDraw.Draw(halo).rounded_rectangle((x - 4 * u, y - 3 * u, x + l + 4 * u, y + h + 3 * u), h, fill=INDIGO + (150,))
+    img.alpha_composite(halo.filter(ImageFilter.GaussianBlur(7 * u)))
+    grad = Image.linear_gradient("L").rotate(90, expand=True).resize((int(l), int(h)))
+    couleur = Image.composite(Image.new("RGB", grad.size, (183, 140, 255)), Image.new("RGB", grad.size, INDIGO), grad)
+    masque = Image.new("L", grad.size, 0)
+    ImageDraw.Draw(masque).rounded_rectangle((0, 0, grad.size[0] - 1, grad.size[1] - 1), int(h / 2), fill=255)
+    img.paste(couleur, (int(x), int(y)), masque)
+    ImageDraw.Draw(img).rounded_rectangle((x - 9 * u, y - 1.5 * u, x - 2 * u, y + h + 1.5 * u), int(2 * u), fill=TEXTE_3)
+
+
+def etiquette(img, xy, texte, p, u, largeur_max):
+    """Valeur importante (nom du Wi-Fi, mot de passe…) dans une étiquette claire."""
+    d = ImageDraw.Draw(img)
+    x, y = xy
+    l = min(d.textlength(texte, font=p), largeur_max)
+    asc, desc = p.getmetrics()
+    hp, vp = 10 * u, 5 * u
+    c = calque(*img.size)
+    ImageDraw.Draw(c).rounded_rectangle((x - hp, y - vp, x + l + hp, y + asc + desc * .35 + vp), int(9 * u),
+                                        fill=(255, 255, 255, 20), outline=(255, 255, 255, 26), width=1)
+    img.alpha_composite(c)
+    d.text((x, y), texte, font=p, fill=TEXTE_V)
+
+
+def tuile_qr(img, x, y, cote, contenu, u):
+    """QR code sur une tuile blanche arrondie, avec un halo indigo derrière."""
+    pad = int(12 * u)
+    halo = calque(*img.size)
+    ImageDraw.Draw(halo).rounded_rectangle((x - pad - 6 * u, y - pad - 6 * u, x + cote + pad + 6 * u, y + cote + pad + 6 * u),
+                                           int(26 * u), fill=INDIGO + (95,))
+    img.alpha_composite(halo.filter(ImageFilter.GaussianBlur(18 * u)))
+    ImageDraw.Draw(img).rounded_rectangle((x - pad, y - pad, x + cote + pad, y + cote + pad), int(18 * u), fill=(255, 255, 255))
+    img.paste(qr(contenu, cote), (x, y))
+
+
+def dessiner(W, H, etapes, qrs, chemin_image, note):
+    """Image complète. etapes : [(num, titre, [(libellé, valeur)])] ; qrs : [(contenu, num, légende)]."""
+    u = H / 1080                                  # tout est proportionnel à la hauteur
+    img = fond_verre(W, H, chemin_image)
+    d = ImageDraw.Draw(img)
+    marge = int(80 * u)
+    compact = len(etapes) > 3
+
+    # En-tête : la lame + le nom, sous la barre des tâches (~36 px)
+    y_titre = max(int(64 * u), 46)
+    p_titre = police(66 * u, 800)
+    lame(img, marge + 10 * u, y_titre + 30 * u, 54 * u, 9 * u, u)
+    d.text((marge + 84 * u, y_titre), "Sabre Arbitrage", font=p_titre, fill=TEXTE_V)
+    if H >= 720:
+        d.text((marge + 84 * u, y_titre + 82 * u), "Rejoignez le Wi-Fi de la salle pour suivre et arbitrer les combats",
+               font=police(30 * u, 500), fill=TEXTE_2)
+
+    # Colonne de gauche : les étapes, en cartes de verre
+    larg_g = int(W * 0.58) - marge
+    x_txt = marge + int(104 * u)
+    larg_txt = marge + larg_g - x_txt - int(28 * u)
+    y = int((228 if compact else 252) * u) if H >= 720 else max(int((168 if compact else 196) * u), y_titre + int(104 * u))
+    dispo = H - y - int((84 if note and not compact else 36) * u)   # place pour la note du bas
+    ecart = int((16 if compact else 24) * u)
+    rangees = [1 if compact else len(l) for _, _, l in etapes]
+    unite_h = (dispo - ecart * (len(etapes) - 1)) / sum(92 * u + 100 * u * r for r in rangees) if etapes else 1
+    k = min(1.0, unite_h)                          # resserre un peu si l'écran est très bas
+    for (num, titre_etape, lignes), r in zip(etapes, rangees):
+        h = int((92 + 100 * r) * u * k)
+        carte_verre(img, (marge, y, marge + larg_g, y + h), int(22 * u), u)
+        cy = y + int(46 * u * k)
+        pastille(img, marge + int(52 * u), cy, max(9, int(25 * u)), num, u)
+        d.text((x_txt, cy), titre_etape, font=police(34 * u, 750), fill=TEXTE_V, anchor="lm")
+        ly = y + int(84 * u * k)
+        n = len(lignes)
+        for i, (lab, val) in enumerate(lignes):
+            lx = x_txt + (i * (larg_txt // n) if compact else 0)
+            larg = (larg_txt // n - int(26 * u)) if compact else larg_txt - int(20 * u)
+            d.text((lx, ly), lab.upper(), font=police(21 * u, 700), fill=TEXTE_3)
+            pv = ajuster(d, val, 40 * u * min(1, k + .1), larg, mono=True)
+            etiquette(img, (lx, ly + int(32 * u * k)), val, pv, u, larg)
+            if not compact:
+                ly += int(100 * u * k)
+        y += h + ecart
+
+    # Colonne de droite : les QR codes, reliés aux étapes (1 et 3)
+    gauche = int(W * 0.58) + int(40 * u)
+    haut_qr = int(228 * u) if H >= 720 else max(int(150 * u), 52)
+    place = H - haut_qr - int(30 * u)
+    cote = int(min(330 * u, W - gauche - 60 * u, (place - 2 * 96 * u) / 2))
+    cx = (gauche + W - int(20 * u)) // 2
+    for i, (contenu, num, legende) in enumerate(qrs):
+        qy = haut_qr + int(14 * u) + i * (cote + int(96 * u))
+        tuile_qr(img, cx - cote // 2, qy, cote, contenu, u)
+        ly = qy + cote + int(46 * u)
+        p_leg = police(26 * u, 700)
+        lt = d.textlength(legende, font=p_leg)
+        r = max(8, int(15 * u))
+        x_leg = cx - (lt + 2 * r + 12 * u) / 2
+        pastille(img, int(x_leg + r), ly, r, num, u)
+        d.text((x_leg + 2 * r + 12 * u, ly), legende, font=p_leg, fill=TEXTE_V, anchor="lm")
+
+    if note and not compact:
+        d.text((marge, H - int(52 * u)), note, font=police(24 * u, 500), fill=TEXTE_3)
+    return img.convert("RGB")
 
 
 def main():
@@ -241,6 +437,12 @@ def main():
     version_image = infos.get("fond_version")
     url = f"http://{domaine}"
     W, H = taille_ecran()
+    apercu = None
+    if "--apercu" in sys.argv:
+        args = sys.argv[sys.argv.index("--apercu") + 1:]
+        apercu = args[0] if args else "/tmp/sabre-fond-apercu.png"
+        if len(args) > 1 and re.match(r"^\d+x\d+$", args[1]):
+            W, H = map(int, args[1].split("x"))
 
     # Rien n'a changé depuis la dernière image : on ne redessine pas
     signature = hashlib.sha256(repr((ssid, mdp_wifi, domaine, ident, mdp, compte_ident, compte_mdp, version_image,
@@ -249,23 +451,9 @@ def main():
         deja = open(SIGNATURE).read().strip() == signature and os.path.exists(SORTIE)
     except OSError:
         deja = False
-    if deja and "--forcer" not in sys.argv:
+    if deja and "--forcer" not in sys.argv and not apercu:
         return 0
 
-    u = H / 1080                               # unité : tout est proportionnel à la hauteur
-    img = image_de_base(W, H, image_fond(client, version_image))
-    d = ImageDraw.Draw(img)
-    f = lambda chemin, t: ImageFont.truetype(chemin, max(10, int(t * u)))
-    titre, sous, label, valeur, petit = f(POLICE_GRAS, 64), f(POLICE, 30), f(POLICE, 28), f(POLICE_MONO, 46), f(POLICE, 25)
-
-    marge = int(80 * u)
-    # Le titre reste sous la barre des tâches (~36 px) ; sous-titre seulement sur un grand écran
-    d.text((marge, max(int(60 * u), 44)), "Sabre Arbitrage", font=titre, fill=TEXTE)
-    if H >= 720:
-        d.text((marge, int(140 * u)), "Connectez-vous au Wi-Fi de la salle pour suivre et arbitrer les combats",
-               font=sous, fill=DISCRET)
-
-    # ── Colonne de gauche : les trois étapes ─────────────────────────────────
     etapes = [
         ("1", "Rejoindre le Wi-Fi", [("Nom du Wi-Fi", ssid),
                                      ("Mot de passe", mdp_wifi if mdp_wifi else "aucun (réseau ouvert)")]),
@@ -276,47 +464,16 @@ def main():
     if compte_ident:
         etapes.append(("4", "Se connecter au site", [("Identifiant", compte_ident),
                                                      ("Mot de passe", compte_mdp or "voir l'organisateur")]))
-    # Quatre cartes : identifiant et mot de passe côte à côte, pour que tout tienne à l'écran
-    compact = len(etapes) > 3
-    larg_g = int(W * 0.56) - marge
-    x_texte = marge + int(95 * u)
-    larg_texte = marge + larg_g - x_texte - int(20 * u)
-    y = int((190 if compact else 220) * u)
-    for num, titre_etape, lignes in etapes:
-        rangees = 1 if compact else len(lignes)
-        h_carte = int((90 + 95 * rangees) * u)
-        d.rounded_rectangle((marge, y, marge + larg_g, y + h_carte), radius=int(18 * u), fill=CARTE)
-        r = int(26 * u); cx, cy = marge + int(50 * u), y + int(48 * u)
-        d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=ACCENT)
-        d.text((cx, cy), num, font=f(POLICE_GRAS, 30), fill=FOND, anchor="mm")
-        d.text((x_texte, cy), titre_etape, font=f(POLICE_GRAS, 34), fill=TEXTE, anchor="lm")
-        ly = y + int(95 * u)
-        larg_col = larg_texte // len(lignes) - int(10 * u) if compact else larg_texte
-        for i, (lab, val) in enumerate(lignes):
-            lx = x_texte + (i * (larg_texte // len(lignes)) if compact else 0)
-            d.text((lx, ly), lab, font=label, fill=DISCRET)
-            texte_ajuste(d, (lx, ly + int(32 * u)), val, POLICE_MONO, max(10, int(46 * u)), larg_col, TEXTE)
-            if not compact:
-                ly += int(95 * u)
-        y += h_carte + int((18 if compact else 28) * u)
-
-    # ── Colonne de droite : QR codes ─────────────────────────────────────────
     securite = "WPA" if mdp_wifi else "nopass"
     qr_wifi = f"WIFI:T:{securite};S:{echapper_wifi(ssid)};" + (f"P:{echapper_wifi(mdp_wifi)};" if mdp_wifi else "") + ";"
-    gauche = int(W * 0.56) + int(30 * u)
-    cote = min(int(340 * u), W - gauche - int(40 * u), int((H - 300 * u) / 2))
-    x0 = (gauche + W) // 2 - cote // 2
-    for i, (contenu, legende) in enumerate([(qr_wifi, "Scanner pour rejoindre le Wi-Fi"),
-                                            (url, "Scanner pour ouvrir le site")]):
-        qy = int(220 * u) + i * (cote + int(110 * u))
-        pad = int(14 * u)
-        d.rounded_rectangle((x0 - pad, qy - pad, x0 + cote + pad, qy + cote + pad), radius=int(14 * u), fill="white")
-        img.paste(qr(contenu, cote), (x0, qy))
-        d.text((x0 + cote // 2, qy + cote + int(40 * u)), legende, font=petit, fill=TEXTE, anchor="mm")
+    qrs = [(qr_wifi, "1", "Rejoindre le Wi-Fi"), (url, "3", "Ouvrir le site")]
+    img = dessiner(W, H, etapes, qrs, image_fond(client, version_image),
+                   "Pas d'internet sur ce réseau : seul le site du tournoi est accessible.")
 
-    if not compact:
-        d.text((marge, H - int(50 * u)), "Pas d'internet sur ce réseau : seul le site du tournoi est accessible.",
-               font=petit, fill=DISCRET)
+    if apercu:
+        img.save(apercu)
+        print(f"Aperçu : {apercu} ({W}x{H})")
+        return 0
 
     os.makedirs(os.path.dirname(SORTIE), exist_ok=True)
     tmp = SORTIE + ".tmp.png"
