@@ -45,15 +45,19 @@ require __DIR__ . '/includes/header.php';
 
             <div class="field">
                 <label for="username">Nom d'utilisateur</label>
-                <input type="text" id="username" name="username" required <?= $error ? '' : 'autofocus' ?>
-                       autocomplete="username" autocapitalize="none" spellcheck="false"
-                       value="<?= e(is_string($_POST['username'] ?? null) ? mb_substr($_POST['username'], 0, 50) : '') ?>">
+                <div class="input-icon">
+                    <?= icon('user') ?>
+                    <input type="text" id="username" name="username" required <?= $error ? '' : 'autofocus' ?>
+                           autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Votre identifiant"
+                           value="<?= e(is_string($_POST['username'] ?? null) ? mb_substr($_POST['username'], 0, 50) : '') ?>">
+                </div>
             </div>
 
             <div class="field">
                 <label for="password">Mot de passe</label>
-                <div class="input-with-btn">
-                    <input type="password" id="password" name="password" required autocomplete="current-password" <?= $error ? 'autofocus' : '' ?>>
+                <div class="input-with-btn input-icon">
+                    <?= icon('lock') ?>
+                    <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Donné par l'organisation" <?= $error ? 'autofocus' : '' ?>>
                     <button type="button" class="password-toggle-btn" data-target="password" aria-label="Afficher le mot de passe">
                         <?= icon('eye') ?>
                     </button>
@@ -63,9 +67,10 @@ require __DIR__ . '/includes/header.php';
             <button type="submit" class="btn btn-lg btn-block">Se connecter</button>
         </form>
 
-        <p class="auth-foot">
-            <?php if (getParametreInt($pdo, 'inscriptions_ouvertes', 1) === 1): ?>Vous combattez ? <a href="register.php">Créer un compte joueur</a><?php else: ?><a href="index.php">Suivre les combats en direct</a><?php endif; ?>
-        </p>
+        <div class="auth-foot">
+            <?php if (getParametreInt($pdo, 'inscriptions_ouvertes', 1) === 1): ?><p>Vous combattez ? <a href="register.php">Créer un compte joueur</a></p><?php endif; ?>
+            <a class="auth-direct" href="index.php"><?= icon('live') ?>Suivre les combats en direct, sans compte<?= icon('arrow-right') ?></a>
+        </div>
     </div>
 </div>
 

@@ -48,6 +48,13 @@ require __DIR__ . '/../includes/header.php';
         <h1>Arbitrage</h1>
         <p class="sub"><?= $tous ? 'Tous les combats du tournoi.' : 'Les combats qui vous sont confiés.' ?> Il est <strong class="tabular" data-server-clock><?= date('H:i:s') ?></strong>.</p>
     </div>
+    <?php if ($combats || $finis): ?>
+    <ul class="arb-resume" aria-label="Résumé">
+        <li class="<?= $live ? 'is-live' : '' ?>"><strong><?= count($live) ?></strong> en cours</li>
+        <li><strong><?= count($avenir) ?></strong> à venir</li>
+        <li><strong><?= count($finis) ?></strong> terminé<?= count($finis) > 1 ? 's' : '' ?></li>
+    </ul>
+    <?php endif; ?>
 </div>
 
 <?php if (!$combats && !$finis): ?>
@@ -60,7 +67,7 @@ require __DIR__ . '/../includes/header.php';
         <span class="live-dot" aria-hidden="true"></span>
         <h2 id="h-live">À arbitrer maintenant</h2>
     </div>
-    <div class="grid grid-2">
+    <div class="grid grid-2 arb-live">
         <?php foreach ($live as $c): ?>
             <?= carteCombatLive($pdo, $c, 'saisie.php?combat_id=' . (int)$c['id'], $c['role'] ? 'Ouvrir mon pupitre' : 'Suivre le combat (lecture seule)', $c['role'] ? ($roles[$c['role']] ?? $c['role']) : 'Supervision') ?>
         <?php endforeach; ?>

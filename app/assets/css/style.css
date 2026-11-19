@@ -4019,3 +4019,162 @@ select.cp-actif, input.cp-actif { border-color: var(--primary) !important; }
     .guide-voir a { border: 0; background: none; padding: 0; min-height: 0; }
     .guide-section-ic { box-shadow: none; }
 }
+
+/* =====================================================================
+   26 ÉCRAN DE SALLE : finitions
+   Chaque carte de combat est un conteneur de TAILLE : noms, scores, chrono
+   et touches sont dimensionnés sur sa largeur (cqi) ET sa hauteur (cqh),
+   donc rien ne déborde, quel que soit le nombre de combats ou la longueur
+   des noms. Les deux scores restent alignés.
+   ===================================================================== */
+@media (min-width: 760px) and (min-height: 501px) {
+    .ec-fight {
+        container-type: size;
+        display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto; align-content: stretch; gap: 0;
+        padding: clamp(10px, 3.2cqh, 40px) clamp(14px, 3.4cqi, 44px);
+    }
+    .ec-duel { align-items: end; min-height: 0; gap: clamp(10px, 3cqi, 40px); }
+    .ec-p1, .ec-p2 { display: grid; justify-items: center; align-content: end; gap: clamp(2px, .8cqh, 10px); min-width: 0; }
+    .ec-side { font-size: clamp(.7rem, min(2cqi, 3cqh), 1.5rem); letter-spacing: .14em; }
+    .ec-name { margin: 0; font-size: clamp(.9rem, min(5cqi, 6.4cqh), 3rem); max-width: 100%; }
+    .ec-score { margin: 0; font-size: clamp(2.2rem, min(24cqi, 30cqh), 14rem); line-height: .86; }
+    .ec-vs { margin: 6cqh 0; }
+    .ec-lead { margin-top: clamp(6px, 2.4cqh, 28px); }
+    .ec-lead .lead-text { font-size: clamp(.8rem, min(3cqi, 4cqh), 2rem); }
+    .ec-lead .lead-info { margin-top: clamp(4px, 1.4cqh, 14px); }
+    .ec-lead .ref-points { margin-top: clamp(4px, 1.4cqh, 14px); font-size: clamp(.7rem, min(2.1cqi, 2.9cqh), 1.4rem); gap: .4em .5em; }
+    .ec-timer { margin-top: clamp(4px, 1.8cqh, 22px); font-size: clamp(1.6rem, min(10cqi, 13cqh), 7rem); }
+    .ec-hits { margin-top: clamp(4px, 1.8cqh, 22px); padding-top: clamp(4px, 1.6cqh, 20px); font-size: clamp(.75rem, min(2.8cqi, 3.8cqh), 1.8rem); }
+}
+.ec-name { text-wrap: balance; }
+/* Le côté qui mène est mis en avant (halo de sa couleur derrière le score) */
+.ec-fight:has(.js-lead[data-leader="1"]) .ec-p1 .ec-score,
+.ec-fight:has(.js-lead[data-leader="2"]) .ec-p2 .ec-score { filter: drop-shadow(0 0 .12em color-mix(in srgb, currentColor 45%, transparent)); }
+.ec-fight:has(.js-lead[data-leader="1"]) .ec-p2 .ec-score,
+.ec-fight:has(.js-lead[data-leader="2"]) .ec-p1 .ec-score { opacity: .78; }
+.ec-hits .h1, .ec-hits .h2, .ec-hits .hd { white-space: nowrap; }
+/* Verre : cartes du direct, liste à venir, onglets */
+:where(:root[data-theme^="verre"]) .ec-table-wrap { background: var(--glass-sheen), var(--surface); border: 1px solid var(--glass-edge); border-radius: 18px; box-shadow: var(--glass-hi), var(--glass-sh-sm); }
+:where(:root[data-theme^="verre"]) .ec-table thead th { background: var(--glass-fill); }
+:where(:root[data-theme^="verre"]) .ec-count { background: var(--glass-fill); border-color: var(--glass-edge-soft); }
+:where(:root[data-theme^="verre"]) .ec-nav { border-top-color: var(--glass-line); background: color-mix(in srgb, var(--glass-tint) 30%, transparent); }
+:where(:root[data-theme^="verre"]) .ec-tab { border-radius: 10px; }
+:where(:root[data-theme^="verre"]) .ec-tab.active .ec-tab-bar::after { background: var(--primary); }
+:where(:root[data-theme^="verre"]) .ec-fs { border-color: var(--glass-edge); background: var(--glass-btn); box-shadow: var(--glass-hi); border-radius: 12px; }
+:where(:root[data-theme^="verre"]) .ec-ref .avatar { background: var(--glass-btn); border-color: var(--glass-edge); }
+:where(:root[data-theme^="verre"]) .ec-ref.busy .avatar { background: linear-gradient(145deg, color-mix(in srgb, var(--p1) 80%, #fff), var(--p1)); color: #fff; border: 0; }
+:where(:root[data-theme^="verre"]) .ec-empty > div, :where(:root[data-theme^="verre"]) .ec-empty:not(:has(div)) { padding: 1.4em 2em; border-radius: 20px; background: var(--glass-sheen), var(--surface); border: 1px solid var(--glass-edge); box-shadow: var(--glass-hi), var(--glass-sh-sm); }
+.ec-table .dot-aka, .ec-table .dot-ao { width: .42em; height: .42em; margin-right: .45em; vertical-align: .14em; box-shadow: 0 0 .5em currentColor; }
+.ec-table .dot-aka { color: var(--p1); } .ec-table .dot-ao { color: var(--p2); }
+
+/* =====================================================================
+   27 CONNEXION ET INSCRIPTION : finitions
+   ===================================================================== */
+.auth-wrap { position: relative; isolation: isolate; padding: clamp(24px, 6vh, 64px) 0; }
+/* Halo indigo derrière la carte */
+.auth-wrap::before {
+    content: ""; position: absolute; z-index: -1; left: 50%; top: 42%; width: min(640px, 90vw); aspect-ratio: 1; transform: translate(-50%, -50%);
+    border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--primary) 20%, transparent), transparent);
+    pointer-events: none;
+}
+.auth-card { width: min(420px, 100%); padding: clamp(24px, 4vw, 40px); border-radius: 22px; }
+.auth-card .auth-mark {
+    width: 64px; height: 64px; margin: 0 auto 18px; display: grid; place-items: center; border-radius: 18px;
+    background: var(--glass-btn, var(--surface-2)); border: 1px solid var(--glass-edge, var(--border-mid));
+    box-shadow: var(--glass-hi, none), 0 10px 30px -10px color-mix(in srgb, var(--primary) 55%, transparent);
+}
+.auth-card .auth-mark .brand-logo { height: 40px; max-width: 48px; }
+.auth-card .auth-mark .brand-blade { width: 32px; }
+.auth-card h1 { font-size: clamp(1.5rem, 1.2rem + 1vw, 1.85rem); letter-spacing: -.025em; margin-bottom: 6px; }
+.auth-card .sub { font-size: 14px; line-height: 1.5; margin-bottom: 24px; }
+.auth-card .field { margin-bottom: 14px; }
+.auth-card form > .btn { margin-top: 10px; min-height: 46px; font-size: 15px; border-radius: 12px; }
+.auth-card .flash { margin-bottom: 16px; }
+.auth-card .input-icon > .icon { width: 17px; height: 17px; left: 13px; }
+.auth-card .input-icon input:focus ~ .icon, .auth-card .input-icon:focus-within > .icon { color: var(--primary); }
+.auth-note {
+    display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 6px; padding: 10px 12px; border-radius: 12px;
+    background: color-mix(in srgb, var(--info) 10%, transparent); border: 1px solid color-mix(in srgb, var(--info) 26%, transparent);
+    color: var(--text-2); font-size: 13px; line-height: 1.45;
+}
+.auth-note .icon { flex: none; width: 16px; height: 16px; margin-top: 1px; color: var(--info); }
+.auth-note strong { color: var(--text); }
+.auth-foot { display: grid; gap: 12px; justify-items: center; margin-top: 22px; padding-top: 18px; border-top-color: var(--glass-line, var(--border-subtle)); }
+.auth-foot p { margin: 0; }
+.auth-direct {
+    display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 14px; border-radius: 999px;
+    background: var(--glass-fill, var(--surface-2)); border: 1px solid var(--glass-edge-soft, var(--border));
+    color: var(--text-2); font-size: 13px; font-weight: 600; text-decoration: none;
+    transition: color var(--dur-1), border-color var(--dur-1), background-color var(--dur-1);
+}
+.auth-direct .icon { width: 15px; height: 15px; }
+.auth-direct .icon:first-child { color: var(--success); }
+.auth-direct:hover { color: var(--text); border-color: color-mix(in srgb, var(--primary) 45%, transparent); background: var(--accent-dim); text-decoration: none; }
+@media (max-width: 559px) {
+    .auth-card { border-radius: 0; }
+    .auth-wrap::before { top: 22%; }
+}
+
+/* =====================================================================
+   28 ESPACE ARBITRAGE : finitions (arbitrage/index.php)
+   ===================================================================== */
+.arb-resume { display: flex; gap: 8px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; }
+.arb-resume li {
+    display: inline-flex; align-items: baseline; gap: 6px; min-height: 34px; padding: 6px 14px; border-radius: 12px;
+    background: var(--glass-sheen, none), var(--surface); border: 1px solid var(--glass-edge, var(--border));
+    box-shadow: var(--glass-hi, none); color: var(--text-3); font-size: 13px; font-weight: 600;
+}
+.arb-resume strong { font-family: var(--font-score, var(--font-display)); font-size: 20px; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; }
+.arb-resume li.is-live { border-color: color-mix(in srgb, var(--success) 40%, transparent); }
+.arb-resume li.is-live strong { color: var(--success); }
+/* Un seul combat à arbitrer : la carte prend toute la largeur, en grand */
+.arb-live:has(> :only-child) { grid-template-columns: minmax(0, 1fr); }
+.arb-live:has(> :only-child) .duel .score-big { font-size: clamp(3.2rem, 2rem + 4vw, 5.5rem); }
+.arb-live:has(> :only-child) .duel-name { font-size: var(--fs-lg); }
+/* « Ouvrir mon pupitre » : l'action principale de la carte */
+.arb-live .tile-foot {
+    border-top: 0; margin-top: 4px; justify-content: center; gap: 10px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 80%, #fff), var(--primary));
+    color: var(--on-primary); font-size: 15px; font-weight: 650;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25);
+    border-radius: 0 0 calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px);
+    min-height: 52px;
+}
+.arb-live .card-link:hover .tile-foot { color: var(--on-primary); filter: brightness(1.06); }
+.arb-live .combat-tile .tile-top .hint {
+    padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--text-2);
+    background: var(--glass-fill, var(--surface-2)); border: 1px solid var(--glass-edge-soft, var(--border));
+}
+.arb-live .chip-timer .timer { font-size: 22px; }
+.section-title .count, .section-live-header .count {
+    display: inline-grid; place-items: center; min-width: 24px; height: 22px; padding: 0 7px; border-radius: 999px; vertical-align: .2em;
+    background: var(--glass-fill-2, var(--surface-2)); font-size: 12px; font-weight: 700;
+}
+@media (max-width: 699px) { .arb-resume { width: 100%; } .arb-resume li { flex: 1; justify-content: center; } }
+.arb-live:has(> :only-child) .duel { width: 100%; max-width: 860px; margin-inline: auto; }
+
+/* =====================================================================
+   29 PAGE D'UN COMBAT : finitions (combat.php, cartes en direct)
+   ===================================================================== */
+/* Les noms ne sont plus coupés « Saskia Mo… » : deux lignes équilibrées */
+.duel-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; text-wrap: balance; line-height: 1.15; }
+/* Scores à virgule (moyenne des arbitres) : un peu plus compacts pour laisser la place aux noms */
+.duel-lg .score-big { font-size: clamp(3rem, 1.6rem + 3.6vw, 5rem); letter-spacing: -.02em; }
+.match-card { padding: clamp(20px, 3vw, 32px) clamp(18px, 2.6vw, 28px); }
+.match-card .timer { margin-top: clamp(20px, 3vw, 32px); }
+.match-card .lead { margin-top: 22px; }
+/* Le côté qui mène ressort, l'autre s'efface légèrement */
+.match-card:has(.js-lead[data-leader="1"]) .duel-ao .score-big,
+.match-card:has(.js-lead[data-leader="2"]) .duel-aka .score-big { opacity: .72; }
+.match-card .match-meta { border-top-color: var(--glass-line, var(--border-subtle)); }
+.match-meta strong { font-variant-numeric: tabular-nums; }
+/* Ligne du score officiel : aux couleurs des combattants */
+.ref-table tr.ref-official td { background: var(--glass-fill, var(--surface-2)); }
+.ref-table tr.ref-official td.side-1, .ref-table tr.ref-official td.side-1 strong { color: var(--p1); }
+.ref-table tr.ref-official td.side-2, .ref-table tr.ref-official td.side-2 strong { color: var(--p2); }
+.ref-table tr.ref-official td.num strong { font-family: var(--font-score, var(--font-display)); font-size: 1.2em; }
+.combat-head .eyebrow { color: var(--text-3); }
+.combat-head .player-names { letter-spacing: -.025em; }
+/* Panneau des touches */
+:where(:root[data-theme^="verre"]) .touch-list li { border-color: var(--glass-line); }
+:where(:root[data-theme^="verre"]) .touch-timeline { background: var(--glass-fill); border-radius: 8px; }

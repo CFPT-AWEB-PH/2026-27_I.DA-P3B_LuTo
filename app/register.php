@@ -38,7 +38,7 @@ require __DIR__ . '/includes/header.php';
         <?php if (!$ouvert): ?>
             <p class="sub">Les inscriptions sont fermées pour ce tournoi. Adressez-vous à l'organisation.</p>
             <a class="btn btn-secondary btn-block" href="index.php">Suivre les combats en direct</a>
-            <p class="auth-foot">Déjà un compte ? <a href="login.php">Se connecter</a></p>
+            <div class="auth-foot"><p>Déjà un compte ? <a href="login.php">Se connecter</a></p></div>
         <?php else: ?>
         <p class="sub">Les comptes d'arbitre sont créés par l'organisation.</p>
 
@@ -51,25 +51,34 @@ require __DIR__ . '/includes/header.php';
 
             <div class="field">
                 <label for="username">Nom d'utilisateur</label>
-                <input type="text" id="username" name="username" required autofocus autocomplete="username"
-                       autocapitalize="none" spellcheck="false" minlength="3" maxlength="30"
-                       pattern="[A-Za-z0-9_.\-]{3,30}" data-pattern-msg="Lettres sans accent, chiffres, « _ », « . » ou « - » uniquement."
-                       aria-describedby="username-hint" value="<?= e($old['username'] ?? '') ?>">
+                <div class="input-icon">
+                    <?= icon('user') ?>
+                    <input type="text" id="username" name="username" required autofocus autocomplete="username"
+                           autocapitalize="none" spellcheck="false" minlength="3" maxlength="30" placeholder="ex. luke_s"
+                           pattern="[A-Za-z0-9_.\-]{3,30}" data-pattern-msg="Lettres sans accent, chiffres, « _ », « . » ou « - » uniquement."
+                           aria-describedby="username-hint" value="<?= e($old['username'] ?? '') ?>">
+                </div>
                 <small class="hint" id="username-hint">3 à 30 caractères : lettres, chiffres, « _ », « . », « - ».</small>
             </div>
 
             <div class="field">
                 <label for="pseudo">Nom de combat <span class="hint">(facultatif)</span></label>
-                <input type="text" id="pseudo" name="pseudo" maxlength="60" aria-describedby="pseudo-hint" value="<?= e($old['pseudo'] ?? '') ?>">
+                <div class="input-icon">
+                    <?= icon('saber') ?>
+                    <input type="text" id="pseudo" name="pseudo" maxlength="60" aria-describedby="pseudo-hint" placeholder="ex. Luke Skywalker" value="<?= e($old['pseudo'] ?? '') ?>">
+                </div>
                 <small class="hint" id="pseudo-hint">Affiché sur les écrans et dans le classement.</small>
             </div>
 
-            <p class="hint">Votre mot de passe est généré automatiquement et s'affiche après la création du compte : notez-le.</p>
+            <p class="auth-note"><?= icon('info') ?><span>Votre mot de passe est <strong>généré automatiquement</strong> et s'affiche après la création du compte : notez-le.</span></p>
 
             <button type="submit" class="btn btn-lg btn-block">Créer mon compte</button>
         </form>
 
-        <p class="auth-foot">Déjà un compte ? <a href="login.php">Se connecter</a></p>
+        <div class="auth-foot">
+            <p>Déjà un compte ? <a href="login.php">Se connecter</a></p>
+            <a class="auth-direct" href="index.php"><?= icon('live') ?>Suivre les combats en direct, sans compte<?= icon('arrow-right') ?></a>
+        </div>
         <?php endif; ?>
     </div>
 </div>
