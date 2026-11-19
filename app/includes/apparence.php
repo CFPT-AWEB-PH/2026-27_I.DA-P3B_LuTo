@@ -120,10 +120,12 @@ function themeActif(PDO $pdo): string
 }
 
 /** Attributs de la balise <html> pour le thème actif. */
-function attributsTheme(PDO $pdo): string
+function attributsTheme(PDO $pdo, bool $ecranSalle = false): string
 {
     $t = themeActif($pdo);
-    return 'data-theme="' . e($t) . '" data-mode="' . e(themesDisponibles($pdo)[$t][2]) . '"';
+    // data-sens="ao-gauche" : la feuille de style inverse les côtés Aka / Ao partout
+    $sens = function_exists('aoAGauche') && aoAGauche($pdo, $ecranSalle) ? 'ao-gauche' : 'aka-gauche';
+    return 'data-theme="' . e($t) . '" data-mode="' . e(themesDisponibles($pdo)[$t][2]) . '" data-sens="' . $sens . '"';
 }
 
 function couleurBarreNavigateur(PDO $pdo): string

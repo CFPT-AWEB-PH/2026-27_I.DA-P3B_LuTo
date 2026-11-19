@@ -5,9 +5,9 @@
  *   aucun appui n'est perdu même si le réseau est lent).
  * - Mes totaux (le grand chiffre) changent immédiatement à chaque appui, avec
  *   un « +2 » qui s'envole du bouton : l'arbitre voit que son geste a compté.
- *   Le score officiel (le plus bas des 3 arbitres) et la barre « qui gagne »
+ *   Le score officiel (moyenne ou minimum des arbitres, selon les paramètres) et la barre « qui gagne »
  *   se mettent à jour à chaque réponse et toutes les secondes.
- * - Clavier : 1 2 3 = Aka, 7 8 9 = Ao, Retour arrière = annuler mon dernier point.
+ * - Clavier : 1 2 3 = joueur de gauche, 7 8 9 = joueur de droite, Retour arrière = annuler.
  */
 (function () {
     'use strict';
@@ -80,25 +80,12 @@
             if (m2) m2.textContent = fmt(d.mes.j2);
         }
         window.majBarreAvantage && window.majBarreAvantage(d);
-        if (d.arbitres) majTableArbitres(d);
+        if (d.arbitres && window.majTableArbitres) window.majTableArbitres(d);
         if (d.historique && logEl) {
             logEl.innerHTML = d.historique.map(p =>
                 `<li class="s${p.joueur}${p.annule ? ' x' : ''}" title="${p.heure}">${p.joueur === 1 ? 'Aka' : 'Ao'} +${p.valeur}</li>`
             ).join('');
         }
-    }
-
-    function majTableArbitres(d) {
-        const tbody = document.querySelector('#ref-table tbody');
-        if (!tbody || !d.arbitres.length) return;
-        const roles = { central: 'Central', coin1: 'Coin 1', coin2: 'Coin 2' };
-        const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-        tbody.innerHTML = d.arbitres.map(a => `
-            <tr>
-                <td><strong>${esc(a.nom)}</strong> <span class="hint">${roles[a.role] || esc(a.role)}</span></td>
-                <td class="num ${a.j1 == d.j1 ? 'min side-1' : ''}">${fmt(a.j1)}</td>
-                <td class="num ${a.j2 == d.j2 ? 'min side-2' : ''}">${fmt(a.j2)}</td>
-            </tr>`).join('');
     }
 
     function envoyer(params) {
@@ -148,7 +135,9 @@
     document.addEventListener('keydown', e => {
         if (!actif || e.ctrlKey || e.metaKey || e.altKey) return;
         if (e.target.closest('input, textarea, select')) return;
-        const map = { '1': [1, 1], '2': [1, 2], '3': [1, 3], '7': [2, 1], '8': [2, 2], '9': [2, 3] };
+        // 1 2 3 = joueur affiché à gauche, 7 8 9 = joueur à droite (suit le sens Aka / Ao)
+        const g = document.documentElement.dataset.sens === 'ao-gauche' ? 2 : 1, d = 3 - g;
+        const map = { '1': [g, 1], '2': [g, 2], '3': [g, 3], '7': [d, 1], '8': [d, 2], '9': [d, 3] };
         if (map[e.key]) {
             e.preventDefault();
             const [j, v] = map[e.key];

@@ -34,14 +34,14 @@ require __DIR__ . '/includes/header.php';
 
 <header class="combat-head">
     <p class="eyebrow"><?= $combat['tour'] !== null ? e(nomTour((int)$combat['tour'], nombreToursArbre($pdo))) : 'Combat' ?><?= badgeStatut($statut) ?></p>
-    <h1 class="player-names"><?= e($j1) ?><span class="vs">contre</span><?= e($j2) ?></h1>
+    <h1 class="player-names"><span><?= e($j1) ?></span><span class="vs">contre</span><span><?= e($j2) ?></span></h1>
 </header>
 
 <div class="grid grid-aside">
     <div class="stack">
         <section class="card match-card" data-combat-id="<?= (int)$combat['id'] ?>" data-statut="<?= e($statut) ?>" id="combat-detail" aria-label="Score">
             <?= duelScore($combat, ['live' => true, 'lg' => true, 'result' => true]) ?>
-            <?php if ($statut !== 'a_venir') echo barreAvantage($etat, $j1, $j2, 'lead-lg', $statut === 'termine'); ?>
+            <?php if ($statut !== 'a_venir') echo barreAvantage($etat, $j1, $j2, 'lead-lg', $statut === 'termine', false); ?>
 
             <?php if ($statut === 'en_cours'): ?>
                 <div class="timer js-timer" <?= attrsChrono($combat) ?> role="timer" aria-label="Temps restant"><?= gmdate('i:s', tempsRestant($combat)) ?></div>
@@ -85,21 +85,15 @@ require __DIR__ . '/includes/header.php';
         <?php else: ?>
         <section class="card">
             <h3>Points par arbitre</h3>
-            <p class="hint">Le score officiel retient le total le plus bas des trois arbitres (en gras).</p>
+            <p class="hint"><?= e(explicationScore($pdo)) ?> <?= e(explicationBareme($pdo)) ?></p>
             <?php if ($statut === 'termine' && !$detailPoints): ?>
                 <p class="hint">Le détail par arbitre n'a pas été enregistré pour ce combat.</p>
             <?php else: ?>
                 <div class="table-wrap">
-                    <table class="ref-table">
-                        <thead><tr><th scope="col">Arbitre</th><th scope="col" class="num side-1">Aka</th><th scope="col" class="num side-2">Ao</th></tr></thead>
+                    <table class="ref-table" id="ref-table">
+                        <thead><tr><?= enTeteTableArbitres($pdo) ?></tr></thead>
                         <tbody>
-                        <?php foreach ($etat['par_arbitre'] as $a): ?>
-                            <tr>
-                                <td><strong><?= e($a['username']) ?></strong> <span class="hint"><?= e($roles[$a['role']] ?? $a['role']) ?></span></td>
-                                <td class="num <?= $a['j1'] == $etat['j1'] ? 'min side-1' : '' ?>"><?= fmtScore($a['j1']) ?></td>
-                                <td class="num <?= $a['j2'] == $etat['j2'] ? 'min side-2' : '' ?>"><?= fmtScore($a['j2']) ?></td>
-                            </tr>
-                        <?php endforeach; ?>
+                        <?= lignesTableArbitres($etat, $roles) ?>
                         </tbody>
                     </table>
                 </div>

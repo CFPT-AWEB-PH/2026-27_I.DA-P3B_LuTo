@@ -44,6 +44,22 @@ function chargerUser(PDO $pdo, int $id): ?array
     return $stmt->fetch() ?: null;
 }
 
+// Télécommandes d'arbitre : affichées et attribuables depuis la fiche du compte
+$telecommandes = listeTelecommandes($pdo);
+$telParArbitre = telecommandeParArbitre($telecommandes);
+$peutTel = can('users.creer', 'users.modifier', 'sabres.modifier');
+
+/** Applique la télécommande choisie dans le formulaire du compte (champ « telecommande »). */
+function appliquerTelecommandeCompte(PDO $pdo, int $userId, array $telecommandes, array $telParArbitre): void
+{
+    $v = $_POST['telecommande'] ?? '';
+    if (!is_string($v) || $v === '') return;              // champ absent : rien ne change
+    $tid = $v === '0' ? null : idPositif($v);
+    if ($tid !== null && !isset($telecommandes[$tid])) return;
+    if (($telParArbitre[$userId] ?? null) === $tid) return; // inchangée
+    assignerTelecommande($pdo, $userId, $tid);
+}
+
 // ---- CREATE ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') === 'create') {
     exigerPermissionAction('users.creer', 'admin/users.php');
@@ -61,6 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') === '
     $result = registerUser($pdo, $username, $mdp, $nom, $prenom, $role);
     if ($result['success']) {
         enregistrerRaspberrysDuCompte($pdo, (int)$result['user_id'], $username);
+        if ($peutTel) appliquerTelecommandeCompte($pdo, (int)$result['user_id'], $telecommandes, $telParArbitre);
         flashIdentifiants('Compte créé (rôle : ' . nomRole($pdo, $role) . ').', $username, $mdp);
         redirect('admin/users.php');
     } else {
@@ -118,6 +135,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') === '
     if ($role !== $cible['role']) {
         error_log('[Sabre][admin] rôle de ' . $cible['username'] . ' : ' . $cible['role'] . ' -> ' . $role . ' par ' . currentUser()['username']);
     }
+
+    if ($peutTel) appliquerTelecommandeCompte($pdo, (int)$editId, $telecommandes, $telParArbitre);
 
     // Passage au rôle joueur : on crée la fiche joueur si elle n'existe pas encore
     if ($role === 'joueur') {
@@ -306,6 +325,20 @@ require __DIR__ . '/_tabs.php';
                     <input type="text" id="nom" name="nom" value="<?= e($editUser['nom'] ?? '') ?>">
                 </div>
             </div>
+            <?php if ($peutTel && $telecommandes):
+                $telActuelle = !empty($editUser['id']) ? ($telParArbitre[(int)$editUser['id']] ?? 0) : 0;
+            ?>
+                <div class="field">
+                    <label for="telecommande">Télécommande d'arbitre</label>
+                    <select id="telecommande" name="telecommande">
+                        <option value="0" <?= !$telActuelle ? 'selected' : '' ?>>Aucune</option>
+                        <?php foreach ($telecommandes as $t): ?>
+                            <option value="<?= $t['id'] ?>" <?= $telActuelle === $t['id'] ? 'selected' : '' ?>><?= e($t['nom']) ?><?= $t['username'] ? ' · ' . e($t['username']) : ' · libre' ?><?= !$t['actif'] ? ' (désactivée)' : '' ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <small class="hint">Pour un arbitre : ses appuis comptent à son nom et l'écran de la télécommande affiche ce compte. Une télécommande déjà prise change d'arbitre.</small>
+                </div>
+            <?php endif; ?>
             <?php if ($raspberrys): ?>
                 <fieldset class="field">
                     <legend>Afficher ce compte sur l'écran de</legend>
@@ -359,7 +392,7 @@ require __DIR__ . '/_tabs.php';
             <tr class="<?= $u['actif'] ? '' : 'row-inactive' ?>">
                 <td class="cell-primary"><div class="player-cell"><strong><?= e($u['username']) ?></strong><span class="hint"><?= $nomComplet !== '' ? e($nomComplet) : 'Nom non renseigné' ?></span></div></td>
                 <td data-label=""><?= badgeRole($pdo, $u['role']) ?></td>
-                <td data-label=""><?= $u['actif'] ? '<span class="hint">Actif</span>' : '<span class="badge badge-neutral">Désactivé</span>' ?><?= estCompteSysteme($u['username']) ? ' <span class="badge badge-neutral">Compte système</span>' : '' ?><?php foreach ($raspberrysParCompte[(int)$u['id']] ?? [] as $nomR): ?> <span class="badge badge-neutral" title="Affiché sur l'écran de ce Raspberry"><?= e($nomR) ?></span><?php endforeach; ?><?= !empty($u['doit_changer_mdp']) ? ' <span class="badge badge-warning" title="Recevra un mot de passe généré à sa prochaine connexion">Mot de passe à renouveler</span>' : '' ?></td>
+                <td data-label=""><?= $u['actif'] ? '<span class="hint">Actif</span>' : '<span class="badge badge-neutral">Désactivé</span>' ?><?= estCompteSysteme($u['username']) ? ' <span class="badge badge-neutral">Compte système</span>' : '' ?><?php if (isset($telParArbitre[(int)$u['id']])): ?> <span class="badge badge-neutral" title="Télécommande d'arbitre attribuée à ce compte"><?= e($telecommandes[$telParArbitre[(int)$u['id']]]['nom']) ?></span><?php endif; ?><?php foreach ($raspberrysParCompte[(int)$u['id']] ?? [] as $nomR): ?> <span class="badge badge-neutral" title="Affiché sur l'écran de ce Raspberry"><?= e($nomR) ?></span><?php endforeach; ?><?= !empty($u['doit_changer_mdp']) ? ' <span class="badge badge-warning" title="Recevra un mot de passe généré à sa prochaine connexion">Mot de passe à renouveler</span>' : '' ?></td>
                 <td data-label="Dernière connexion :" class="tabular"><?= !empty($u['derniere_connexion']) ? formatDateFr($u['derniere_connexion']) : '<span class="muted">jamais</span>' ?></td>
                 <td class="cell-actions">
                     <?php if ($menu): ?><?= menuActions($menu, 'Actions pour ' . $u['username']) ?>

@@ -268,9 +268,19 @@ le vainqueur à la fin, « SANS ARBITRE » si elle n'est associée à personne e
 
 - Chaque **combat** oppose 2 joueurs et se déroule en **manches**.
 - 3 arbitres sont assignés : **1 arbitre central** + **2 arbitres de coin**.
-- À chaque manche, chaque arbitre entre un score (0 à 10) depuis son espace "Arbitrage".
-- Dès que **les 3 arbitres ont voté**, l'app calcule la **moyenne des 3 votes** pour chaque joueur,
-  l'ajoute au score cumulé et passe à la manche suivante.
+- Pendant le combat, chaque arbitre donne ses points (+1 / +2 / +3 pour Aka ou Ao) depuis le
+  pupitre "Arbitrage" ou sa **télécommande Bluetooth** (l'écran de la télécommande affiche le nom
+  de l'arbitre associé).
+- Le **score officiel** se calcule selon **Admin › Paramètres › Score** (`mode_score`) :
+  - `moyenne_bareme` (défaut) : moyenne des 3 arbitres ; l'écart final donne les points de victoire
+    selon le barème (`bareme_seuil_1` / `bareme_seuil_2`, 5 et 10 par défaut : 0–5 = 1 PV,
+    6–10 = 2 PV, plus de 10 = 3 PV) ;
+  - `moyenne` : moyenne des 3 arbitres, la plus haute gagne (1 PV) ;
+  - `minimum` : total le plus bas des 3 arbitres, PV selon le barème.
+- Les points de **chaque arbitre** et le score officiel sont toujours affichés (pupitre, page du
+  combat, cartes en direct, écran de salle).
+- Le côté de Aka / Ao (`sens_aka_ao`) s'applique partout ; l'écran de salle est inversé
+  (`ecran_inverse`, activé par défaut) car il est vu depuis l'autre côté de l'aire.
 - Le combat a une **durée définie à l'avance**. À l'expiration du chrono, le combat est
   **automatiquement clôturé** (déclenché à chaque chargement de page — aucune tâche cron nécessaire)
   et le **vainqueur** est déterminé.

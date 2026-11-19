@@ -73,9 +73,11 @@ $reponse = [
     'temps_restant' => tempsRestant($combat),
     'en_pause'      => !empty($combat['en_pause_depuis']),
     'mes'           => $mes ? ['j1' => $mes['j1'], 'j2' => $mes['j2']] : null,
+    'mode'          => $etat['mode'],
+    // Tous les points restent visibles par tous : ceux de chaque arbitre et l'officiel
+    'arbitres'      => arbitresPourJson($etat),
 ];
 if ($user && can('arbitrage.acces', 'arbitrage.tous_combats', 'combats.voir')) {
-    $reponse['arbitres'] = array_values(array_map(fn($a) => ['nom' => $a['username'], 'role' => $a['role'], 'j1' => $a['j1'], 'j2' => $a['j2']], $etat['par_arbitre']));
     if ($mes) {
         $reponse['historique'] = array_map(fn($p) => [
             'id' => (int)$p['id'], 'joueur' => (int)$p['joueur_num'], 'valeur' => (int)$p['valeur'],

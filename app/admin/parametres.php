@@ -4,6 +4,7 @@ requirePermission('parametres.voir', 'parametres.modifier', 'grades.gerer', 'jou
 
 $action = $_GET['action'] ?? 'list';
 $id = idPositif($_GET['id'] ?? '');
+assurerParametresScore($pdo);
 
 // ---- Mise à jour des paramètres généraux ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') === 'update_parametres') {
@@ -16,7 +17,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') === '
     // Clés dont la valeur est un booléen 0/1, affichées comme case à cocher :
     // une case décochée n'apparaît pas du tout dans $_POST, donc on les traite
     // à part plutôt que via la boucle générique ci-dessous.
-    $clesBooleennes = ['appariement_meme_sexe', 'demarrage_auto', 'inscriptions_ouvertes'];
+    $clesBooleennes = ['appariement_meme_sexe', 'demarrage_auto', 'inscriptions_ouvertes', 'ecran_inverse'];
+    // Clés à choix fixe (liste déroulante) : valeur refusée si elle n'est pas dans la liste
+    $clesChoix = ['mode_score' => array_keys(modesScore()), 'sens_aka_ao' => array_keys(sensDisponibles())];
 
     $lignes = $pdo->query('SELECT cle FROM parametres')->fetchAll();
     foreach ($lignes as $ligne) {
@@ -42,6 +45,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') === '
             ];
             if (in_array($cle, ['schema_tournoi'], true)) {
                 continue; // réglage interne, jamais modifiable depuis le formulaire
+            } elseif (isset($clesChoix[$cle])) {
+                if (!in_array($valeur, $clesChoix[$cle], true)) continue;
+            } elseif (in_array($cle, ['bareme_seuil_1', 'bareme_seuil_2'], true)) {
+                $valeur = (string) min(1000, max(0, round((float) str_replace(',', '.', $valeur), 2)));
             } elseif (isset($bornes[$cle])) {
                 [$min, $max] = $bornes[$cle];
                 $valeur = (string) max($min, min($max, (int) $valeur));
@@ -62,6 +69,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') === '
             }
         }
     }
+
+    // Barème cohérent : le 2e seuil n'est jamais plus petit que le 1er
+    $s1 = getParametreFloat($pdo, 'bareme_seuil_1', 5);
+    if (getParametreFloat($pdo, 'bareme_seuil_2', 10) < $s1) setParametre($pdo, 'bareme_seuil_2', (string)$s1);
 
     flash('success', 'Paramètres mis à jour.');
     redirect('admin/parametres.php');
@@ -301,12 +312,19 @@ require __DIR__ . '/_tabs.php';
  * Présentation des réglages : groupés par intention, avec unité et aide.
  * Une clé inconnue (ajoutée plus tard en base) tombe dans « Avancé ».
  */
-$iconesGroupes = ['Tournoi' => 'trophy', 'Planning' => 'calendar', 'Appariement automatique' => 'shuffle', 'Affichage en direct' => 'monitor', 'Avancé' => 'sliders'];
+$iconesGroupes = ['Score' => 'medal', 'Tournoi' => 'trophy', 'Planning' => 'calendar', 'Appariement automatique' => 'shuffle', 'Affichage en direct' => 'monitor', 'Avancé' => 'sliders'];
 $schema = [
     'Tournoi' => ['Identité et inscriptions.', [
         'nom_application'       => ['text', 'Nom du tournoi', 'Affiché dans l\'en-tête, le titre des pages et l\'écran de salle.'],
         'inscriptions_ouvertes' => ['bool', 'Inscriptions des joueurs ouvertes', 'Permet de créer un compte joueur depuis la page publique.'],
         'duree_combat_defaut'   => ['int', 'Durée d\'un combat par défaut', 'Proposée à la création d\'un combat.', 's', 30, 3600],
+    ]],
+    'Score' => ['Calcul du score officiel, points de victoire et côté de chaque combattant. Les points de chaque arbitre restent toujours affichés.', [
+        'mode_score'     => ['select', 'Calcul du score officiel', 'S\'applique aux combats en cours et à venir. Les combats déjà terminés gardent leur résultat.', modesScore()],
+        'bareme_seuil_1' => ['dec', 'Barème : 1 point de victoire jusqu\'à', 'Écart entre les deux scores. De 0 à cette valeur = 1 point (écart nul = égalité).', 'pts', 0, 1000],
+        'bareme_seuil_2' => ['dec', 'Barème : 2 points de victoire jusqu\'à', 'Au-delà = 3 points de victoire. Non utilisé avec « Moyenne des arbitres ».', 'pts', 0, 1000],
+        'sens_aka_ao'    => ['select', 'Côté de Aka et Ao', 'Change le sens partout : pupitre des arbitres, pages des combats, résultats, télécommandes.', sensDisponibles()],
+        'ecran_inverse'  => ['bool', 'Écran de salle inversé', 'L\'écran de salle est vu depuis l\'autre côté de l\'aire : il affiche les côtés à l\'inverse des autres pages.'],
     ]],
     'Planning' => ['Démarrage des combats et enchaînement.', [
         'demarrage_auto'         => ['bool', 'Démarrage automatique', 'Chaque combat démarre à son heure prévue s\'il a ses 3 arbitres.'],
@@ -363,11 +381,23 @@ $groupesAffiches = array_filter($schema, fn($g) => array_intersect(array_keys($g
                 </header>
                 <?php foreach ($cles as $cle => $def): if (!array_key_exists($cle, $valeurs)) continue;
                     [$type, $libelle, $aide] = $def;
-                    $unite = $def[3] ?? ''; $min = $def[4] ?? null; $max = $def[5] ?? null;
+                    $unite = is_string($def[3] ?? null) ? $def[3] : ''; $min = $def[4] ?? null; $max = $def[5] ?? null;
                     $val = $valeurs[$cle];
                     $idc = 'param_' . $cle;
                 ?>
-                    <?php if ($type === 'bool'): ?>
+                    <?php if ($type === 'select'): $choix = $def[3]; ?>
+                        <div class="setting-row">
+                            <label for="<?= e($idc) ?>" class="setting-label"><span><?= e($libelle) ?></span><?php if ($aide): ?><span class="hint"><?= e($aide) ?></span><?php endif; ?></label>
+                            <div class="field">
+                                <select id="<?= e($idc) ?>" name="param[<?= e($cle) ?>]" <?= $lecture ? 'disabled' : '' ?>>
+                                    <?php foreach ($choix as $k => $lib): $lib = is_array($lib) ? $lib[0] : $lib; ?>
+                                        <option value="<?= e($k) ?>" <?= $val === (string)$k ? 'selected' : '' ?>><?= e($lib) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <?php if ($cle === 'mode_score' && isset($choix[$val][1])): ?><small class="hint"><?= e($choix[$val][1]) ?></small><?php endif; ?>
+                            </div>
+                        </div>
+                    <?php elseif ($type === 'bool'): ?>
                         <div class="setting-row is-switch">
                             <label class="switch">
                                 <span class="switch-text"><strong><?= e($libelle) ?></strong><?php if ($aide): ?><span class="hint"><?= e($aide) ?></span><?php endif; ?></span>
@@ -479,7 +509,7 @@ $groupesAffiches = array_filter($schema, fn($g) => array_intersect(array_keys($g
     const form = document.getElementById('form-parametres');
     if (!form) return;
     const barre = form.querySelector('.sticky-save');
-    const champs = [...form.querySelectorAll('input[name^="param["]')];
+    const champs = [...form.querySelectorAll('input[name^="param["], select[name^="param["]')];
     const valeur = i => (i.type === 'checkbox' ? i.checked : i.value);
     const initial = new Map(champs.map(i => [i, valeur(i)]));
     let dirty = false;
@@ -499,7 +529,7 @@ $groupesAffiches = array_filter($schema, fn($g) => array_intersect(array_keys($g
         barre.querySelector('.js-annuler').hidden = !dirty;
         barre.querySelector('.js-nb-modifs').textContent = n > 1 ? n + ' modifications' : '1 modification';
     }
-    champs.forEach(i => i.addEventListener(i.type === 'checkbox' ? 'change' : 'input', majEtat));
+    champs.forEach(i => i.addEventListener(i.type === 'checkbox' || i.tagName === 'SELECT' ? 'change' : 'input', majEtat));
     barre.querySelector('.js-annuler').addEventListener('click', () => {
         champs.forEach(i => { if (i.type === 'checkbox') i.checked = initial.get(i); else i.value = initial.get(i); });
         majEtat();

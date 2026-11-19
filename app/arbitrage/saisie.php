@@ -74,7 +74,7 @@ require __DIR__ . '/../includes/header.php';
 
 <header class="combat-head combat-head-compact">
     <p class="eyebrow"><?= $monRole ? 'Vous : arbitre ' . e(mb_strtolower($roles[$monRole['role']] ?? $monRole['role'])) : 'Supervision · lecture seule' ?><?= badgeStatut($combat['statut']) ?></p>
-    <h1 class="player-names"><?= e($j1) ?><span class="vs">contre</span><?= e($j2) ?></h1>
+    <h1 class="player-names"><span><?= e($j1) ?></span><span class="vs">contre</span><span><?= e($j2) ?></span></h1>
 </header>
 
 <?php if ($error): ?>
@@ -118,7 +118,7 @@ require __DIR__ . '/../includes/header.php';
         <div class="flash flash-warning pad-paused" role="status"><?= icon('pause') ?><span class="flash-body"><strong>Combat en pause</strong> depuis <?= date('H:i:s', strtotime($combat['en_pause_depuis'])) ?> : le chrono est arrêté et les points sont bloqués jusqu'à la reprise.</span></div>
     <?php endif; ?>
 
-    <div class="pad <?= $peutNoter ? '' : 'pad-off' ?>" id="pad"
+    <div class="pad <?= $peutNoter ? '' : 'pad-off' ?>" id="pad" data-live="off"
          data-combat-id="<?= $combatId ?>" data-csrf="<?= e(csrfToken()) ?>" data-actif="<?= $peutNoter ? '1' : '0' ?>" data-pause="<?= $enPause ? '1' : '0' ?>">
         <?php foreach ([1 => ['aka', 'Aka', $j1], 2 => ['ao', 'Ao', $j2]] as $n => [$cls, $lib, $nom]): ?>
         <div class="pad-side pad-<?= $cls ?>">
@@ -128,9 +128,9 @@ require __DIR__ . '/../includes/header.php';
             </div>
             <?php if ($monRole): ?>
                 <div class="pad-score js-mine<?= $n ?>" aria-label="Vos points pour <?= e($nom) ?>"><?= fmtScore($mes['j' . $n] ?? 0) ?></div>
-                <div class="pad-mine">Vos points <span class="pad-official" title="Score officiel : le total le plus bas des 3 arbitres">Officiel <strong class="js-score<?= $n ?>"><?= fmtScore($etat['j' . $n]) ?></strong></span></div>
+                <div class="pad-mine">Vos points <span class="pad-official" title="<?= e(explicationScore($pdo)) ?>">Officiel <strong class="js-score<?= $n ?>"><?= fmtScore($etat['j' . $n]) ?></strong></span></div>
             <?php else: ?>
-                <div class="pad-score js-score<?= $n ?>" title="Score officiel : le total le plus bas des 3 arbitres"><?= fmtScore($etat['j' . $n]) ?></div>
+                <div class="pad-score js-score<?= $n ?>" title="<?= e(explicationScore($pdo)) ?>"><?= fmtScore($etat['j' . $n]) ?></div>
                 <div class="pad-mine">Score officiel</div>
             <?php endif; ?>
             <div class="pad-btns">
@@ -142,14 +142,15 @@ require __DIR__ . '/../includes/header.php';
         <?php endforeach; ?>
     </div>
 
-    <?= barreAvantage($etat, $j1, $j2, 'lead-lg', $combat['statut'] === 'termine') ?>
+    <?= barreAvantage($etat, $j1, $j2, 'lead-lg', $combat['statut'] === 'termine', false) ?>
 
     <?php if ($peutNoter): ?>
     <div class="pad-actions">
         <button type="button" class="btn btn-secondary" id="pad-undo"><?= icon('history') ?> Annuler mon dernier point</button>
         <ul class="my-log grow" id="my-log" aria-label="Mes derniers points"></ul>
     </div>
-    <p class="kbd-hint">Raccourcis : <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> Aka · <kbd>7</kbd><kbd>8</kbd><kbd>9</kbd> Ao · <kbd>⌫</kbd> annuler</p>
+    <?php [$gauche, $droite] = aoAGauche($pdo) ? ['Ao', 'Aka'] : ['Aka', 'Ao']; ?>
+    <p class="kbd-hint">Raccourcis : <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> <?= $gauche ?> · <kbd>7</kbd><kbd>8</kbd><kbd>9</kbd> <?= $droite ?> · <kbd>⌫</kbd> annuler</p>
     <?php elseif ($combat['statut'] === 'en_cours' && !$monRole): ?>
     <p class="pad-notice"><?= icon('eye') ?>Lecture seule : vous n'êtes pas l'un des 3 arbitres de ce combat.</p>
     <?php endif; ?>
@@ -158,19 +159,12 @@ require __DIR__ . '/../includes/header.php';
 <div class="grid grid-2 mt-4" style="align-items:start;">
     <section class="card">
         <h3>Points par arbitre</h3>
-        <p class="hint">Le score officiel retient le total le plus bas des trois arbitres (en gras). C'est pourquoi il peut ne pas bouger quand vous donnez un point.</p>
+        <p class="hint"><?= e(explicationScore($pdo)) ?> <?= $etat['mode'] === 'minimum' ? 'Le total retenu est en gras : c\'est pourquoi le score officiel peut ne pas bouger quand vous donnez un point.' : '' ?> <?= e(explicationBareme($pdo)) ?></p>
         <div class="table-wrap">
             <table class="ref-table" id="ref-table">
-                <thead><tr><th scope="col">Arbitre</th><th scope="col" class="num side-1">Aka</th><th scope="col" class="num side-2">Ao</th></tr></thead>
+                <thead><tr><?= enTeteTableArbitres($pdo) ?></tr></thead>
                 <tbody>
-                <?php foreach ($etat['par_arbitre'] as $a): ?>
-                    <tr>
-                        <td><strong><?= e($a['username']) ?></strong> <span class="hint"><?= e($roles[$a['role']] ?? $a['role']) ?></span></td>
-                        <td class="num <?= $a['j1'] == $etat['j1'] ? 'min side-1' : '' ?>"><?= fmtScore($a['j1']) ?></td>
-                        <td class="num <?= $a['j2'] == $etat['j2'] ? 'min side-2' : '' ?>"><?= fmtScore($a['j2']) ?></td>
-                    </tr>
-                <?php endforeach; ?>
-                <?php if (!$etat['par_arbitre']): ?><tr><td colspan="3" class="hint">Aucun arbitre affecté.</td></tr><?php endif; ?>
+                <?= lignesTableArbitres($etat, $roles) ?>
                 </tbody>
             </table>
         </div>

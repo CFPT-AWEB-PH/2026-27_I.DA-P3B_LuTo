@@ -86,7 +86,7 @@ require __DIR__ . '/_tabs.php';
                 $manque = $c['statut'] === 'a_venir' && (int)$c['nb_arbitres'] < 3;
                 echo ligneAVenir($c, '../combat.php?id=' . (int)$c['id'], [
                     'sous'      => $manque ? '<span class="warn-text">' . icon('alert-triangle', 'icon-sm') . (int)$c['nb_arbitres'] . ' arbitre' . ((int)$c['nb_arbitres'] > 1 ? 's' : '') . ' sur 3</span>' : '',
-                    'droite'    => $c['statut'] === 'en_cours' ? '<span class="score-cell"><span class="side-1">' . fmtScore($c['score_joueur1']) . '</span> <span class="muted">à</span> <span class="side-2">' . fmtScore($c['score_joueur2']) . '</span></span>' : null,
+                    'droite'    => $c['statut'] === 'en_cours' ? '<span class="score-cell duo"><span class="side-1">' . fmtScore($c['score_joueur1']) . '</span> <span class="muted">à</span> <span class="side-2">' . fmtScore($c['score_joueur2']) . '</span></span>' : null,
                     'retard'    => 'en attente',
                     'sansHeure' => 'démarrage manuel',
                 ]);

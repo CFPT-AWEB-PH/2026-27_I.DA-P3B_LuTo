@@ -2695,3 +2695,89 @@ body:has(#pad[data-actif="1"]) { padding-bottom: 0 !important; }
     .guide-parcours li { background: #fff !important; border-bottom: 1px solid #ddd; break-inside: avoid; }
     kbd { border-color: #777; background: #fff; }
 }
+
+/* ── Détail des points : chaque arbitre + score officiel, toujours affichés ── */
+.ref-points { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-top: var(--space-3); font-size: var(--fs-xs); }
+.ref-points .rp {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px;
+    border-radius: var(--radius-pill); background: var(--surface-2); border: 1px solid var(--border-subtle);
+    color: var(--text-3); font-weight: 600; white-space: nowrap;
+}
+.ref-points .rp-s { display: inline-flex; align-items: baseline; gap: 4px; font-family: var(--font-display); font-size: 1.2em; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ref-points .rp-s i { font-style: normal; color: var(--text-3); font-weight: 500; }
+.ref-points .s1 { color: var(--p1); }
+.ref-points .s2 { color: var(--p2); }
+.ref-points .rp-off { color: var(--text); border-color: var(--border-strong); background: var(--surface-3); }
+.ec-lead .ref-points { justify-content: center; font-size: clamp(.8rem, min(2.4cqi, calc(2vh / var(--rows))), 1.5rem); }
+.ref-table tr.ref-official td { border-top: 1px solid var(--border-strong); }
+.ref-table tr.ref-official td.num { color: inherit; }
+
+/* ── Sens Aka / Ao (Admin › Paramètres › Score) ──────────────────────────────
+   data-sens="ao-gauche" sur <html> : Ao (bleu) passe à gauche, Aka à droite,
+   sur toutes les pages. L'écran de salle reçoit le sens inverse quand
+   « Écran de salle inversé » est activé (il est vu depuis l'autre côté). */
+[data-sens="ao-gauche"] .pad > .pad-ao { order: -1; }
+[data-sens="ao-gauche"] .lead-bar,
+[data-sens="ao-gauche"] .ref-points .rp-s,
+[data-sens="ao-gauche"] .tp-duel { flex-direction: row-reverse; }
+[data-sens="ao-gauche"] .duo,
+[data-sens="ao-gauche"] .player-names {
+    display: inline-flex; flex-direction: row-reverse; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; column-gap: .3em;
+}
+[data-sens="ao-gauche"] .player-names { display: flex; }
+[data-sens="ao-gauche"] .paire-joueurs > :first-child { order: 2; }
+
+/* Tableau de score */
+[data-sens="ao-gauche"] .duel > .duel-ao { order: 1; }
+[data-sens="ao-gauche"] .duel > .vs-label { order: 2; }
+[data-sens="ao-gauche"] .duel > .duel-aka { order: 3; }
+[data-sens="ao-gauche"] .duel-aka { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "score label" "score name"; text-align: right; padding-left: 0; padding-right: var(--space-3); }
+[data-sens="ao-gauche"] .duel-ao { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "label score" "name score"; text-align: left; padding-right: 0; padding-left: var(--space-3); }
+[data-sens="ao-gauche"] .duel-aka::before { left: auto; right: 0; }
+[data-sens="ao-gauche"] .duel-ao::before { right: auto; left: 0; }
+[data-sens="ao-gauche"] .duel-avant .duel-aka,
+[data-sens="ao-gauche"] .duel-avant .duel-ao { grid-template-areas: "label" "name"; grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 559px) {
+    [data-sens="ao-gauche"] .duel-aka,
+    [data-sens="ao-gauche"] .duel-ao { grid-template-columns: minmax(0, 1fr); grid-template-areas: "label" "name" "score"; }
+}
+
+/* Résultats */
+[data-sens="ao-gauche"] .result-row > .r-ao { order: 1; justify-content: flex-end; text-align: right; }
+[data-sens="ao-gauche"] .result-row > .r-score { order: 2; flex-direction: row-reverse; }
+[data-sens="ao-gauche"] .result-row > .r-aka { order: 3; justify-content: flex-start; text-align: left; }
+[data-sens="ao-gauche"] .result-row > .r-meta { order: 4; }
+[data-sens="ao-gauche"] .result-row .r-ao.is-winner::after { order: -1; }
+[data-sens="ao-gauche"] .result-row .r-aka.is-winner::after { order: 3; }
+[data-sens="ao-gauche"] .result-row .r-score .s1 { text-align: left; }
+[data-sens="ao-gauche"] .result-row .r-score .s2 { text-align: right; }
+@media (max-width: 639px) {
+    [data-sens="ao-gauche"] .result-row .r-ao { grid-area: a; justify-content: flex-start; text-align: left; }
+    [data-sens="ao-gauche"] .result-row .r-aka { grid-area: b; }
+    [data-sens="ao-gauche"] .result-row .r-ao.is-winner::after { order: 3; }
+    [data-sens="ao-gauche"] .result-row > .r-score { flex-direction: column-reverse; }
+    [data-sens="ao-gauche"] .result-row .r-score .s1,
+    [data-sens="ao-gauche"] .result-row .r-score .s2 { text-align: right; }
+}
+
+/* Touches */
+[data-sens="ao-gauche"] .touch-tally > .t2 { order: 1; }
+[data-sens="ao-gauche"] .touch-tally > .td { order: 2; }
+[data-sens="ao-gauche"] .touch-tally > .t1 { order: 3; }
+
+/* Écran de salle */
+[data-sens="ao-gauche"] .ec-duel > .ec-p2 { order: 1; }
+[data-sens="ao-gauche"] .ec-duel > .ec-vs { order: 2; }
+[data-sens="ao-gauche"] .ec-duel > .ec-p1 { order: 3; }
+[data-sens="ao-gauche"] .ec-hits > .h2 { order: 1; text-align: left; }
+[data-sens="ao-gauche"] .ec-hits > .hd { order: 2; }
+[data-sens="ao-gauche"] .ec-hits > .h1 { order: 3; text-align: right; }
+
+/* ── Formulaire d'un combat : ajout rapide d'un joueur, télécommande des arbitres ── */
+.select-plus { display: flex; gap: var(--space-2); align-items: stretch; }
+.select-plus select { flex: 1; min-width: 0; }
+.select-plus .btn { flex: none; white-space: nowrap; }
+.joueur-rapide { background: var(--surface-2); border-style: dashed; }
+.joueur-rapide .btn-row { align-items: center; flex-wrap: wrap; }
+.joueur-rapide .jr-erreur { margin: 0 0 var(--space-3); }
+.field .sub-label { margin-top: var(--space-2); font-size: var(--fs-xs); color: var(--text-3); font-weight: 600; }

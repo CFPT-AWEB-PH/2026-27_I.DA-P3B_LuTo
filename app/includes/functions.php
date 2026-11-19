@@ -24,7 +24,7 @@ function icon(string $name, string $class = ''): string
  * VERSION et PRECACHE de sw.js, force les navigateurs et l'app installée à
  * télécharger les nouveaux fichiers.
  */
-const ASSETS_VERSION = '18';
+const ASSETS_VERSION = '19';
 
 /** URL versionnée d'un fichier de assets/ : asset('js/live.js'). */
 function asset(string $chemin): string
@@ -236,11 +236,11 @@ function terminerCombat(PDO $pdo, int $combatId): void
     $combat = getCombat($pdo, $combatId);
     if (!$combat || $combat['statut'] === 'termine') return;
 
-    // Score officiel = le plus bas des totaux des 3 arbitres (boutons +1/+2/+3)
+    // Score officiel selon le mode choisi dans les paramètres (moyenne ou minimum des arbitres)
     $etat = majScoreCombat($pdo, $combatId);
     $scoreJ1 = (float)$etat['j1'];
     $scoreJ2 = (float)$etat['j2'];
-    $pv = pointsVictoire(abs($scoreJ1 - $scoreJ2));
+    $pv = pointsVictoire(abs($scoreJ1 - $scoreJ2), $pdo);
 
     $vainqueurId = null;
     if ($scoreJ1 > $scoreJ2) $vainqueurId = $combat['joueur1_id'];
@@ -953,5 +953,55 @@ function ensureTelecommandesSchema(PDO $pdo): void
         $pdo->exec("ALTER TABLE telecommandes ADD UNIQUE INDEX IF NOT EXISTS uniq_mac (mac_address)");
     } catch (PDOException $e) {
         error_log('[Sabre] ensureTelecommandesSchema : ' . $e->getMessage());
+    }
+}
+
+/** Télécommandes connues : [id => ['id', 'nom', 'user_id', 'username', 'actif']], triées par nom. */
+function listeTelecommandes(PDO $pdo): array
+{
+    ensureTelecommandesSchema($pdo);
+    try {
+        $rows = $pdo->query(
+            'SELECT t.id, t.nom, t.mac_address, t.user_id, t.actif, u.username
+             FROM telecommandes t LEFT JOIN users u ON u.id = t.user_id
+             ORDER BY t.nom, t.id'
+        )->fetchAll();
+    } catch (PDOException $e) {
+        return [];
+    }
+    $out = [];
+    foreach ($rows as $r) {
+        $out[(int)$r['id']] = [
+            'id' => (int)$r['id'], 'nom' => $r['nom'] ?: $r['mac_address'],
+            'user_id' => $r['user_id'] !== null ? (int)$r['user_id'] : null,
+            'username' => $r['username'], 'actif' => (int)$r['actif'],
+        ];
+    }
+    return $out;
+}
+
+/** Télécommande de chaque arbitre : [user_id => id de la télécommande]. */
+function telecommandeParArbitre(array $telecommandes): array
+{
+    $par = [];
+    foreach ($telecommandes as $t) {
+        if ($t['user_id'] !== null && !isset($par[$t['user_id']])) $par[$t['user_id']] = $t['id'];
+    }
+    return $par;
+}
+
+/**
+ * Donne une télécommande à un arbitre (une seule par arbitre) : ses autres
+ * télécommandes sont libérées. $telId = null : l'arbitre n'a plus de télécommande.
+ * La télécommande passe à cet arbitre même si elle était à quelqu'un d'autre.
+ */
+function assignerTelecommande(PDO $pdo, int $userId, ?int $telId): void
+{
+    ensureTelecommandesSchema($pdo);
+    if ($telId) {
+        $pdo->prepare('UPDATE telecommandes SET user_id = NULL WHERE user_id = ? AND id <> ?')->execute([$userId, $telId]);
+        $pdo->prepare('UPDATE telecommandes SET user_id = ? WHERE id = ?')->execute([$userId, $telId]);
+    } else {
+        $pdo->prepare('UPDATE telecommandes SET user_id = NULL WHERE user_id = ?')->execute([$userId]);
     }
 }

@@ -88,6 +88,7 @@ WIN_STATE = None       # R, B ou D
 tampon = b""
 dernier_msg_pi = 0.0
 info_jusqua = 0.0      # message temporaire (OK / erreur) affiché jusqu'à cette heure
+ARBITRE = ""           # nom de l'arbitre associé (envoyé par le Raspberry : « ARB:<nom> »)
 
 # ================= FONCTIONS =================
 
@@ -123,8 +124,13 @@ def afficher_info(texte, duree=1.5):
     info_jusqua = time.monotonic() + duree
 
 
+def texte_haut():
+    """Ligne du haut : le nom de l'arbitre associé, sinon le nom Bluetooth."""
+    return (ARBITRE or DEVICE_NAME)[:21]
+
+
 def handle_message(msg):
-    global ETAT, WIN_STATE
+    global ETAT, WIN_STATE, ARBITRE
 
     print(msg)
 
@@ -161,6 +167,19 @@ def handle_message(msg):
         WIN_STATE = msg.split(":")[1]
         Temps.text = {"R": "ROUGE WIN", "B": "BLEU WIN"}.get(WIN_STATE, "DRAW")
 
+    elif msg.startswith("ARB:"):
+        # Arbitre associé dans Admin › Sabres › Télécommandes (ou à la création du combat)
+        ARBITRE = msg[4:].strip()
+        if not info_jusqua:
+            Info.text = texte_haut()
+
+    elif msg.startswith("SENS:"):
+        # Côté du rouge (Aka) choisi dans Admin › Paramètres : RG = rouge à gauche
+        if msg[5:] == "RG":
+            ScoreRouge.x, ScoreBleu.x = 10, 100
+        elif msg[5:] == "BG":
+            ScoreRouge.x, ScoreBleu.x = 100, 10
+
     elif msg == "OK":
         afficher_info("OK", 0.5)
 
@@ -182,6 +201,8 @@ while True:
 
     while not ble.connected:
         Temps.text = "WAIT"
+        ARBITRE = ""
+        Info.text = DEVICE_NAME
         led_bleue.value = False
         led_rouge.value = False
         time.sleep(0.2)
@@ -205,7 +226,7 @@ while True:
             ETAT = None
 
         if info_jusqua and maintenant > info_jusqua:
-            Info.text = DEVICE_NAME
+            Info.text = texte_haut()
             info_jusqua = 0.0
 
         # ===== BOUTONS =====

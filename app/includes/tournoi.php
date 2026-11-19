@@ -78,7 +78,7 @@ function ensureSchemaTournoi(PDO $pdo): void
             $pdo->exec("ALTER TABLE joueurs ADD COLUMN IF NOT EXISTS points_victoire INT NOT NULL DEFAULT 0");
             // Combats déjà terminés : on calcule leurs points de victoire à partir de l'écart
             foreach ($pdo->query("SELECT id, score_joueur1, score_joueur2, vainqueur_id FROM combats WHERE statut = 'termine' AND points_victoire IS NULL")->fetchAll() as $c) {
-                $pv = pointsVictoire(abs((float)$c['score_joueur1'] - (float)$c['score_joueur2']));
+                $pv = pointsVictoire(abs((float)$c['score_joueur1'] - (float)$c['score_joueur2']), $pdo);
                 $pdo->prepare('UPDATE combats SET points_victoire = ? WHERE id = ?')->execute([$pv, $c['id']]);
                 if ($c['vainqueur_id'] && $pv) {
                     $pdo->prepare('UPDATE joueurs SET points_victoire = points_victoire + ? WHERE id = ?')->execute([$pv, $c['vainqueur_id']]);

@@ -28,6 +28,10 @@ $__stArb = $pdo->prepare('SELECT * FROM users WHERE actif = 1 AND role IN (' . i
 $__stArb->execute($__rolesArbitres);
 $arbitresDisponibles = $__stArb->fetchAll();
 
+// Télécommandes d'arbitre : affichées et attribuables depuis le formulaire du combat
+$telecommandes = listeTelecommandes($pdo);
+$telParArbitre = telecommandeParArbitre($telecommandes);
+
 function saveAssignations(PDO $pdo, int $combatId, array $post): void
 {
     $pdo->prepare('DELETE FROM combat_arbitres WHERE combat_id = ?')->execute([$combatId]);
@@ -70,8 +74,63 @@ function exigerCsrfPost(string $retour): void
     }
 }
 
+/** Télécommandes choisies dans le formulaire : [user_id => id télécommande | null (aucune)]. */
+function telecommandesChoisies(array $post, array $telecommandes): array
+{
+    $choix = [];
+    foreach (['central', 'coin1', 'coin2'] as $r) {
+        $uid = idPositif($post['arbitre_' . $r] ?? '');
+        $v = $post['tel_' . $r] ?? '';
+        if (!$uid || !is_string($v) || $v === '') continue;
+        if ($v === '0') { $choix[$uid] = null; continue; }
+        $tid = idPositif($v);
+        if ($tid && isset($telecommandes[$tid])) $choix[$uid] = $tid;
+    }
+    return $choix;
+}
+
 /* ─────────────────────────── ACTIONS ─────────────────────────── */
 $fa = $_SERVER['REQUEST_METHOD'] === 'POST' ? ($_POST['form_action'] ?? '') : '';
+
+// ---- Ajout rapide d'un joueur depuis le formulaire du combat (réponse JSON) ----
+if ($fa === 'joueur_rapide') {
+    header('Content-Type: application/json; charset=utf-8');
+    $repondreJson = function (int $code, array $data): never {
+        http_response_code($code);
+        echo json_encode($data);
+        exit;
+    };
+    if (!can('combats.creer', 'combats.modifier', 'joueurs.creer')) {
+        $repondreJson(403, ['ok' => false, 'message' => 'Votre rôle ne permet pas d\'ajouter un joueur.']);
+    }
+    if (!checkCsrf($_POST['csrf'] ?? null)) {
+        $repondreJson(400, ['ok' => false, 'message' => 'Session expirée, rechargez la page.']);
+    }
+    $pseudo = texteBorne($_POST['jr_pseudo'] ?? '', 60) ?? '';
+    $prenom = texteBorne($_POST['jr_prenom'] ?? '', 100) ?? '';
+    $nom = texteBorne($_POST['jr_nom'] ?? '', 100) ?? '';
+    $sexe = in_array($_POST['jr_sexe'] ?? '', ['M', 'F', 'Autre'], true) ? $_POST['jr_sexe'] : null;
+    $poidsBrut = is_string($_POST['jr_poids'] ?? null) ? str_replace(',', '.', $_POST['jr_poids']) : '';
+    $poids = is_numeric($poidsBrut) && (float)$poidsBrut > 0 && (float)$poidsBrut < 400 ? round((float)$poidsBrut, 1) : null;
+    $gradeId = idPositif($_POST['jr_grade_id'] ?? '') ?: null;
+    if ($gradeId && !getGradeById($pdo, $gradeId)) $gradeId = null;
+    $equipe = texteBorne($_POST['jr_equipe'] ?? '', 60);
+    if ($pseudo === '') {
+        $repondreJson(422, ['ok' => false, 'message' => 'Le pseudo du joueur est obligatoire.']);
+    }
+    $st = $pdo->prepare('SELECT id, pseudo FROM joueurs WHERE pseudo = ? LIMIT 1');
+    $st->execute([$pseudo]);
+    if ($existant = $st->fetch()) {
+        // Déjà inscrit : on le sélectionne simplement
+        $repondreJson(200, ['ok' => true, 'existant' => true, 'id' => (int)$existant['id'], 'pseudo' => $existant['pseudo'],
+            'message' => $existant['pseudo'] . ' existe déjà : il est sélectionné.']);
+    }
+    $pdo->prepare('INSERT INTO joueurs (pseudo, nom, prenom, sexe, poids, grade_id, equipe) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        ->execute([$pseudo, $nom ?: null, $prenom ?: null, $sexe, $poids, $gradeId, $equipe]);
+    $nouvelId = (int)$pdo->lastInsertId();
+    error_log('[Sabre][combats] joueur ajouté rapidement : ' . $pseudo . ' par ' . (currentUser()['username'] ?? '?'));
+    $repondreJson(201, ['ok' => true, 'id' => $nouvelId, 'pseudo' => $pseudo, 'message' => $pseudo . ' a été ajouté aux joueurs.']);
+}
 
 // ---- Génération automatique ----
 if ($fa === 'generer_auto') {
@@ -163,6 +222,9 @@ if (in_array($fa, ['create', 'update'], true)) {
     if (!$j1 || !$j2 || $j1 === $j2) $erreur = 'Choisissez deux joueurs différents.';
     elseif (!in_array($j1, $idsJoueurs, true) || !in_array($j2, $idsJoueurs, true)) $erreur = 'Joueur introuvable.';
     elseif (arbitresChoisisEnDouble($_POST)) $erreur = 'Un même arbitre ne peut pas occuper deux rôles sur le même combat.';
+    $telChoisies = telecommandesChoisies($_POST, $telecommandes);
+    $telIds = array_filter($telChoisies);
+    if (!$erreur && count($telIds) !== count(array_unique($telIds))) $erreur = 'Une même télécommande ne peut pas servir à deux arbitres.';
     if ($erreur) {
         flash('error', $erreur);
         stashOldInput($_POST);
@@ -185,7 +247,16 @@ if (in_array($fa, ['create', 'update'], true)) {
     }
     saveAssignations($pdo, $editId, $_POST);
 
+    // Télécommandes : chaque arbitre choisi reçoit celle sélectionnée (ou aucune)
+    $nbTel = 0;
+    foreach ($telChoisies as $uid => $tid) {
+        if (($telParArbitre[$uid] ?? null) === $tid) continue; // inchangée
+        assignerTelecommande($pdo, (int)$uid, $tid);
+        $nbTel++;
+    }
+
     $msg = $estCreation ? 'Combat créé.' : 'Combat mis à jour.';
+    if ($nbTel) $msg .= ' ' . $nbTel . ' télécommande' . ($nbTel > 1 ? 's' : '') . ' attribuée' . ($nbTel > 1 ? 's' : '') . '.';
     if ($datePrevue && getParametreInt($pdo, 'demarrage_auto', 1) === 1) {
         $msg .= ' Démarrage automatique à ' . date('H:i', strtotime($datePrevue)) . (strtotime($datePrevue) <= time() ? ' (heure passée : il démarre dès que ses 3 arbitres sont libres).' : '.');
     }
@@ -445,14 +516,14 @@ $roleLabels = ['central' => 'Central', 'coin1' => 'Coin 1', 'coin2' => 'Coin 2']
                         <?php endif; ?>
                     </td>
                     <td class="c-duel">
-                        <a class="duel-cell" href="../combat.php?id=<?= (int)$c['id'] ?>"><?= e($c['joueur1_pseudo']) ?><span class="vs">contre</span><?= e($c['joueur2_pseudo']) ?></a>
+                        <a class="duel-cell duo" href="../combat.php?id=<?= (int)$c['id'] ?>"><span><?= e($c['joueur1_pseudo']) ?></span><span class="vs">contre</span><span><?= e($c['joueur2_pseudo']) ?></span></a>
                         <?php if ($c['tour'] !== null): ?><span class="sub-line">Tour <?= (int)$c['tour'] ?> · position <?= (int)$c['position'] ?></span><?php endif; ?>
                         <?php if ($blocage): ?><span class="warn-text"><?= icon('alert-triangle', 'icon-sm') ?><?= e(ucfirst($blocage)) ?></span><?php endif; ?>
                     </td>
                     <td class="c-status"><?= badgeStatut($c['statut']) ?></td>
                     <td class="num score-cell c-score">
                         <?php if ($c['statut'] === 'a_venir'): ?><span class="muted">–</span>
-                        <?php else: ?><span class="side-1"><?= fmtScore($c['score_joueur1']) ?></span><span class="muted">à</span><span class="side-2"><?= fmtScore($c['score_joueur2']) ?></span><?php endif; ?>
+                        <?php else: ?><span class="duo"><span class="side-1"><?= fmtScore($c['score_joueur1']) ?></span><span class="muted">à</span><span class="side-2"><?= fmtScore($c['score_joueur2']) ?></span></span><?php endif; ?>
                     </td>
                     <td class="c-refs">
                         <?php if ((int)$c['nb_arbitres'] >= 3 || $blocage): ?>
@@ -503,26 +574,65 @@ $roleLabels = ['central' => 'Central', 'coin1' => 'Coin 1', 'coin2' => 'Coin 2']
             <a href="combats.php<?= $filtre !== 'actifs' ? '?filtre=' . e($filtre) : '' ?>" class="modal-close-btn" aria-label="Fermer"><?= icon('x') ?></a>
         </div>
         <div class="modal-body">
-            <div class="grid grid-2">
+            <?php $peutAjouterJoueur = can('combats.creer', 'combats.modifier', 'joueurs.creer'); ?>
+            <div class="grid grid-2 paire-joueurs">
+                <?php foreach ([1 => ['side-1', 'Aka'], 2 => ['side-2', 'Ao']] as $n => [$cls, $lib]): ?>
                 <div class="field">
-                    <label for="joueur1_id"><span class="side-1">Aka</span> · joueur 1</label>
-                    <select id="joueur1_id" name="joueur1_id" required>
-                        <option value="">Choisir</option>
-                        <?php foreach ($joueurs as $j): ?>
-                            <option value="<?= (int)$j['id'] ?>" <?= (($editCombat['joueur1_id'] ?? null) == $j['id']) ? 'selected' : '' ?>><?= e($j['pseudo']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <label for="joueur<?= $n ?>_id"><span class="<?= $cls ?>"><?= $lib ?></span> · joueur <?= $n ?></label>
+                    <div class="select-plus">
+                        <select id="joueur<?= $n ?>_id" name="joueur<?= $n ?>_id" required class="js-joueur">
+                            <option value="">Choisir</option>
+                            <?php foreach ($joueurs as $j): ?>
+                                <option value="<?= (int)$j['id'] ?>" <?= (($editCombat['joueur' . $n . '_id'] ?? null) == $j['id']) ? 'selected' : '' ?>><?= e($j['pseudo']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if ($peutAjouterJoueur): ?>
+                            <button type="button" class="btn btn-secondary btn-sm js-jr-ouvrir" data-cible="joueur<?= $n ?>_id" data-cote="<?= $lib ?>" aria-controls="joueur-rapide" aria-expanded="false" title="Le joueur n'est pas dans la liste ? Ajoutez-le ici."><?= icon('user-plus') ?>Nouveau</button>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <div class="field">
-                    <label for="joueur2_id"><span class="side-2">Ao</span> · joueur 2</label>
-                    <select id="joueur2_id" name="joueur2_id" required>
-                        <option value="">Choisir</option>
-                        <?php foreach ($joueurs as $j): ?>
-                            <option value="<?= (int)$j['id'] ?>" <?= (($editCombat['joueur2_id'] ?? null) == $j['id']) ? 'selected' : '' ?>><?= e($j['pseudo']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                <?php endforeach; ?>
             </div>
+            <?php if ($peutAjouterJoueur): ?>
+            <fieldset class="joueur-rapide" id="joueur-rapide" hidden>
+                <legend>Ajouter un joueur <span class="hint">(côté <span class="js-jr-pour">Aka</span>)</span></legend>
+                <div class="grid grid-3">
+                    <div class="field">
+                        <label for="jr_pseudo">Pseudo <span class="text-warning" aria-hidden="true">*</span></label>
+                        <input type="text" id="jr_pseudo" name="jr_pseudo" maxlength="60" autocomplete="off" placeholder="ex. Luke">
+                    </div>
+                    <div class="field">
+                        <label for="jr_prenom">Prénom</label>
+                        <input type="text" id="jr_prenom" name="jr_prenom" maxlength="100" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label for="jr_nom">Nom</label>
+                        <input type="text" id="jr_nom" name="jr_nom" maxlength="100" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label for="jr_poids">Poids</label>
+                        <div class="input-suffix"><input type="number" id="jr_poids" name="jr_poids" min="1" max="399" step="0.1" inputmode="decimal"><span class="suffix">kg</span></div>
+                    </div>
+                    <div class="field">
+                        <label for="jr_sexe">Sexe</label>
+                        <select id="jr_sexe" name="jr_sexe"><option value="">Non précisé</option><option value="M">Homme</option><option value="F">Femme</option><option value="Autre">Autre</option></select>
+                    </div>
+                    <div class="field">
+                        <label for="jr_grade_id">Grade</label>
+                        <select id="jr_grade_id" name="jr_grade_id">
+                            <option value="">Aucun</option>
+                            <?php foreach (getGrades($pdo) as $g): ?><option value="<?= (int)$g['id'] ?>"><?= e($g['nom']) ?></option><?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <p class="jr-erreur flash flash-error" role="alert" hidden><?= icon('alert-triangle') ?><span class="flash-body"></span></p>
+                <div class="btn-row">
+                    <button type="button" class="btn btn-sm js-jr-ajouter"><?= icon('plus') ?>Ajouter et sélectionner</button>
+                    <button type="button" class="btn btn-ghost btn-sm js-jr-annuler">Annuler</button>
+                    <span class="hint">La fiche complète se modifie ensuite dans Admin › Joueurs.</span>
+                </div>
+            </fieldset>
+            <?php endif; ?>
             <div class="grid grid-2">
                 <div class="field">
                     <label for="date_prevue">Heure de début</label>
@@ -545,18 +655,34 @@ $roleLabels = ['central' => 'Central', 'coin1' => 'Coin 1', 'coin2' => 'Coin 2']
             <fieldset>
                 <legend>Arbitres</legend>
                 <div class="grid grid-3">
-                    <?php foreach (['central' => 'Central', 'coin1' => 'Coin 1', 'coin2' => 'Coin 2'] as $r => $lib): ?>
+                    <?php foreach (['central' => 'Central', 'coin1' => 'Coin 1', 'coin2' => 'Coin 2'] as $r => $lib):
+                        $arbChoisi = (int)($editArbitres[$r] ?? 0);
+                        $telChoisie = isset($old['tel_' . $r]) && is_string($old['tel_' . $r]) ? $old['tel_' . $r] : ($arbChoisi ? (string)($telParArbitre[$arbChoisi] ?? '0') : '');
+                    ?>
                     <div class="field">
                         <label for="arbitre_<?= $r ?>"><?= $lib ?></label>
-                        <select id="arbitre_<?= $r ?>" name="arbitre_<?= $r ?>" class="js-arb">
+                        <select id="arbitre_<?= $r ?>" name="arbitre_<?= $r ?>" class="js-arb" data-tel="tel_<?= $r ?>">
                             <option value="">Aucun</option>
-                            <?php foreach ($arbitresDisponibles as $a): ?>
-                                <option value="<?= (int)$a['id'] ?>" <?= (($editArbitres[$r] ?? null) == $a['id']) ? 'selected' : '' ?>><?= e($a['username']) ?></option>
+                            <?php foreach ($arbitresDisponibles as $a): $tA = $telParArbitre[(int)$a['id']] ?? null; ?>
+                                <option value="<?= (int)$a['id'] ?>" <?= $arbChoisi === (int)$a['id'] ? 'selected' : '' ?>><?= e($a['username']) ?><?= $tA ? ' · ' . e($telecommandes[$tA]['nom']) : '' ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <label for="tel_<?= $r ?>" class="sub-label">Télécommande</label>
+                        <select id="tel_<?= $r ?>" name="tel_<?= $r ?>" class="js-tel" <?= $arbChoisi ? '' : 'disabled' ?>>
+                            <option value="" <?= $telChoisie === '' ? 'selected' : '' ?> hidden>Choisissez d'abord l'arbitre</option>
+                            <option value="0" <?= $telChoisie === '0' ? 'selected' : '' ?>>Aucune</option>
+                            <?php foreach ($telecommandes as $t): ?>
+                                <option value="<?= $t['id'] ?>" <?= $telChoisie === (string)$t['id'] ? 'selected' : '' ?>><?= e($t['nom']) ?><?= $t['username'] ? ' · ' . e($t['username']) : ' · libre' ?><?= !$t['actif'] ? ' (désactivée)' : '' ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
                     <?php endforeach; ?>
                 </div>
+                <?php if (!$telecommandes): ?>
+                    <p class="hint mt-4">Aucune télécommande connue : allumez-la près du Raspberry, elle apparaîtra ici toute seule (Admin › Sabres).</p>
+                <?php else: ?>
+                    <p class="hint mt-4">Choisir une télécommande la donne à cet arbitre (elle quitte son ancien arbitre). Son écran affiche alors le nom de l'arbitre.</p>
+                <?php endif; ?>
                 <p class="hint mt-4">Un combat ne démarre qu'avec ses 3 arbitres.</p>
                 <p id="arbitres-doublon-alerte" class="flash flash-error mt-4" role="alert" hidden><?= icon('alert-triangle') ?><span class="flash-body">Un même arbitre ne peut pas occuper deux rôles.</span></p>
             </fieldset>
@@ -583,24 +709,98 @@ $roleLabels = ['central' => 'Central', 'coin1' => 'Coin 1', 'coin2' => 'Coin 2']
 <script nonce="<?= e(cspNonce()) ?>">
 (function () {
     const selects = Array.from(document.querySelectorAll('.js-arb'));
+    const tels = Array.from(document.querySelectorAll('.js-tel'));
     const j1 = document.getElementById('joueur1_id'), j2 = document.getElementById('joueur2_id');
     const alertBox = document.getElementById('arbitres-doublon-alerte');
     const form = j1.closest('form');
+    // Télécommande actuelle de chaque arbitre (user_id => id de la télécommande)
+    const telDe = <?= json_encode((object)$telParArbitre) ?>;
     function sync() {
         selects.forEach(select => {
             const others = selects.filter(s => s !== select).map(s => s.value).filter(Boolean);
             Array.from(select.options).forEach(o => { o.disabled = o.value !== '' && o.value !== select.value && others.includes(o.value); });
         });
         [[j1, j2], [j2, j1]].forEach(([a, b]) => Array.from(a.options).forEach(o => { o.disabled = o.value !== '' && o.value === b.value; }));
+        // Une télécommande ne peut servir qu'à un seul des trois arbitres
+        tels.forEach(t => {
+            const autres = tels.filter(x => x !== t && !x.disabled).map(x => x.value).filter(v => v && v !== '0');
+            Array.from(t.options).forEach(o => { if (o.value && o.value !== '0') o.disabled = o.value !== t.value && autres.includes(o.value); });
+        });
         const chosen = selects.map(s => s.value).filter(Boolean);
         alertBox.hidden = new Set(chosen).size === chosen.length;
     }
-    [...selects, j1, j2].forEach(s => s.addEventListener('change', sync));
+    // Choisir un arbitre affiche sa télécommande actuelle (modifiable)
+    selects.forEach(sel => sel.addEventListener('change', () => {
+        const t = document.getElementById(sel.dataset.tel);
+        if (!t) return;
+        t.disabled = !sel.value;
+        t.value = sel.value ? String(telDe[sel.value] || '0') : '';
+    }));
+    [...selects, ...tels, j1, j2].forEach(s => s.addEventListener('change', sync));
     form.addEventListener('submit', e => {
         const chosen = selects.map(s => s.value).filter(Boolean);
         if (new Set(chosen).size !== chosen.length) { e.preventDefault(); alertBox.hidden = false; }
     });
     sync();
+
+    // ---- Ajout rapide d'un joueur absent de la liste ----
+    const panneau = document.getElementById('joueur-rapide');
+    if (panneau) {
+        let cible = j1;
+        const champ = n => document.getElementById('jr_' + n);
+        const erreur = panneau.querySelector('.jr-erreur');
+        const btnAjout = panneau.querySelector('.js-jr-ajouter');
+        const ouvrirs = Array.from(document.querySelectorAll('.js-jr-ouvrir'));
+        const fermer = () => {
+            panneau.hidden = true;
+            ouvrirs.forEach(b => b.setAttribute('aria-expanded', 'false'));
+        };
+        ouvrirs.forEach(b => b.addEventListener('click', () => {
+            cible = document.getElementById(b.dataset.cible);
+            panneau.querySelector('.js-jr-pour').textContent = b.dataset.cote;
+            const dejaOuvert = !panneau.hidden && b.getAttribute('aria-expanded') === 'true';
+            if (dejaOuvert) { fermer(); return; }
+            ouvrirs.forEach(x => x.setAttribute('aria-expanded', x === b ? 'true' : 'false'));
+            panneau.hidden = false;
+            erreur.hidden = true;
+            champ('pseudo').focus();
+        }));
+        panneau.querySelector('.js-jr-annuler').addEventListener('click', fermer);
+        // Entrée dans le panneau = ajouter le joueur (pas envoyer le combat)
+        panneau.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); btnAjout.click(); } });
+        btnAjout.addEventListener('click', async () => {
+            const pseudo = champ('pseudo').value.trim();
+            if (!pseudo) { erreur.querySelector('.flash-body').textContent = 'Indiquez au moins le pseudo du joueur.'; erreur.hidden = false; champ('pseudo').focus(); return; }
+            const body = new URLSearchParams({ form_action: 'joueur_rapide', csrf: form.querySelector('[name=csrf]').value });
+            ['pseudo', 'prenom', 'nom', 'poids', 'sexe', 'grade_id'].forEach(n => body.append('jr_' + n, champ(n).value));
+            btnAjout.disabled = true;
+            try {
+                const r = await fetch('combats.php', { method: 'POST', body, headers: { 'X-Requested-With': 'fetch' }, cache: 'no-store' });
+                const d = await r.json();
+                if (!d.ok) throw new Error(d.message || 'Ajout impossible.');
+                const id = String(d.id);
+                [j1, j2].forEach(sel => {
+                    if (!Array.from(sel.options).some(o => o.value === id)) {
+                        const o = new Option(d.pseudo, id);
+                        const apres = Array.from(sel.options).slice(1).find(x => x.text.localeCompare(d.pseudo, 'fr', { sensitivity: 'base' }) > 0);
+                        sel.insertBefore(o, apres || null);
+                    }
+                });
+                cible.value = id;
+                cible.dispatchEvent(new Event('change', { bubbles: true }));
+                ['pseudo', 'prenom', 'nom', 'poids'].forEach(n => { champ(n).value = ''; });
+                champ('sexe').value = ''; champ('grade_id').value = '';
+                fermer();
+                cible.focus();
+                window.Toast && window.Toast.success(d.message);
+            } catch (err) {
+                erreur.querySelector('.flash-body').textContent = err.message || 'Pas de réseau : réessayez.';
+                erreur.hidden = false;
+            } finally {
+                btnAjout.disabled = false;
+            }
+        });
+    }
 })();
 </script>
 <?php endif; ?>

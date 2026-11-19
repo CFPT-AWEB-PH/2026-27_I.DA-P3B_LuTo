@@ -82,7 +82,7 @@ if ($arbre['nbColonnes'] > 0) $ecrans[] = ['arbre', 'Arbre', false];
 $ecrans[] = ['arbitres', 'Arbitres', !$arbitresService];
 ?>
 <!DOCTYPE html>
-<html lang="fr" <?= attributsTheme($pdo) ?>>
+<html lang="fr" <?= attributsTheme($pdo, true) ?>>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -166,7 +166,7 @@ window.BLE_COMBATS_EN_COURS = <?= json_encode(array_map(fn($c) => ['id' => (int)
                     <?php foreach ($aVenir as $c): ?>
                         <tr data-combat-id="<?= (int)$c['id'] ?>" data-statut="a_venir">
                             <td class="t"><?= $c['date_prevue'] ? date('H:i', strtotime($c['date_prevue'])) : '--:--' ?></td>
-                            <td class="ec-match"><span class="dot-aka" aria-hidden="true"></span><?= e($c['joueur1_pseudo']) ?><span class="vs">contre</span><span class="dot-ao" aria-hidden="true"></span><?= e($c['joueur2_pseudo']) ?></td>
+                            <td class="ec-match"><span class="duo"><span><span class="dot-aka" aria-hidden="true"></span><?= e($c['joueur1_pseudo']) ?></span><span class="vs">contre</span><span><span class="dot-ao" aria-hidden="true"></span><?= e($c['joueur2_pseudo']) ?></span></span></td>
                             <td class="refs"><?= !empty($arbitresParCombat[$c['id']]) ? e(implode(', ', array_column($arbitresParCombat[$c['id']], 'username'))) : '<span class="refs-manque">à affecter</span>' ?></td>
                             <td class="eta" <?= $c['date_prevue'] ? 'data-countdown-to="' . dateVersMs($c['date_prevue']) . '" data-late-text="imminent"' : '' ?>></td>
                         </tr>

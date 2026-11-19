@@ -22,12 +22,14 @@ if (!$combat) {
 }
 
 $etat = etatScore($pdo, $combat);
+$termine = $combat['statut'] === 'termine';
 
 echo json_encode([
     'id'              => (int)$combat['id'],
     'statut'          => $combat['statut'],
-    'score_joueur1'   => round((float)$combat['score_joueur1'], 2),
-    'score_joueur2'   => round((float)$combat['score_joueur2'], 2),
+    // En direct : score recalculé selon le mode actuel ; terminé : résultat enregistré
+    'score_joueur1'   => round((float)($termine ? $combat['score_joueur1'] : $etat['j1']), 2),
+    'score_joueur2'   => round((float)($termine ? $combat['score_joueur2'] : $etat['j2']), 2),
     'temps_restant'   => tempsRestant($combat),
     'en_pause'        => !empty($combat['en_pause_depuis']),
     'vainqueur_id'    => $combat['vainqueur_id'],
@@ -36,6 +38,10 @@ echo json_encode([
     'ecart'           => $etat['ecart'],
     'leader'          => $etat['leader'],
     'pv'              => $etat['pv'],
+    'mode'            => $etat['mode'],
+    'officiel_j1'     => $etat['j1'],
+    'officiel_j2'     => $etat['j2'],
+    'arbitres'        => arbitresPourJson($etat),
     'avantage'        => libelleAvantage($etat, $combat['joueur1_pseudo'], $combat['joueur2_pseudo'], $combat['statut'] === 'termine'),
     'date_prevue_ms'  => dateVersMs($combat['date_prevue']),
     'server_now_ms'   => (int)round(microtime(true) * 1000),

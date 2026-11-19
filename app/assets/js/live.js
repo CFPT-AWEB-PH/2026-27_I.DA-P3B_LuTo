@@ -29,8 +29,41 @@ function majBarreAvantage(d, scope) {
         const bar = el.querySelector('.lead-bar');
         if (bar && d.avantage) bar.setAttribute('aria-label', d.avantage);
         el.querySelectorAll('.js-lead-pv i').forEach((i, k) => i.classList.toggle('on', d.pv > k));
+        if (d.arbitres) majDetailPoints(el.querySelector('.js-ref-points'), d);
     });
 }
+
+/** Détail des points de chaque arbitre + score officiel (toujours visibles). */
+function majDetailPoints(box, d) {
+    if (!box || !Array.isArray(d.arbitres) || !d.arbitres.length) return;
+    const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const ligne = (nom, a, b, cls) => `<span class="rp${cls}"><span class="rp-n">${esc(nom)}</span><span class="rp-s"><b class="s1">${fmtScore(a)}</b><i>–</i><b class="s2">${fmtScore(b)}</b></span></span>`;
+    const libOff = box.dataset.mode === 'minimum' ? 'Officiel (le plus bas)' : 'Moyenne';
+    const html = d.arbitres.map(a => ligne(a.role_nom || a.role, a.j1, a.j2, '')).join('') + ligne(libOff, d.j1, d.j2, ' rp-off');
+    if (box.innerHTML.replace(/\s+/g, '') !== html.replace(/\s+/g, '')) box.innerHTML = html;
+}
+window.majDetailPoints = majDetailPoints;
+
+/** Tableau « Points par arbitre » (#ref-table) : chaque arbitre + score officiel. */
+function majTableArbitres(d) {
+    const tbody = document.querySelector('#ref-table tbody');
+    if (!tbody || !Array.isArray(d.arbitres) || !d.arbitres.length) return;
+    const min = d.mode === 'minimum';
+    const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const aoGauche = document.documentElement.dataset.sens === 'ao-gauche';
+    const paire = (c1, c2) => aoGauche ? c2 + c1 : c1 + c2;
+    tbody.innerHTML = d.arbitres.map(a => `
+        <tr>
+            <td><strong>${esc(a.nom)}</strong> <span class="hint">${esc(a.role_nom || a.role)}</span></td>
+            ${paire(`<td class="num ${min && a.j1 == d.j1 ? 'min side-1' : ''}">${fmtScore(a.j1)}</td>`,
+                    `<td class="num ${min && a.j2 == d.j2 ? 'min side-2' : ''}">${fmtScore(a.j2)}</td>`)}
+        </tr>`).join('') + `
+        <tr class="ref-official">
+            <td><strong>${min ? 'Score officiel (le plus bas)' : 'Score officiel (moyenne)'}</strong></td>
+            ${paire(`<td class="num side-1"><strong>${fmtScore(d.j1)}</strong></td>`, `<td class="num side-2"><strong>${fmtScore(d.j2)}</strong></td>`)}
+        </tr>`;
+}
+window.majTableArbitres = majTableArbitres;
 window.majBarreAvantage = majBarreAvantage;
 window.fmtScore = fmtScore;
 
@@ -170,7 +203,9 @@ class LiveCombatTracker {
                     window.bumpScore && window.bumpScore(el);
                 }
             });
-            majBarreAvantage({ j1: data.score_joueur1, j2: data.score_joueur2, leader: data.leader, pv: data.pv, avantage: data.avantage }, card);
+            const dd = { j1: data.score_joueur1, j2: data.score_joueur2, leader: data.leader, pv: data.pv, avantage: data.avantage, arbitres: data.arbitres, mode: data.mode };
+            majBarreAvantage(dd, card);
+            if (card.id === 'combat-detail' && !document.getElementById('pad')) majTableArbitres(dd);
         }
         if (timer && data.statut === 'en_cours') {
             if (data.en_pause) timer.dataset.paused = '1'; else delete timer.dataset.paused;
@@ -179,13 +214,18 @@ class LiveCombatTracker {
 
         // Le combat vient de changer d'état (démarrage automatique à l'heure
         // prévue, ou fin) : on recharge pour afficher la bonne vue.
+        // Sans statut affiché connu, on ne recharge jamais : sinon une page déjà
+        // « terminée » se rechargerait en boucle (la page clignotait).
         const statutAffiche = card.dataset.statut;
-        if (statutAffiche && statutAffiche !== data.statut && data.statut !== 'termine') {
+        if (!statutAffiche || this.rechargementPrevu) return;
+        if (statutAffiche !== data.statut && data.statut !== 'termine') {
+            this.rechargementPrevu = true;
             window.setTimeout(() => window.location.reload(), 300);
             return;
         }
 
         if (data.statut === 'termine' && statutAffiche !== 'termine') {
+            this.rechargementPrevu = true;
             if (status) {
                 status.textContent = data.vainqueur_pseudo
                     ? `Combat terminé, vainqueur : ${data.vainqueur_pseudo}`

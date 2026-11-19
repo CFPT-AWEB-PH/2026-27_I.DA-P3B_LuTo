@@ -162,7 +162,7 @@ function ligneAVenir(array $c, string $lien, array $opt = []): string
             <span class="when"><?= $prevue ? date('H:i', $prevue) : '<span class="muted">--:--</span>' ?><small><?= formatDuree((int)$c['duree_secondes']) ?></small></span>
         <?php endif; ?>
         <a class="who" href="<?= e($lien) ?>">
-            <span class="who-p aka"><?= e($j1) ?></span><span class="vs">contre</span><span class="who-p ao"><?= e($j2) ?></span>
+            <span class="duo"><span class="who-p aka"><?= e($j1) ?></span><span class="vs">contre</span><span class="who-p ao"><?= e($j2) ?></span></span>
             <?= $opt['sous'] ?? '' ?>
         </a>
         <?php if (isset($opt['droite'])): ?>

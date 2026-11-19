@@ -76,8 +76,9 @@ require __DIR__ . '/includes/header.php';
 <details class="form-section">
     <summary>Comment le score est-il calculé ? <span class="summary-arrow" aria-hidden="true"><?= icon('chevron-down') ?></span></summary>
     <div class="form-section-body">
-        <p>Chaque arbitre donne des points pendant le combat. Le <strong>score officiel</strong> d'un joueur est le total <strong>le plus bas</strong> des trois arbitres.</p>
-        <p>Le vainqueur gagne des <strong>points de victoire</strong> selon l'écart final : 1 à 5 points d'écart = 1 PV, 6 à 15 = 2 PV, plus de 15 = 3 PV.</p>
+        <p>Chaque arbitre donne des points pendant le combat. <?= e(explicationScore($pdo)) ?></p>
+        <p><?= e(explicationBareme($pdo)) ?></p>
+        <p>Les points de chaque arbitre restent affichés sous chaque combat.</p>
     </div>
 </details>
 

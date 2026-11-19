@@ -35,6 +35,7 @@ import asyncio
 import os
 import time
 import logging
+import unicodedata
 
 import pymysql
 import pymysql.cursors
@@ -208,6 +209,8 @@ def signaler_etat(message, nb_appareils=None):
 #   télécommande → Pi : PT:R   PT:B   UNDO
 #   Pi → télécommande : NOARB  IDLE  FIGHT  STOP  TIME:<s>  SCORE:<rouge>:<bleu>
 #                       WIN:R|B|D  OK  ERR:<raison>
+#                       ARB:<nom de l'arbitre>  (vide : aucun arbitre associé)
+#                       SENS:RG|BG  (rouge à gauche / bleu à gauche, Admin › Paramètres)
 
 def creer_schema_telecommandes():
     """Même schéma que ensureTelecommandesSchema() côté PHP."""
@@ -256,6 +259,30 @@ def arbitre_de(mac):
     return t["user_id"] if t and t["actif"] else None
 
 
+def nom_ecran(texte, largeur=21):
+    """Nom lisible par la police de la télécommande (ASCII seulement, 21 caractères)."""
+    t = unicodedata.normalize("NFKD", texte or "").encode("ascii", "ignore").decode()
+    return "".join(c for c in t if 32 <= ord(c) < 127).strip()[:largeur]
+
+
+def nom_arbitre(user_id):
+    u = db_exec("SELECT username FROM users WHERE id = %s", (user_id,), fetch="one")
+    return u["username"] if u else ""
+
+
+def parametre(cle, defaut):
+    try:
+        r = db_exec("SELECT valeur FROM parametres WHERE cle = %s", (cle,), fetch="one")
+    except Exception:
+        return defaut
+    return r["valeur"] if r and r["valeur"] is not None else defaut
+
+
+def ligne_sens():
+    """Côté du rouge (Aka) sur l'écran de la télécommande, comme sur le site."""
+    return "SENS:BG" if parametre("sens_aka_ao", "aka_gauche") == "ao_gauche" else "SENS:RG"
+
+
 def combat_de_l_arbitre(user_id):
     """Combat en cours où arbitre ce compte, sinon le dernier terminé il y a peu."""
     colonnes = """c.id, c.statut, c.en_pause_depuis, c.score_joueur1, c.score_joueur2,
@@ -295,13 +322,22 @@ def totaux_par_arbitre(combat_id):
     return {r["user_id"]: (int(r["j1"]), int(r["j2"])) for r in rows}
 
 
+def score_officiel(valeurs):
+    """Même calcul que scoreOfficiel() dans includes/points.php (paramètre mode_score)."""
+    if not valeurs:
+        return 0
+    if parametre("mode_score", "moyenne_bareme") == "minimum":
+        return min(valeurs)
+    return round(sum(valeurs) / len(valeurs), 2)
+
+
 def maj_score_combat(combat_id):
-    """Score officiel = total le plus bas parmi les arbitres (includes/points.php)."""
+    """Score officiel = moyenne ou total le plus bas des arbitres, selon les paramètres."""
     totaux = totaux_par_arbitre(combat_id)
     if totaux:
         db_exec(
             "UPDATE combats SET score_joueur1 = %s, score_joueur2 = %s WHERE id = %s",
-            (min(t[0] for t in totaux.values()), min(t[1] for t in totaux.values()), combat_id),
+            (score_officiel([t[0] for t in totaux.values()]), score_officiel([t[1] for t in totaux.values()]), combat_id),
         )
 
 
@@ -340,15 +376,17 @@ def etat_pour(mac):
     db_exec("UPDATE telecommandes SET last_seen = NOW() WHERE mac_address = %s", (mac,))
     user_id = arbitre_de(mac)
     if user_id is None:
-        return ["NOARB"]
+        return ["NOARB", "ARB:", ligne_sens()]
+    # Nom de l'arbitre affiché en haut de l'écran de la télécommande
+    infos = [f"ARB:{nom_ecran(nom_arbitre(user_id))}", ligne_sens()]
     combat = combat_de_l_arbitre(user_id)
     if not combat:
-        return ["IDLE"]
+        return ["IDLE"] + infos
     mes = totaux_par_arbitre(combat["id"]).get(user_id, (0, 0))
     if combat["statut"] == "termine":
         s1, s2 = float(combat["score_joueur1"]), float(combat["score_joueur2"])
-        return ["WIN:" + ("R" if s1 > s2 else "B" if s2 > s1 else "D"), f"SCORE:{mes[0]}:{mes[1]}"]
-    return ["STOP" if combat["en_pause_depuis"] else "FIGHT",
+        return ["WIN:" + ("R" if s1 > s2 else "B" if s2 > s1 else "D")] + infos + [f"SCORE:{mes[0]}:{mes[1]}"]
+    return ["STOP" if combat["en_pause_depuis"] else "FIGHT"] + infos + [
             f"SCORE:{mes[0]}:{mes[1]}", f"TIME:{int(combat['restant'] or 0)}"]
 
 
@@ -547,7 +585,7 @@ async def connect_telecommande(tel: dict):
             if time.time() >= prochain_etat:
                 prochain_etat = time.time() + ETAT_TEL_S
                 for ligne in etat_pour(mac):
-                    sorte = ligne.split(":")[0] if ligne.startswith(("SCORE", "TIME")) else "ETAT"
+                    sorte = ligne.split(":")[0] if ligne.startswith(("SCORE", "TIME", "ARB", "SENS")) else "ETAT"
                     if envoye.get(sorte) == ligne:
                         continue
                     if sorte == "ETAT":

@@ -286,7 +286,7 @@ require __DIR__ . '/_tabs.php';
                 </tbody>
             </table>
         </div>
-        <p class="hint">Score officiel = le total le plus bas des trois arbitres. Touches = Aka / Ao (sabres connectés).</p>
+        <p class="hint"><?= e(explicationScore($pdo)) ?> Touches = Aka / Ao (sabres connectés).</p>
         <?php endif; ?>
     </section>
 
